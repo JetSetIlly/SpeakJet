@@ -239,11 +239,17 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 	case code == 31:
 		m.resetControls()
 
-	case code == 16, code == 24, code == 25, code == 28, code == 29:
+	case code == 16, code == 18, code == 24, code == 25, code == 28, code == 29:
 		// wait, port control, port output and the EEPROM phrase commands have
 		// no effect on the sound here: there is no serial control protocol to
 		// restart after a wait, the output pins are not connected, and the
 		// contents of the AtariVox's SpeakJet EEPROM are not known
+		//
+		// code 18 isn't in the manual, which goes from Wait (16) to Volume
+		// (20). Magnevation's PhraseALator software sends it as "Soft" ("Play
+		// the Next Sound Soft") and its dictionary uses it, mostly before BE
+		// and BO, so it is a real command. nothing describes what it does to
+		// the sound, so it is accepted and ignored
 		return false
 
 	default:
