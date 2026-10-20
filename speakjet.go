@@ -1,10 +1,5 @@
 package speakjet
 
-import (
-	"sync"
-	"sync/atomic"
-)
-
 // the size of the input buffer, and the level above which the Buffer Half
 // Full status line is set. from the manual
 const (
@@ -22,18 +17,16 @@ type command struct {
 // AtariVox serial line) and Render() by whatever is playing its output. the
 // two can be called from different goroutines
 type SpeakJet struct {
-	crit  sync.Mutex
 	queue []command
 
-	// bytes in the buffer, including the command that is executing. the
-	// manual: "each command is removed from the input buffer after the command
-	// is executed"
-	buffered atomic.Int32
+	// number of bytes in the queue, including the command that is executing
+	buffered int32
 
 	// size of the command that is executing
 	executing int
 
-	speaking atomic.Bool
+	// whether the chip is "speaking" at this instant
+	speaking bool
 
 	// accessed only by Render()
 	msa *msa
@@ -66,43 +59,36 @@ func CommandSize(code uint8) int {
 func (sj *SpeakJet) Write(code uint8, data uint8) bool {
 	size := CommandSize(code)
 
-	sj.crit.Lock()
-	defer sj.crit.Unlock()
-
-	if int(sj.buffered.Load())+size > BufferSize {
+	if int(sj.buffered)+size > BufferSize {
 		return false
 	}
 	sj.queue = append(sj.queue, command{code: code, data: data, size: size})
-	sj.buffered.Add(int32(size))
+	sj.buffered += int32(size)
 	return true
 }
 
 // BufferHalfFull is the state of the Buffer Half Full status line: true when
 // the buffer holds more than 32 bytes
 func (sj *SpeakJet) BufferHalfFull() bool {
-	return sj.buffered.Load() > bufferHalfFull
+	return sj.buffered > bufferHalfFull
 }
 
 // Speaking is the state of the Speaking status line
 func (sj *SpeakJet) Speaking() bool {
-	return sj.speaking.Load()
+	return sj.speaking
 }
 
 // Reset the chip as though the reset line had been cycled: the buffer is
 // cleared and the controls return to their defaults
 func (sj *SpeakJet) Reset() {
-	sj.crit.Lock()
-	defer sj.crit.Unlock()
 	sj.queue = sj.queue[:0]
-	sj.buffered.Store(int32(sj.executing))
+	sj.buffered = int32(sj.executing)
 	sj.msa.resetControls()
 }
 
 // pop the next command from the buffer. the command still counts towards the
 // buffer until it has finished executing
 func (sj *SpeakJet) pop() (command, bool) {
-	sj.crit.Lock()
-	defer sj.crit.Unlock()
 	if len(sj.queue) == 0 {
 		return command{}, false
 	}
@@ -113,8 +99,6 @@ func (sj *SpeakJet) pop() (command, bool) {
 }
 
 func (sj *SpeakJet) peek() (uint8, bool) {
-	sj.crit.Lock()
-	defer sj.crit.Unlock()
 	if len(sj.queue) == 0 {
 		return 0, false
 	}
@@ -123,9 +107,7 @@ func (sj *SpeakJet) peek() (uint8, bool) {
 
 // the executing command has finished
 func (sj *SpeakJet) retire() {
-	sj.crit.Lock()
-	defer sj.crit.Unlock()
-	sj.buffered.Add(-int32(sj.executing))
+	sj.buffered -= int32(sj.executing)
 	sj.executing = 0
 }
 
@@ -152,9 +134,9 @@ func (sj *SpeakJet) Render(buf []float32) bool {
 
 		v, _ := m.next()
 		buf[i] = float32(v) * sj.Gain
-		sounding = sounding || m.busy() || sj.buffered.Load() > 0
+		sounding = sounding || m.busy() || sj.buffered > 0
 	}
 
-	sj.speaking.Store(sounding)
+	sj.speaking = sounding
 	return sounding
 }
