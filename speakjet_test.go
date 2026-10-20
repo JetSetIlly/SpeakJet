@@ -94,6 +94,27 @@ func TestBuffer(t *testing.T) {
 	}
 }
 
+// Soft (18) is accepted and ignored: a sound after it plays exactly as it
+// does without it
+func TestSoft(t *testing.T) {
+	plain := NewSpeakJet()
+	plain.Write(170, 0) // BE
+	soft := NewSpeakJet()
+	soft.Write(18, 0)
+	soft.Write(170, 0)
+
+	a := render(plain)
+	b := render(soft)
+	if len(a) != len(b) {
+		t.Fatalf("Soft changed the length: %d samples, %d without", len(b), len(a))
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("Soft changed sample %d: %v, %v without", i, b[i], a[i])
+		}
+	}
+}
+
 func TestOutputRange(t *testing.T) {
 	sj := NewSpeakJet()
 	for c := 128; c <= 254; c++ {
