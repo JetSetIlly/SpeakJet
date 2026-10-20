@@ -37,11 +37,17 @@ type SpeakJet struct {
 
 	// accessed only by Render()
 	msa *msa
+
+	// the amount of volume increase to apply to each sample. defaults to 1.0
+	Gain float32
 }
 
 // NewSpeakJet is the preferred method of initialisation for the SpeakJet type
 func NewSpeakJet() *SpeakJet {
-	return &SpeakJet{msa: newMSA()}
+	return &SpeakJet{
+		msa:  newMSA(),
+		Gain: 1.0,
+	}
 }
 
 // CommandSize returns the number of bytes a command takes, including its data
@@ -145,7 +151,7 @@ func (sj *SpeakJet) Render(buf []float32) bool {
 		}
 
 		v, _ := m.next()
-		buf[i] = float32(v)
+		buf[i] = float32(v) * sj.Gain
 		sounding = sounding || m.busy() || sj.buffered.Load() > 0
 	}
 
