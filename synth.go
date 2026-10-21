@@ -78,9 +78,12 @@ type synth struct {
 func newSynth() *synth {
 	s := &synth{noise: 0x2545f491}
 
-	// butterworth low pass at 3400Hz, standing in for the "two pole" filter
-	// the manual places after the PWM output
-	const cutoff = 3400.0
+	// butterworth low pass for the "two pole" filter the manual places after
+	// the PWM output. its 2200Hz corner was fitted by the openFPGA-7800
+	// AtariVox engine (MIT licence) to a recording of the real chip, using a
+	// synthesizer like this one; the corner Stella's SpeakJet engine measured
+	// independently is close (1700Hz)
+	const cutoff = 2200.0
 	w := 2 * math.Pi * cutoff / SampleRate
 	alpha := math.Sin(w) / math.Sqrt2
 	cw := math.Cos(w)
