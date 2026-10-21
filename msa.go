@@ -83,10 +83,16 @@ func (m *msa) bendFactor() float64 {
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
-// and default but not the curve, so duration is taken to be inversely
-// proportional to speed
+// and default but not the curve. each step of speed changes the length by
+// about 2%: exp(-0.02 (speed - 114)), the curve the openFPGA-7800 AtariVox
+// engine fitted to recordings of games speaking at speeds 80 to 127 (MIT
+// licence). measurements of the chip behind Stella's SpeakJet engine agree
+// with it to within 8% from 60 to 114. above 114 and below 60 the two
+// disagree with each other, though both make sounds shorter than an inverse
+// law would at the top and longer at speed 40, so the curve is used for every
+// speed
 func (m *msa) speedFactor() float64 {
-	return defaultSpeed / math.Max(float64(m.speed), 8)
+	return math.Exp(-0.02 * float64(m.speed-defaultSpeed))
 }
 
 // first frame of a sound after the controls in effect now. used to glide the
