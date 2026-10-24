@@ -29,5 +29,7 @@
 // English speech, except for the formants that the two sets of measurements
 // of the chip agree on. The sound effects other than DTMF are
 // not described by the manual beyond their names and lengths, and are
-// approximations.
+// approximations, except A5 and M1. A recording of a real chip sets how much
+// longer than the manual's lengths speech sounds play, Fast, the level of the
+// noise sounds, and A5 and M1 (see steadyLength in tables.go).
 package speakjet

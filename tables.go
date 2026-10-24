@@ -1,5 +1,7 @@
 package speakjet
 
+import "math"
+
 // part is one stage of a sound: the synthesizer glides from wherever it is to
 // the target frame over glideMs and then holds it for the rest of ms
 type part struct {
@@ -19,8 +21,28 @@ const autoGlide = -1
 type sound struct {
 	name   string
 	speech bool
-	parts  []part
+
+	// how much longer the chip plays a speech sound than the manual's length,
+	// which the parts add up to
+	length float64
+
+	parts []part
 }
+
+// the chip's lengths for speech sounds, measured from a recording of a real
+// SpeakJet playing Alex Herbert's vox_test ROM (2004), compared sound by sound
+// with this library playing the same codes. at the default speed the steady
+// sounds (vowels, nasals, liquids, fricatives) last about 1.5 times the
+// manual's length (EH 2.07, IH 1.6, NGE 1.43, and SE 1.67, TH 1.42, NE 1.14
+// when slow), diphthongs about 1.2 times (EYIY 1.0, IHWW 1.5, and OHIY 1.2,
+// AXRR 1.3 when fast), and voiceless stops what the manual gives (TT 1.0). at
+// speed 127 the same steady and stop lengths and the speed curve give the
+// recording's syllable length to within a few milliseconds
+const (
+	steadyLength    = 1.5
+	diphthongLength = 1.2
+	stopLength      = 1.0
+)
 
 // the duration of a sound at the default speed. for allophones this is the
 // "Msec." column of the manual's allophone table
@@ -127,15 +149,40 @@ func voicedNoiseFrame(f formants, v1, n1, n2, nv1, nv2, dist float64) frame {
 	}
 }
 
+// hush turns the noise oscillators (4 and 5) of a frame down by db decibels
+func hush(f frame, db float64) frame {
+	g := math.Pow(10, -db/20)
+	f.vol[3] *= g
+	f.vol[4] *= g
+	return f
+}
+
+// how much quieter the chip's noise is than the levels first chosen here.
+// measured from the vox_test recording (see steadyLength) by comparing each
+// noise sound's level against the vowel beside it, on the chip and here. on
+// the chip hiss sits 16 to 23dB under the vowels; here it was level with them.
+// the corrections: SE 23dB, CH (the SH frame) 16.4dB, TH 11.8dB, FF 13.7dB,
+// stop bursts 19.5dB (TT 23dB, KE 16dB) and aspiration 14.5dB (TT). sounds the
+// recording doesn't have take the mean of the fricatives that it does
+const (
+	seDB         = 23.0
+	shDB         = 16.4
+	thDB         = 11.8
+	ffDB         = 13.7
+	fricativeDB  = 17.0
+	burstDB      = 19.5
+	aspirationDB = 14.5
+)
+
 // sound constructors
 
 func steady(name string, ms float64, f frame) sound {
-	return sound{name: name, speech: true, parts: []part{{ms: ms, glideMs: autoGlide, target: f}}}
+	return sound{name: name, speech: true, length: steadyLength, parts: []part{{ms: ms, glideMs: autoGlide, target: f}}}
 }
 
 // a diphthong holds its first target, slides to its second and briefly holds it
 func diphthong(name string, ms float64, a, b frame) sound {
-	return sound{name: name, speech: true, parts: []part{
+	return sound{name: name, speech: true, length: diphthongLength, parts: []part{
 		{ms: ms * 0.3, glideMs: autoGlide, target: a},
 		{ms: ms * 0.55, glideMs: ms * 0.55, target: b},
 		{ms: ms * 0.15, glideMs: 0, target: b},
@@ -162,7 +209,7 @@ func plosive(name string, st stop) sound {
 		close = silentFrame(st.locus)
 	}
 
-	burst := noiseFrame(st.locus, st.burstFreq[0], st.burstFreq[1], st.burstVol[0], st.burstVol[1], 255)
+	burst := hush(noiseFrame(st.locus, st.burstFreq[0], st.burstFreq[1], st.burstVol[0], st.burstVol[1], 255), burstDB)
 	if st.voiced {
 		burst.vol[0] = 6
 		burst.voiced = true
@@ -180,11 +227,11 @@ func plosive(name string, st stop) sound {
 			parts = append(parts, part{ms: rest, glideMs: rest, target: voicedFrame(st.locus, 14, 6, 3)})
 		}
 	} else if rest > 0 {
-		asp := noiseFrame(st.locus, st.aspFreq[0], st.aspFreq[1], 10, 8, 230)
+		asp := hush(noiseFrame(st.locus, st.aspFreq[0], st.aspFreq[1], 10, 8, 230), aspirationDB)
 		parts = append(parts, part{ms: rest, glideMs: 4, target: asp})
 	}
 
-	return sound{name: name, speech: true, parts: parts}
+	return sound{name: name, speech: true, length: stopLength, parts: parts}
 }
 
 // an affricate is a stop released into a fricative
@@ -196,10 +243,10 @@ func affricate(name string, st stop, fric frame, fricMs float64) sound {
 
 // frames for the fricatives, reused by the affricates and TS
 var (
-	frSE = noiseFrame(lAlveolar, 3800, 3990, 20, 16, 160)
-	frSO = noiseFrame(lAlveolarBak, 3500, 3900, 20, 14, 160)
-	frSH = noiseFrame(lPalatal, 2300, 3100, 22, 16, 200)
-	frZH = voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200)
+	frSE = hush(noiseFrame(lAlveolar, 3800, 3990, 20, 16, 160), seDB)
+	frSO = hush(noiseFrame(lAlveolarBak, 3500, 3900, 20, 14, 160), seDB)
+	frSH = hush(noiseFrame(lPalatal, 2300, 3100, 22, 16, 200), shDB)
+	frZH = hush(voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200), fricativeDB)
 )
 
 // allophones, codes 128 to 199. durations are from the manual
@@ -243,10 +290,10 @@ var allophones = [...]sound{
 	diphthong("OWWW", 131, vowelFrame(fOW), vowelFrame(formants{330, 700, 2250})),
 	affricate("JH", stop{ms: 30, closure: 25, burst: 5, voiced: true, locus: lPalatal,
 		burstFreq: [2]float64{2600, 3300}, burstVol: [2]float64{12, 8}}, frZH, 40),
-	steady("VV", 70, voicedNoiseFrame(formants{220, 1100, 2100}, 16, 3000, 3800, 8, 5, 255)),
-	steady("ZZ", 70, voicedNoiseFrame(formants{240, 1500, 2500}, 14, 3700, 3950, 14, 10, 160)),
+	steady("VV", 70, hush(voicedNoiseFrame(formants{220, 1100, 2100}, 16, 3000, 3800, 8, 5, 255), fricativeDB)),
+	steady("ZZ", 70, hush(voicedNoiseFrame(formants{240, 1500, 2500}, 14, 3700, 3950, 14, 10, 160), fricativeDB)),
 	steady("ZH", 70, frZH),
-	steady("DH", 70, voicedNoiseFrame(formants{250, 1300, 2400}, 16, 3000, 3800, 7, 5, 255)),
+	steady("DH", 70, hush(voicedNoiseFrame(formants{250, 1300, 2400}, 16, 3000, 3800, 7, 5, 255), fricativeDB)),
 	plosive("BE", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabial,
 		burstFreq: [2]float64{700, 1200}, burstVol: [2]float64{10, 6}}),
 	plosive("BO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabialBack,
@@ -273,14 +320,14 @@ var allophones = [...]sound{
 		burstFreq: [2]float64{1300, 1800}, burstVol: [2]float64{10, 6}}),
 	affricate("CH", stop{ms: 30, closure: 25, burst: 5, locus: lPalatal,
 		burstFreq: [2]float64{3000, 3600}, burstVol: [2]float64{16, 12}}, frSH, 40),
-	steady("HE", 70, noiseFrame(formants{400, 1900, 2600}, 1900, 2600, 12, 9, 255)),
-	steady("HO", 70, noiseFrame(formants{600, 1000, 2400}, 1000, 2400, 12, 8, 255)),
-	steady("WH", 70, noiseFrame(fWW, 700, 1300, 10, 7, 255)),
-	steady("FF", 70, noiseFrame(lLabial, 2500, 3800, 6, 9, 255)),
+	steady("HE", 70, hush(noiseFrame(formants{400, 1900, 2600}, 1900, 2600, 12, 9, 255), fricativeDB)),
+	steady("HO", 70, hush(noiseFrame(formants{600, 1000, 2400}, 1000, 2400, 12, 8, 255), fricativeDB)),
+	steady("WH", 70, hush(noiseFrame(fWW, 700, 1300, 10, 7, 255), fricativeDB)),
+	steady("FF", 70, hush(noiseFrame(lLabial, 2500, 3800, 6, 9, 255), ffDB)),
 	steady("SE", 40, frSE),
 	steady("SO", 40, frSO),
 	steady("SH", 50, frSH),
-	steady("TH", 40, noiseFrame(lDental, 3000, 3900, 6, 6, 255)),
+	steady("TH", 40, hush(noiseFrame(lDental, 3000, 3900, 6, 6, 255), thDB)),
 	plosive("TT", stop{ms: 50, closure: 30, burst: 10, locus: lAlveolar,
 		burstFreq: [2]float64{3500, 3950}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{1800, 2600}}),
 	plosive("TU", stop{ms: 70, closure: 30, burst: 8, locus: lAlveolar,
@@ -326,6 +373,47 @@ func buzz(f formants, pitch float64, wave envelopeWave) frame {
 func quiet(f frame) frame {
 	f.vol = [5]float64{}
 	return f
+}
+
+// fade turns every oscillator of a frame down by db decibels
+func fade(f frame, db float64) frame {
+	g := math.Pow(10, -db/20)
+	for i := range f.vol {
+		f.vol[i] *= g
+	}
+	return f
+}
+
+// a5 is measured from the vox_test recording (see steadyLength): two steady
+// tones, the second 12dB under the first (set louder here, as the output
+// filter takes 4dB off it), that glide down together by about 295Hz over
+// 240ms and back up again. the ROM sets Bend 1 before it, and the recording
+// has the tones at 486Hz and 2525Hz, gliding to 190Hz and 2232Hz and back to
+// 478Hz and 2522Hz. the frequencies here are those divided by Bend 1's factor
+// (see msa.bendFactor()), so that Bend 1 plays the recording. whether the
+// chip bends its sound effects at all isn't known
+func a5() sound {
+	f := tone(612, 3181)
+	f.vol[0], f.vol[1] = 28, 12
+	down, up := f, f
+	down.freq[0], down.freq[1] = 239, 2812
+	up.freq[0], up.freq[1] = 602, 3178
+	return effect("A5", hold(3, 3, f), hold(237, 237, down), hold(250, 250, up), hold(10, 10, quiet(up)))
+}
+
+// m1 is measured from the vox_test recording (see steadyLength): 30ms of noise
+// with most of its energy under 2kHz, then noise around 1 to 2kHz that dies
+// away by 30dB, fastest at the start and the end
+func m1() sound {
+	bang := noiseFrame(lGlottal, 500, 1400, 31, 26, 255)
+	hiss := noiseFrame(lGlottal, 1000, 1700, 31, 26, 160)
+	return effect("M1",
+		hold(30, 2, bang),
+		hold(20, 20, fade(hiss, 5)),
+		hold(50, 50, fade(hiss, 12)),
+		hold(100, 100, fade(hiss, 15.5)),
+		hold(25, 25, fade(hiss, 19.5)),
+		hold(25, 25, quiet(hiss)))
 }
 
 // beeps plays a sequence of tones of the given frequencies, on for on ms and
@@ -388,7 +476,7 @@ var effects = [...]sound{
 	effect("A3", hold(537, 5, func() frame { f := tone(900, 1100); f.pitch = 10; f.wave = envSquare; f.voiced = true; return f }()),
 		hold(3, 3, quiet(tone(900, 1100)))),
 	effect("A4", sweep(265, 500, 1200), sweep(262, 1200, 500), hold(3, 3, quiet(tone(500, 0)))),
-	effect("A5", hold(490, 10, buzz(formants{700, 1200, 2400}, 160, envSaw)), hold(10, 10, quiet(buzz(formants{700, 1200, 2400}, 160, envSaw)))),
+	a5(),
 	effect("A6", sweep(132, 2000, 400), hold(3, 3, quiet(tone(400, 0)))),
 	effect("A7", sweep(200, 400, 1600), sweep(200, 400, 1600), sweep(197, 400, 1600), hold(3, 3, quiet(tone(1600, 0)))),
 	beeps("A8", 100, 50, 1600, 1600),
@@ -432,7 +520,7 @@ var effects = [...]sound{
 	dtmf("D8", 852, 1336), dtmf("D9", 852, 1477), dtmf("D10", 941, 1209), dtmf("D11", 941, 1477),
 
 	effect("M0", decay(125, tone(1250, 0))),
-	effect("M1", decay(250, noiseFrame(lGlottal, 600, 1800, 31, 26, 255))),
+	m1(),
 	effect("M2",
 		hold(80, 15, buzz(fWW, 100, envSaw)),
 		hold(200, 200, buzz(fAH, 150, envSaw)),

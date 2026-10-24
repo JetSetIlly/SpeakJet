@@ -122,9 +122,13 @@ func (m *msa) expand(s sound) []segment {
 	f1, f2 := 1.0, 1.0
 
 	if s.speech {
-		scale = m.speedFactor()
+		scale = m.speedFactor() * s.length
+
+		// fast and slow, measured from the vox_test recording (see
+		// steadyLength): fast plays a sound at 0.53 to 0.67 of its length (NE,
+		// JH, AXRR), and slow at 1.14 to 1.67 times (SE, NE, TH, IY)
 		if m.fast {
-			scale *= 0.5
+			scale *= 0.6
 		}
 		if m.slow {
 			scale *= 1.5
