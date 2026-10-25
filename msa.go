@@ -10,8 +10,12 @@ const (
 	defaultBend   = 5   // 0 to 15
 )
 
-// pause lengths in milliseconds for codes 0 to 6, from the manual
-var pauseMs = [...]float64{0, 100, 200, 700, 30, 60, 90}
+// pause lengths in milliseconds for codes 0 to 6. the manual gives 0, 100,
+// 200, 700, 30, 60 and 90; the VoxRecord recording (see speedFactor()) has the
+// silence between two AWs at 654ms for pause 3, 27ms for pause 5 and 59ms for
+// pause 6, which these lengths give here. the others match the manual to
+// within the recording's 10ms or so
+var pauseMs = [...]float64{0, 100, 200, 650, 30, 35, 70}
 
 // how quickly the volume ramps down at the start of a pause, and at auto
 // silence when the input buffer has emptied. not given by the manual
@@ -83,16 +87,17 @@ func (m *msa) bendFactor() float64 {
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
-// and default but not the curve. each step of speed changes the length by
-// about 2%: exp(-0.02 (speed - 114)), the curve the openFPGA-7800 AtariVox
-// engine fitted to recordings of games speaking at speeds 80 to 127 (MIT
-// licence). measurements of the chip behind Stella's SpeakJet engine agree
-// with it to within 8% from 60 to 114. above 114 and below 60 the two
-// disagree with each other, though both make sounds shorter than an inverse
-// law would at the top and longer at speed 40, so the curve is used for every
-// speed
+// and default but not the curve. measured from a recording of a real AtariVox
+// playing the VoxRecord ROM (TT AW EYIY SE at speeds 0 to 127): the length
+// falls in a straight line with speed, 2115ms at speed 0 and 955ms at 80, and
+// the line predicts speeds 20, 40 and 60 to within 2%. it reaches zero at
+// about 146, so relative to the default speed the multiplier is
+// (146 - speed) / 32: 4.6 at speed 0, 0.59 at 127. pauses are lengthened by it
+// too (see execute())
+const speedZero = 146.0
+
 func (m *msa) speedFactor() float64 {
-	return math.Exp(-0.02 * float64(m.speed-defaultSpeed))
+	return (speedZero - float64(m.speed)) / (speedZero - defaultSpeed)
 }
 
 // first frame of a sound after the controls in effect now. used to glide the
@@ -219,7 +224,9 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		} else if code >= 4 {
 			m.jumpNextFreq = true
 		}
-		m.segs = m.silence(pauseMs[code], towards)
+		// on the chip a pause stretches with the Speed control just as the
+		// sounds do: at speed 0 two pause 2s are 1845ms of silence
+		m.segs = m.silence(pauseMs[code]*m.speedFactor(), towards)
 
 	case code == 7:
 		m.fast = true

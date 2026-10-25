@@ -24,11 +24,21 @@ var manualMs = map[uint8]float64{
 	247: 95, 248: 95, 249: 95, 250: 95, 251: 95, 252: 125, 253: 250, 254: 530,
 }
 
+// the allophones' parts add up to the manual's length (the chip's longer
+// lengths come from sound.length). most of the sound effects are traced from a
+// recording of the chip and have its lengths instead, so for them only check
+// that they exist
 func TestDurations(t *testing.T) {
 	for code, want := range manualMs {
 		s, ok := lookup(code)
 		if !ok {
 			t.Errorf("code %d: no sound", code)
+			continue
+		}
+		if code >= 200 {
+			if s.ms() <= 0 {
+				t.Errorf("code %d (%s): no length", code, s.name)
+			}
 			continue
 		}
 		if math.Abs(s.ms()-want) > 0.01 {
@@ -64,7 +74,7 @@ func TestPhraseLength(t *testing.T) {
 		n++
 	}
 	got := float64(n) * 1000 / SampleRate
-	want := (70.0+70)*steadyLength + 99*stopLength + autoSilenceMs
+	want := 70.0*allophoneLength[183-128] + 70.0*allophoneLength[135-128] + 99*stopLength + autoSilenceMs
 	if math.Abs(got-want) > 1 {
 		t.Errorf("phrase played for %.0fms, expected about %.0fms", got, want)
 	}
