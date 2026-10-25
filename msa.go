@@ -11,11 +11,12 @@ const (
 )
 
 // pause lengths in milliseconds for codes 0 to 6. the manual gives 0, 100,
-// 200, 700, 30, 60 and 90; the VoxRecord recording (see speedFactor()) has the
-// silence between two AWs at 654ms for pause 3, 27ms for pause 5 and 59ms for
-// pause 6, which these lengths give here. the others match the manual to
-// within the recording's 10ms or so
-var pauseMs = [...]float64{0, 100, 200, 650, 30, 35, 70}
+// 200, 700, 30, 60 and 90. two takes of the VoxRecord recording (see
+// speedFactor()) measure the silence between two AWs, against the two delays
+// (whose length is exact) as a reference: pauses 3, 5 and 6 are shorter than
+// the manual says, about 650, 45 and 70ms. the takes differ by up to 35ms on a
+// pause, so the others, within 10ms of the manual, keep it
+var pauseMs = [...]float64{0, 100, 200, 650, 30, 45, 70}
 
 // how quickly the volume ramps down at the start of a pause, and at auto
 // silence when the input buffer has emptied. not given by the manual
@@ -53,10 +54,15 @@ type msa struct {
 	repeat        int
 	jumpNextFreq  bool
 	autoSilenced  bool
-	segs          []segment
-	segPos        int
-	segStart      frame
-	current       frame
+
+	// the sound playing is speech rather than a sound effect: Bend works
+	// differently on the two (see effectBendHz())
+	speech bool
+
+	segs     []segment
+	segPos   int
+	segStart frame
+	current  frame
 }
 
 func newMSA() *msa {
@@ -67,6 +73,7 @@ func newMSA() *msa {
 	// first sound fades in rather than sweeping up from 0Hz
 	m.current = silentFrame(fAX)
 	m.current.pitch = defaultPitch
+	m.speech = true
 
 	return m
 }
@@ -79,11 +86,30 @@ func (m *msa) resetControls() {
 }
 
 // bendFactor is the multiplier the Bend control applies to oscillator
-// frequencies. the manual only says that bend goes from a "deep-hollow" to a
-// "High-metallic" sounding voice, so the curve is a guess: a semitone per step
-// either side of the default
+// frequencies in speech. the manual only says that bend goes from a
+// "deep-hollow" to a "High-metallic" sounding voice, so the curve is a guess: a
+// semitone per step either side of the default. the recording's clipped vowels
+// can't confirm it. sound effects are bent by effectBendHz() instead
 func (m *msa) bendFactor() float64 {
+	if !m.speech {
+		return 1.0
+	}
 	return math.Pow(2, float64(m.bend-defaultBend)/12)
+}
+
+// on a sound effect Bend doesn't multiply the frequencies but adds to them.
+// measured from two takes of the VoxRecord recording (see speedFactor()), which
+// plays D1 and A5 at Bends 0, 1, 5, 10 and 15: D1's two tones move together and
+// keep their 512Hz spacing, by -198, -154, 0, +220 and +439Hz, and A5 by the
+// same at Bends 0 and 1. that is 44Hz a step from 5 up, and from 1 down;
+// between 1 and 5 it is 22Hz short, which these five Bends can't place, so the
+// shortfall is taken up at 5. the offset is applied to oscillators 1 to 3, the
+// tones; whether it moves the noise oscillators isn't known
+func (m *msa) effectBendHz() float64 {
+	if m.bend >= defaultBend {
+		return 44.0 * float64(m.bend-defaultBend)
+	}
+	return 44.0*float64(m.bend) - 198.0
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
@@ -151,6 +177,12 @@ func (m *msa) expand(s sound) []segment {
 		}
 	}
 
+	m.speech = s.speech
+	bendHz := 0.0
+	if !s.speech {
+		bendHz = m.effectBendHz()
+	}
+
 	var segs []segment
 	for _, p := range s.parts {
 		ms := p.ms * scale
@@ -165,6 +197,12 @@ func (m *msa) expand(s sound) []segment {
 			t.pitch = pitch
 			t.freq[0] *= f1
 			t.freq[1] *= f2
+		} else {
+			for j := range 3 {
+				if t.freq[j] > 0 {
+					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+				}
+			}
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
 	}

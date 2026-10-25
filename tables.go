@@ -48,8 +48,8 @@ const (
 
 // how much longer the chip plays each allophone than the manual's length, at
 // the default speed. 0 keeps the class's length (see steadyLength). fitted to
-// the VoxRecord recording (see msa.speedFactor()): each allophone was played on
-// its own and its audible length on the chip, from where it rises out of
+// the mean of two takes of the VoxRecord recording (see msa.speedFactor()),
+// which agree to 2.5ms on average: each allophone was played on its own and its audible length on the chip, from where it rises out of
 // silence to where it falls back, was matched here measured the same way. the
 // chip plays the vowels IH to OH for about 140ms, the back vowels and RR 120 to
 // 125ms, the nasals and liquids 90 to 110ms, the voiced fricatives 90 to 110ms
@@ -57,13 +57,13 @@ const (
 // class's length: where a stop's sound starts and ends on a recording says
 // nothing about its silent closure
 var allophoneLength = [...]float64{
-	1.44, 1.64, 1.81, 1.82, 1.90, 1.84, 1.84, 1.79, 1.56,
-	1.47, 1.44, 1.36, 1.18, 0.92, 1.01, 0.84, 0.90, 1.04,
-	1.19, 1.16, 1.53, 1.12, 1.19, 1.22, 1.14, 1.14, 1.17,
-	1.12, 1.06, 1.17, 1.21, 1.17, 1.06, 1.12, 1.26, 1.16,
-	1.34, 0.00, 0.80, 1.17, 0.87, 1.01, 0.00, 0.00, 0.00,
+	1.47, 1.62, 1.81, 1.77, 1.88, 1.80, 1.82, 1.79, 1.56,
+	1.45, 1.42, 1.34, 1.14, 0.96, 1.03, 0.84, 0.92, 1.09,
+	1.19, 1.10, 1.53, 1.12, 1.16, 1.21, 1.14, 1.14, 1.17,
+	1.12, 1.06, 1.17, 1.20, 1.17, 1.06, 1.12, 1.26, 1.16,
+	1.34, 0.00, 0.80, 1.11, 0.86, 1.04, 0.00, 0.00, 0.00,
 	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.00, 0.98, 0.98, 0.95, 1.02, 2.05, 2.35, 1.10, 0.90,
+	0.00, 1.00, 1.00, 0.99, 1.02, 2.14, 2.40, 1.12, 0.96,
 	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
 }
 
@@ -275,15 +275,15 @@ func affricate(name string, st stop, fric frame, fricMs float64) sound {
 // the noise of the voiceless fricatives (here and HE, HO, WH, FF and TH below)
 // is shaped to the VoxRecord recording (see msa.speedFactor()): their spectra
 // on the chip, which the recording has unclipped, were measured in third
-// octaves from 250Hz to 4kHz, and each frame's two noise oscillators fitted to
+// octaves from 250Hz to 4kHz in two takes (which agree to 2 to 4dB), averaged, and each frame's two noise oscillators fitted to
 // that shape through the output filter here. the chip's hiss is peaked where
 // these are broad: SE and SO at 3.2 to 4kHz, SH at 2 to 3kHz, HE and HO around
 // 1 to 1.5kHz, WH at 0.6 to 0.9kHz. each keeps the overall level the vox_test
 // recording gave it (see fricativeDB)
 var (
-	frSE = noiseFrame(lAlveolar, 3721, 3280, 14.8, 7.5, 9)
-	frSO = noiseFrame(lAlveolarBak, 3663, 2903, 19.5, 2.6, 5)
-	frSH = noiseFrame(lPalatal, 2120, 3155, 2.2, 10.2, 31)
+	frSE = noiseFrame(lAlveolar, 3494, 3032, 15.2, 0.6, 9)
+	frSO = noiseFrame(lAlveolarBak, 3471, 3049, 9.8, 3.2, 10)
+	frSH = noiseFrame(lPalatal, 3275, 2532, 7.4, 4.6, 35)
 	frZH = hush(voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200), fricativeDB)
 )
 
@@ -358,14 +358,14 @@ var allophones = [...]sound{
 		burstFreq: [2]float64{1300, 1800}, burstVol: [2]float64{10, 6}}),
 	affricate("CH", stop{ms: 30, closure: 25, burst: 5, locus: lPalatal,
 		burstFreq: [2]float64{3000, 3600}, burstVol: [2]float64{16, 12}}, frSH, 40),
-	steady("HE", 70, noiseFrame(formants{400, 1900, 2600}, 3756, 1365, 1.8, 1.4, 110)),
-	steady("HO", 70, noiseFrame(formants{600, 1000, 2400}, 3510, 1263, 1.4, 1.6, 144)),
-	steady("WH", 70, noiseFrame(fWW, 3485, 782, 0.4, 1.6, 156)),
-	steady("FF", 70, noiseFrame(lLabial, 3612, 1478, 9.0, 0.7, 39)),
+	steady("HE", 70, noiseFrame(formants{400, 1900, 2600}, 1446, 3706, 1.3, 1.7, 141)),
+	steady("HO", 70, noiseFrame(formants{600, 1000, 2400}, 1265, 3569, 1.6, 1.5, 155)),
+	steady("WH", 70, noiseFrame(fWW, 3026, 780, 0.4, 1.6, 163)),
+	steady("FF", 70, noiseFrame(lLabial, 3847, 3741, 8.9, 15.6, 21)),
 	steady("SE", 40, frSE),
 	steady("SO", 40, frSO),
 	steady("SH", 50, frSH),
-	steady("TH", 40, noiseFrame(lDental, 3306, 1740, 4.4, 0.8, 75)),
+	steady("TH", 40, noiseFrame(lDental, 3218, 1576, 3.8, 1.0, 77)),
 	plosive("TT", stop{ms: 50, closure: 30, burst: 10, locus: lAlveolar,
 		burstFreq: [2]float64{3500, 3950}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{1800, 2600}}),
 	plosive("TU", stop{ms: 70, closure: 30, burst: 8, locus: lAlveolar,
