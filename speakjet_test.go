@@ -74,7 +74,7 @@ func TestPhraseLength(t *testing.T) {
 		n++
 	}
 	got := float64(n) * 1000 / SampleRate
-	want := 70.0*allophoneLength[183-128] + 70.0*allophoneLength[135-128] + 99*allophoneLength[199-128] + autoSilenceMs
+	want := 70.0*allophoneLength[183-128] + (70.0 + transitionMs) + 99*allophoneLength[199-128] + autoSilenceMs
 	if math.Abs(got-want) > 1 {
 		t.Errorf("phrase played for %.0fms, expected about %.0fms", got, want)
 	}

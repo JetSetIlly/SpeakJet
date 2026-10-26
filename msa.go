@@ -10,13 +10,25 @@ const (
 	defaultBend   = 5   // 0 to 15
 )
 
-// pause lengths in milliseconds for codes 0 to 6. the manual gives 0, 100,
-// 200, 700, 30, 60 and 90. two takes of the VoxRecord recording (see
-// speedFactor()) measure the silence between two AWs, against the two delays
-// (whose length is exact) as a reference: pauses 3, 5 and 6 are shorter than
-// the manual says, about 650, 45 and 70ms. the takes differ by up to 35ms on a
-// pause, so the others, within 10ms of the manual, keep it
-var pauseMs = [...]float64{0, 100, 200, 650, 30, 45, 70}
+// pause lengths in milliseconds for codes 0 to 6. the manual gives 0, 100, 200,
+// 700, 30, 60 and 90. the VoxProbe recording plays AW, a pause and AW three
+// times for each pause, and these lengths give the same silence between the AWs
+// as the chip, within about 5ms (the AWs measured the same way on both): 21,
+// 109, 212, 661, 26, 47 and 73ms. pause 0 is not nothing: the chip still leaves
+// a gap between the sounds
+var pauseMs = [...]float64{14, 107, 203, 645, 25, 43, 70}
+
+// Delay is longer than its 10ms intervals: on the chip (the VoxProbe recording)
+// delays of 30, 60 and 90ms leave 44, 75 and 116ms between two AWs, against
+// 26ms for pause 4. it doesn't change with Speed (500ms is 500 to 530ms at
+// speeds 40, 114 and 127)
+const delayExtraMs = 12.0
+
+// how much Fast and Slow change a sound's length
+const (
+	fastScale = 0.65
+	slowScale = 1.35
+)
 
 // how quickly the volume ramps down at the start of a pause, and at auto
 // silence when the input buffer has emptied. not given by the manual
@@ -145,20 +157,29 @@ const stressHz = 80.0
 
 // expand converts a sound into segments, applying the controls and modifiers
 func (m *msa) expand(s sound) []segment {
-	scale := 1.0
+	// Speed stretches every sound, the effects too: on the chip (the VoxProbe
+	// recording) A1, B1 and D1 take 2.6 to 2.7 times as long at speed 60 and
+	// 0.56 to 0.59 times at speed 127, as the speech does
+	scale := m.speedFactor()
 	stress := 0.0
 
-	if s.speech {
-		scale = m.speedFactor() * s.length
+	// the copies after the first, when the sound is repeated, take the
+	// manual's length (scaled by Speed) rather than the chip's longer first
+	// one: on the chip each extra AW adds 70ms, and repeating IY, UW and MM six
+	// times takes one of them plus five times 70ms, to within 6ms
+	copyScale := scale
 
-		// fast and slow, measured from the vox_test recording (see
-		// steadyLength): fast plays a sound at 0.53 to 0.67 of its length (NE,
-		// JH, AXRR), and slow at 1.14 to 1.67 times (SE, NE, TH, IY)
+	if s.speech {
+		scale *= s.length
+
+		// fast and slow, measured from the VoxProbe recording: fast plays OWIY
+		// and AXRR at 0.66 and 0.63 of their length, and slow at 1.42 and 1.31
+		// times
 		if m.fast {
-			scale *= 0.6
+			scale *= fastScale
 		}
 		if m.slow {
-			scale *= 1.5
+			scale *= slowScale
 		}
 
 		// "STRESS, IH sounds more like (but not quite) the IY sound". on the
@@ -172,7 +193,7 @@ func (m *msa) expand(s sound) []segment {
 
 	bendHz := m.bendHz()
 
-	var segs []segment
+	var segs, copies []segment
 	for _, p := range s.parts {
 		ms := p.ms * scale
 		glide := p.glideMs * scale
@@ -186,6 +207,11 @@ func (m *msa) expand(s sound) []segment {
 			t.pitch = voiceHz(float64(m.pitch))
 			t.freq[1] += stress
 			t.freq[2] += stress
+		} else if t.wave == envVoice {
+			// a voiced effect follows the Pitch control: on the chip A1 and M2
+			// are voiced at 60.3, 87.9 and 149.5Hz at pitch 60, 88 and 150.
+			// their traced pitch is the chip's at the default pitch
+			t.pitch *= voiceHz(float64(m.pitch)) / voiceHz(defaultPitch)
 		}
 		for j := range 3 {
 			if t.freq[j] > 0 {
@@ -193,19 +219,26 @@ func (m *msa) expand(s sound) []segment {
 			}
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
+
+		copyMs := p.ms * copyScale
+		copyGlide := p.glideMs * copyScale
+		if p.glideMs == autoGlide {
+			copyGlide = math.Min(math.Max(copyMs*0.35, 20), 50)
+		}
+		copies = append(copies, segment{samples: samples(copyMs), glide: samples(math.Min(copyGlide, copyMs)), target: t})
 	}
 
 	m.fast, m.slow, m.stress, m.relax = false, false, false, false
 
 	if len(segs) > 0 && m.jumpNextFreq {
 		segs[0].jump = true
+		copies[0].jump = true
 		m.jumpNextFreq = false
 	}
 
 	if m.repeat > 1 {
-		one := segs
 		for i := 1; i < m.repeat; i++ {
-			segs = append(segs, one...)
+			segs = append(segs, copies...)
 		}
 	}
 	m.repeat = 0
@@ -277,7 +310,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 
 	case code == 30:
 		// "the number of 10ms intervals to delay before continuing"
-		m.segs = m.silence(float64(data)*10, nil)
+		m.segs = m.silence(float64(data)*10+delayExtraMs, nil)
 
 	case code == 31:
 		m.resetControls()

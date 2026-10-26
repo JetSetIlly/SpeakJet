@@ -23,7 +23,11 @@ const (
 	envSine
 	envTriangle
 	envSquare
+	envVoice
 )
+
+// how long the voicing ramp lasts (see envVoice in sample())
+const voiceEnvMs = 8.0
 
 // frame is a set of synthesizer register values. the MSA sequencer moves the
 // synthesizer from one frame to the next over time
@@ -133,6 +137,14 @@ func (s *synth) sample(f frame, master float64) float64 {
 			if p >= 0.5 {
 				env = 0
 			}
+		case envVoice:
+			// the chip's voicing: each pulse restarts the formant oscillators at
+			// full level and they fall away in a straight line to nothing in a
+			// fixed time, whatever the pitch. below 125Hz the rest of the
+			// period is silent; above it the next pulse cuts the ramp short.
+			// measured from the VoxProbe recording, where at pitch 40 to 70 each
+			// pulse stands alone
+			env = math.Max(1-p/(f.pitch*voiceEnvMs/1000), 0)
 		}
 	} else if f.voiced {
 		// a pitch of zero does not vocalise
