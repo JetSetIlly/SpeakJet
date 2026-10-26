@@ -87,7 +87,7 @@ var allophoneLength = [...]float64{
 	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
 	0.00, 0.82, 0.84, 0.99, 0.88, 0.88, 1.63, 1.40, 2.67,
 	3.27, 1.40, 1.40, 3.74, 3.16, 1.40, 1.40, 1.40, 1.40,
-	2.46, 1.17, 1.15, 1.11, 1.49, 2.92, 3.14, 1.78, 1.77,
+	2.46, 1.17, 1.15, 1.11, 1.49, 2.80, 2.23, 1.17, 1.77,
 	2.07, 2.78, 1.37, 2.44, 1.40, 2.40, 2.46, 1.40, 1.40,
 }
 
@@ -99,14 +99,14 @@ var allophoneLength = [...]float64{
 // too loud here (the hiss levels were set from an earlier, clipped recording,
 // which made the vowels read quiet) and BE, BO, PE and PO too quiet
 var allophoneGainDB = [...]float64{
-	0.6, 1.3, 1.3, 0.5, 1.2, 1.0, 0.6, 0.7, 0.0,
-	-0.9, -1.4, -1.4, -3.7, -4.3, -4.3, -4.2, -4.4, -2.9,
-	-2.8, -1.9, 0.5, 0.2, 0.6, 0.5, -0.2, -0.8, 0.6,
-	0.2, -0.8, 0.5, 0.3, -1.2, -0.9, -0.0, -1.4, -0.9,
-	-2.4, -11.5, -1.8, 2.1, -2.0, -3.0, 6.2, 6.5, -2.4,
-	3.0, 3.2, 3.2, -4.4, -8.5, -0.1, -0.3, 1.8, 2.4,
-	-15.3, -32.1, -30.9, -29.6, -26.1, -14.7, -20.0, -21.0, -26.6,
-	-2.0, -3.1, -26.2, 1.7, -2.8, 2.7, -3.6, 6.6, 6.1,
+	1.0, 2.0, 2.0, 1.2, 2.0, 1.7, 1.3, 0.9, 0.0,
+	-1.8, -1.8, -1.3, -4.0, -4.6, -4.5, -4.5, -4.7, -4.0,
+	-3.1, -4.1, 0.5, 0.3, 0.9, 0.2, -0.4, -1.1, 1.2,
+	0.6, -0.7, 0.9, 0.4, -0.9, -1.0, -0.1, -1.5, -0.6,
+	-3.0, -11.7, -2.1, 1.8, -2.3, -3.3, 5.9, 6.2, -2.6,
+	2.7, 2.9, 3.0, -4.7, -8.7, -0.4, -0.5, 1.5, 2.1,
+	-15.6, -32.3, -31.2, -29.8, -26.3, -15.9, -17.7, -16.7, -26.9,
+	-2.2, -3.4, -26.5, 1.4, -3.1, 2.4, -3.8, 6.3, 5.8,
 }
 
 func init() {
@@ -415,9 +415,9 @@ func affricate(name string, st stop, fric frame, fricMs float64) sound {
 // HE and HO around 1 to 1.5kHz, WH at 0.6 to 0.9kHz. their levels are set by
 // allophoneGainDB
 var (
-	frSE = noiseFrame(lAlveolar, 3222, 3786, 5.4, 10.3, 23)
-	frSO = noiseFrame(lAlveolarBak, 3088, 3412, 2.7, 5.3, 24)
-	frSH = noiseFrame(lPalatal, 3128, 2558, 28.4, 23.7, 61)
+	frSE = noiseFrame(lAlveolar, 3557, 2703, 28.98, 6.08, 27)
+	frSO = noiseFrame(lAlveolarBak, 3140, 3652, 20.91, 27.91, 20)
+	frSH = noiseFrame(lPalatal, 3606, 2505, 15.54, 16.7, 43)
 	frZH = hush(voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200), fricativeDB)
 )
 
@@ -437,18 +437,24 @@ var (
 // here (PE and PO by half)
 // allophones, codes 128 to 199. durations are from the manual
 var allophones = [...]sound{
-	steady("IY", 70, vowelFrame(fIY)),
-	steady("IH", 70, vowelFrame(fIH)),
-	steady("EY", 70, vowelFrame(fEY)),
-	steady("EH", 70, vowelFrame(fEH)),
-	steady("AY", 70, vowelFrame(fAY)),
-	steady("AX", 70, vowelFrame(fAX)),
-	steady("UX", 70, vowelFrame(fUX)),
-	steady("OH", 70, vowelFrame(fOH)),
-	steady("AW", 70, vowelFrame(fAW)),
-	steady("OW", 70, vowelFrame(fOW)),
-	steady("UH", 70, vowelFrame(fUH)),
-	steady("UW", 70, vowelFrame(fUW)),
+	// the vowels' and liquids' three volumes are the chip's: at pitch 40 on the
+	// second VoxProbe recording each voicing pulse is the three formant sines
+	// alone, and fitting them gives each one's amplitude; divided by the output
+	// filter's gain at its frequency (see output_fir), that is the volume here.
+	// with them the voiced sounds go from 3.51 to 3.37dB of two chips' spectra
+	// (both units' VoxRecord recordings)
+	steady("IY", 70, voicedFrame(fIY, 24.0, 10.1, 7.1)),
+	steady("IH", 70, voicedFrame(fIH, 24.0, 10.5, 6.3)),
+	steady("EY", 70, voicedFrame(fEY, 24.0, 10.6, 5.8)),
+	steady("EH", 70, voicedFrame(fEH, 24.0, 11.1, 7.9)),
+	steady("AY", 70, voicedFrame(fAY, 24.0, 8.5, 10.0)),
+	steady("AX", 70, voicedFrame(fAX, 24.0, 11.8, 6.2)),
+	steady("UX", 70, voicedFrame(fUX, 24.0, 12.0, 7.3)),
+	steady("OH", 70, voicedFrame(fOH, 24.0, 15.4, 6.7)),
+	steady("AW", 70, voicedFrame(fAW, 24.0, 16.7, 6.6)),
+	steady("OW", 70, voicedFrame(fOW, 24.0, 21.6, 6.0)),
+	steady("UH", 70, voicedFrame(fUH, 24.0, 19.7, 4.4)),
+	steady("UW", 70, voicedFrame(fUW, 24.0, 16.6, 2.4)),
 	// the nasals' resonances and volumes are fitted to the VoxRecord
 	// recording's third take (the middle of each, in sixth octaves from 200Hz
 	// to 3.9kHz): besides the low murmur the chip's nasals have strong
@@ -459,26 +465,27 @@ var allophones = [...]sound{
 	steady("NO", 70, voicedFrame(formants{310, 1097, 2568}, 22.0, 6.0, 12.0)),
 	steady("NGE", 70, voicedFrame(formants{396, 2100, 2700}, 22.0, 7.0, 4.0)),
 	steady("NGO", 70, voicedFrame(formants{396, 1500, 1910}, 22.0, 6.5, 8.2)),
-	steady("LE", 70, liquidFrame(fLE)),
+	steady("LE", 70, voicedFrame(fLE, 22.0, 17.9, 2.8)),
 	steady("LO", 70, liquidFrame(fLO)),
-	steady("WW", 70, liquidFrame(fWW)),
-	steady("RR", 70, liquidFrame(fRR)),
-	diphthong("IYRR", 200, vowelFrame(fIY), liquidFrame(fER)),
-	diphthong("EYRR", 200, vowelFrame(fEH), liquidFrame(fER)),
+	steady("WW", 70, voicedFrame(fWW, 22.0, 23.7, 3.1)),
+	steady("RR", 70, voicedFrame(fRR, 22.0, 12.8, 3.3)),
+	// the diphthongs' vowel ends take their vowel's volumes (above)
+	diphthong("IYRR", 200, voicedFrame(fIY, 24.0, 10.1, 7.1), liquidFrame(fER)),
+	diphthong("EYRR", 200, voicedFrame(fEH, 24.0, 11.1, 7.9), liquidFrame(fER)),
 	diphthong("AXRR", 190, vowelFrame(formants{500, 1400, 1750}), liquidFrame(fER)),
 	diphthong("AWRR", 200, vowelFrame(fOHr), liquidFrame(fER)),
 	diphthong("OWRR", 185, vowelFrame(fAWr), liquidFrame(fER)),
-	diphthong("EYIY", 165, vowelFrame(fEY), vowelFrame(fIY)),
-	diphthong("OHIY", 200, vowelFrame(fOH), vowelFrame(fIY)),
-	diphthong("OWIY", 225, vowelFrame(fAWr), vowelFrame(fIY)),
-	diphthong("OHIH", 185, vowelFrame(fOH), vowelFrame(fIH)),
-	diphthong("IYEH", 170, vowelFrame(fYY), vowelFrame(fEH)),
-	diphthong("EHLL", 140, vowelFrame(fAX), liquidFrame(fLO)),
-	diphthong("IYUW", 180, vowelFrame(fYY), vowelFrame(fUW)),
-	diphthong("AXUW", 170, vowelFrame(fAH), vowelFrame(fUW)),
-	diphthong("IHWW", 170, vowelFrame(formants{330, 1300, 2300}), vowelFrame(fUW)),
-	diphthong("AYWW", 200, vowelFrame(fAY), vowelFrame(fUH)),
-	diphthong("OWWW", 131, vowelFrame(fOW), vowelFrame(formants{330, 700, 2250})),
+	diphthong("EYIY", 165, voicedFrame(fEY, 24.0, 10.6, 5.8), voicedFrame(fIY, 24.0, 10.1, 7.1)),
+	diphthong("OHIY", 200, voicedFrame(fOH, 24.0, 15.4, 6.7), voicedFrame(fIY, 24.0, 10.1, 7.1)),
+	diphthong("OWIY", 225, vowelFrame(fAWr), voicedFrame(fIY, 24.0, 10.1, 7.1)),
+	diphthong("OHIH", 185, voicedFrame(fOH, 24.0, 15.4, 6.7), voicedFrame(fIH, 24.0, 10.5, 6.3)),
+	diphthong("IYEH", 170, vowelFrame(fYY), voicedFrame(fEH, 24.0, 11.1, 7.9)),
+	diphthong("EHLL", 140, voicedFrame(fAX, 24.0, 11.8, 6.2), liquidFrame(fLO)),
+	diphthong("IYUW", 180, vowelFrame(fYY), voicedFrame(fUW, 24.0, 16.6, 2.4)),
+	diphthong("AXUW", 170, vowelFrame(fAH), voicedFrame(fUW, 24.0, 16.6, 2.4)),
+	diphthong("IHWW", 170, vowelFrame(formants{330, 1300, 2300}), voicedFrame(fUW, 24.0, 16.6, 2.4)),
+	diphthong("AYWW", 200, voicedFrame(fAY, 24.0, 8.5, 10.0), voicedFrame(fUH, 24.0, 19.7, 4.4)),
+	diphthong("OWWW", 131, voicedFrame(fOW, 24.0, 21.6, 6.0), vowelFrame(formants{330, 700, 2250})),
 	affricate("JH", stop{ms: 25, closure: 5.52, burst: 12.89, voiced: true, locus: lPalatal,
 		burstFreq: [2]float64{3165, 2474}, burstVol: [2]float64{2.1, 29.3}},
 		voicedNoiseFrame(formants{158, 1974, 1842}, 10.04, 1922, 3058, 5.99, 8.79, 66), 45),
@@ -522,9 +529,9 @@ var allophones = [...]sound{
 	steady("HO", 70, noiseFrame(formants{600, 1000, 2400}, 1952, 1257, 13.5, 24.0, 201)),
 	steady("WH", 70, noiseFrame(fWW, 720, 3171, 24.0, 9.3, 207)),
 	steady("FF", 70, noiseFrame(lLabial, 3991, 3311, 27.2, 21.5, 87)),
-	thumped("SE", 2.89, 484, 27.4, 37.11, frSE),
-	thumped("SO", 2.89, 601, 21.6, 37.11, frSO),
-	thumped("SH", 13.29, 423, 5, 36.71, frSH),
+	thumped("SE", 5.65, 394, 14.71, 34.35, frSE),
+	thumped("SO", 4.98, 457, 18.76, 35.02, frSO),
+	thumped("SH", 8.89, 437, 14.08, 41.11, frSH),
 	steady("TH", 40, noiseFrame(lDental, 2472, 2618, 23.7, 15.1, 141)),
 	plosive("TT", stop{ms: 50, closure: 31.8, burst: 7.11, locus: lAlveolar,
 		burstFreq: [2]float64{2689, 3257}, burstVol: [2]float64{15.9, 22.1}, aspFreq: [2]float64{3188, 3038},
