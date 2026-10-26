@@ -26,6 +26,15 @@ const (
 	envVoice
 )
 
+// the chip's oscillators run on a grid of frequencies FREQ_STEP_HZ apart: on
+// the second VoxProbe recording all seven DTMF frequencies are whole multiples
+// of it (697.17Hz is 159 steps, 1468.75Hz 335, each within 0.12Hz), a step of
+// Bend is 10 of them and the short step between Bends 4 and 5 is 5. that is the
+// step of a phase accumulator. onGrid() puts a frequency on it
+const freqStepHz = 4.3845
+
+func onGrid(hz float64) float64 { return math.Floor(hz/freqStepHz+0.5) * freqStepHz }
+
 // how long the voicing ramp lasts (see envVoice in sample())
 const voiceEnvMs = 8.0
 
@@ -89,6 +98,9 @@ type synth struct {
 	phase    [5]float64
 	envPhase float64
 
+	// samples since the last voicing pulse
+	envAge int64
+
 	// noise source for distortion (xorshift)
 	noise uint32
 
@@ -98,7 +110,7 @@ type synth struct {
 }
 
 func newSynth() *synth {
-	return &synth{noise: 0x2545f491}
+	return &synth{noise: 0x2545f491, envAge: 1 << 30}
 }
 
 func (s *synth) random() float64 {
@@ -112,19 +124,33 @@ func (s *synth) random() float64 {
 // master volume (0 to 127)
 func (s *synth) sample(f frame, master float64) float64 {
 	// envelope oscillator
+	// envelope oscillator: a voicing pulse at the end of each period
 	env := 1.0
+	pulse := false
 	if f.pitch > 0 {
 		s.envPhase += f.pitch / SampleRate
 		if s.envPhase >= 1 {
 			s.envPhase -= math.Floor(s.envPhase)
-
-			// restart the formant oscillators with each envelope period
-			if f.voiced {
-				s.phase[0] = 0
-				s.phase[1] = 0
-				s.phase[2] = 0
-			}
+			pulse = true
 		}
+	}
+	if pulse {
+		s.envAge = 0
+		// restart the formant oscillators with each pulse
+		if f.voiced {
+			s.phase[0] = 0
+			s.phase[1] = 0
+			s.phase[2] = 0
+		}
+	}
+	if f.wave == envVoice {
+		// the chip's voicing: each pulse restarts the formant oscillators at full
+		// level and they fall away in a straight line to nothing in a fixed time,
+		// whatever the pitch or volume. below 125Hz the rest of the period is
+		// silent; above it the next pulse cuts the ramp short. measured from the
+		// VoxProbe recordings, where at pitch 40 to 70 each pulse stands alone
+		env = math.Max(1-float64(s.envAge)/(SampleRate*voiceEnvMs/1000), 0)
+	} else if f.pitch > 0 {
 		p := s.envPhase
 		switch f.wave {
 		case envSaw:
@@ -137,24 +163,19 @@ func (s *synth) sample(f frame, master float64) float64 {
 			if p >= 0.5 {
 				env = 0
 			}
-		case envVoice:
-			// the chip's voicing: each pulse restarts the formant oscillators at
-			// full level and they fall away in a straight line to nothing in a
-			// fixed time, whatever the pitch. below 125Hz the rest of the
-			// period is silent; above it the next pulse cuts the ramp short.
-			// measured from the VoxProbe recording, where at pitch 40 to 70 each
-			// pulse stands alone
-			env = math.Max(1-p/(f.pitch*voiceEnvMs/1000), 0)
 		}
 	} else if f.voiced {
-		// a pitch of zero does not vocalise
+		// a pitch of zero gives no periodic envelope
 		env = 0
+	}
+	if s.envAge < 1<<30 {
+		s.envAge++
 	}
 
 	// mixer 1: oscillators 1 to 3
 	var mix1, total float64
 	for i := range 3 {
-		fr := math.Min(f.freq[i], maxFrequency)
+		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
 		s.phase[i] += fr / SampleRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		v := math.Min(f.vol[i], maxOscVolume)
@@ -173,7 +194,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 	var mix2 float64
 	spread := f.distortion / 255 * 1.5
 	for i := 3; i < 5; i++ {
-		fr := math.Min(f.freq[i], maxFrequency)
+		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
 		s.phase[i] += fr * (1 + spread*s.random()) / SampleRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])

@@ -101,21 +101,42 @@ func (m *msa) resetControls() {
 // Bend 15, where a multiplier would put it near 4400). that is 44Hz a step from
 // 5 up, and from 1 down; between 1 and 5 it is 22Hz short, which these Bends
 // can't place, so the shortfall is taken up at 5. it moves oscillators 1 to 3,
-// the formants and tones; SE's hiss (oscillators 4 and 5) doesn't move at all
+// the formants and tones; SE's hiss (oscillators 4 and 5) doesn't move at all.
+// in the chip's frequency steps (freqStepHz) a Bend is 10 steps, and the short
+// step from 4 to 5 is 5
 func (m *msa) bendHz() float64 {
 	if m.bend >= defaultBend {
-		return 44.0 * float64(m.bend-defaultBend)
+		return 10 * freqStepHz * float64(m.bend-defaultBend)
 	}
-	return 44.0*float64(m.bend) - 198.0
+	return freqStepHz * float64(10*m.bend-45)
 }
 
-// voiceHz is the envelope (voicing) frequency for a Pitch setting. the chip's
-// voice is slightly flat, more so the higher the pitch: three takes of the
-// VoxRecord recording give 87.1Hz for Pitch 88, 156.9 for 160, 195.2 for 200
-// and 242.6 for 250, which is each period one sample (at 8192Hz) longer than
-// Pitch asks for
+// the voicing frequency for a Pitch setting. the chip counts each voicing
+// period in whole ticks of a VOICE_TICK_HZ clock: 8000 / Pitch ticks (dividing
+// in whole numbers) and one more. on the second VoxProbe recording, which plays
+// every Pitch from 0 to 254, the frequency holds flat over runs of Pitch
+// settings and steps exactly where that count changes (201 to 205 all give
+// 199.7Hz), and at 12 settings the count is one more again, measured
+// consistently on both halves of each test; no simple arithmetic gives those,
+// so they are listed.
+//
+// not emulated: at very low pitch the chip also starts each sound (and each
+// copy of a repeated one) with a pulse, so pitch 0 gives a pulse a sound; but
+// at pitch 33 and 38 the pulses run on evenly across a repeat, and what decides
+// it isn't known. here pitch 0 is silent
+const voiceTickHz = 7986.0
+
 func voiceHz(pitch float64) float64 {
-	return pitch / (1 + pitch/SampleRate)
+	p := int(pitch)
+	if p <= 0 {
+		return 0
+	}
+	ticks := 8000/p + 1
+	switch p {
+	case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
+		ticks++
+	}
+	return voiceTickHz / float64(ticks)
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
@@ -152,8 +173,9 @@ func lookup(code uint8) (sound, bool) {
 	return sound{}, false
 }
 
-// how far Stress raises F2 and F3 (see expand())
-const stressHz = 80.0
+// how far Stress raises F2 and F3 (see expand()): about 85Hz on the chip, which
+// is 19 of its frequency steps
+var stressHz = 19 * freqStepHz
 
 // expand converts a sound into segments, applying the controls and modifiers
 func (m *msa) expand(s sound) []segment {

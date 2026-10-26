@@ -99,14 +99,14 @@ var allophoneLength = [...]float64{
 // too loud here (the hiss levels were set from an earlier, clipped recording,
 // which made the vowels read quiet) and BE, BO, PE and PO too quiet
 var allophoneGainDB = [...]float64{
-	0.8, 1.4, 1.4, 0.6, 1.2, 1.1, 0.7, 0.7, 0.0,
-	-0.9, -1.4, -1.4, -3.8, -4.3, -4.2, -4.2, -4.4, -2.8,
-	-2.8, -1.9, 0.6, 0.4, 0.8, 0.6, -0.1, -0.7, 0.9,
-	0.4, -0.7, 0.6, 0.5, -1.0, -0.7, 0.2, -1.2, -0.8,
-	-2.2, -11.8, -1.7, 2.4, -1.6, -2.6, 6.5, 6.9, -2.7,
-	2.5, 3.6, 3.6, -4.5, -8.5, 0.2, 0.1, 2.2, 2.7,
-	-15.4, -32.0, -31.1, -29.7, -26.0, -14.8, -19.9, -20.9, -26.7,
-	-2.0, -3.2, -26.2, 1.6, -2.9, 2.6, -3.7, 6.5, 6.0,
+	0.6, 1.3, 1.3, 0.5, 1.2, 1.0, 0.6, 0.7, 0.0,
+	-0.9, -1.4, -1.4, -3.7, -4.3, -4.3, -4.2, -4.4, -2.9,
+	-2.8, -1.9, 0.5, 0.2, 0.6, 0.5, -0.2, -0.8, 0.6,
+	0.2, -0.8, 0.5, 0.3, -1.2, -0.9, -0.0, -1.4, -0.9,
+	-2.4, -11.5, -1.8, 2.1, -2.0, -3.0, 6.2, 6.5, -2.4,
+	3.0, 3.2, 3.2, -4.4, -8.5, -0.1, -0.3, 1.8, 2.4,
+	-15.3, -32.1, -30.9, -29.6, -26.1, -14.7, -20.0, -21.0, -26.6,
+	-2.0, -3.1, -26.2, 1.7, -2.8, 2.7, -3.6, 6.6, 6.1,
 }
 
 func init() {
@@ -166,27 +166,37 @@ type formants [3]float64
 // 870 to 1065), AY F1 and F2 (660 to 710, 1720 to 1660), OH F1 and F2 (730 to
 // 690, 1090 to 1150) and WW F1 and F2 (300 to 495, 650 to 765). IY can't be
 // read this way. the nasals (MM among them) are fitted to its spectra instead
-// (see the allophones)
+// (see the allophones).
+//
+// the second VoxProbe recording then measured the oscillators directly: at
+// pitch 40 each voicing pulse stands alone, a few milliseconds of the three
+// formant sines starting together, so their frequencies can be fitted to the
+// waveform itself. IY, IH, EY, EH, AY (but its weak F3), AX, UX, OH, AW, OW,
+// UH, UW, LE, WW, RR and MM take those frequencies (NE and NO were worse with
+// them on both recordings, and keep theirs). the biggest changes: IY F3 3010 to
+// 2539Hz, LE F2 1300 to 970, WW F1 495 to 385, MM F1 396 to 257. with them the
+// sustained sounds of the first VoxProbe recording (not used to measure them)
+// go from 4.5 to 3.7dB of the chip's spectra
 
 var (
-	fIY = formants{270, 2290, 3010}
-	fIH = formants{322, 1774, 2490}
-	fEY = formants{508, 1820, 2425}
-	fEH = formants{600, 1666, 2480}
-	fAY = formants{710, 1660, 2410}
-	fAX = formants{521, 1510, 2395}
-	fUX = formants{613, 1328, 2390}
-	fOH = formants{690, 1150, 2440}
-	fAW = formants{695, 998, 2540}
-	fOW = formants{512, 891, 2350}
-	fUH = formants{440, 1020, 2240}
-	fUW = formants{380, 1065, 2240}
+	fIY = formants{255, 2186, 2539}
+	fIH = formants{345, 1753, 2457}
+	fEY = formants{515, 1760, 2353}
+	fEH = formants{606, 1658, 2365}
+	fAY = formants{686, 1629, 2410}
+	fAX = formants{494, 1503, 2357}
+	fUX = formants{579, 1344, 2374}
+	fOH = formants{656, 1173, 2369}
+	fAW = formants{646, 1005, 2483}
+	fOW = formants{474, 890, 2406}
+	fUH = formants{424, 1057, 2286}
+	fUW = formants{333, 1058, 2131}
 	fAH = formants{700, 1220, 2600}
 	fER = formants{480, 1350, 1650}
-	fRR = formants{439, 1318, 1720}
-	fLE = formants{360, 1300, 2700}
+	fRR = formants{408, 1315, 1743}
+	fLE = formants{426, 970, 2612}
 	fLO = formants{400, 900, 2500}
-	fWW = formants{495, 765, 2200}
+	fWW = formants{385, 801, 2162}
 
 	// the start of AWRR, OWRR and OWIY keeps the earlier OH and AW: the third
 	// take's corrections to OH and AW (see above) put those three 1 to 3dB
@@ -444,7 +454,7 @@ var allophones = [...]sound{
 	// to 3.9kHz): besides the low murmur the chip's nasals have strong
 	// resonances near 1.4 to 1.6kHz and 2.2 to 2.6kHz that the published values
 	// here lacked
-	steady("MM", 70, voicedFrame(formants{396, 1388, 2199}, 22.0, 8.6, 1.8)),
+	steady("MM", 70, voicedFrame(formants{257, 1421, 2201}, 22.0, 8.6, 1.8)),
 	steady("NE", 70, voicedFrame(formants{310, 1564, 2570}, 22.0, 7.0, 11.6)),
 	steady("NO", 70, voicedFrame(formants{310, 1097, 2568}, 22.0, 6.0, 12.0)),
 	steady("NGE", 70, voicedFrame(formants{396, 2100, 2700}, 22.0, 7.0, 4.0)),
@@ -1873,15 +1883,18 @@ var effectNames = [...]string{
 }
 
 var effects = func() (e [len(effectNames)]sound) {
-	dtmfs := [12][2]float64{{941, 1336}, {697, 1209}, {697, 1336}, {697, 1477}, {770, 1209}, {770, 1336},
-		{770, 1477}, {852, 1209}, {852, 1336}, {852, 1477}, {941, 1209}, {941, 1477}}
+	// the DTMF tones' two frequencies in freqStepHz steps: the chip's, measured
+	// on the second VoxProbe recording, which are a few hertz from the
+	// standard ones (1477Hz is 1468.75)
+	dtmfs := [12][2]int{{215, 304}, {159, 275}, {159, 304}, {159, 335}, {175, 275}, {175, 304},
+		{175, 335}, {194, 275}, {194, 304}, {194, 335}, {215, 275}, {215, 335}}
 	for i, name := range effectNames {
 		code := 200 + i
 		switch {
 		case fxPoints[code] != nil:
 			e[i] = contour(name, fxPoints[code], code)
 		case code >= 240 && code <= 251:
-			e[i] = dtmf(name, dtmfs[code-240][0], dtmfs[code-240][1])
+			e[i] = dtmf(name, float64(dtmfs[code-240][0])*freqStepHz, float64(dtmfs[code-240][1])*freqStepHz)
 		case code == 253:
 			e[i] = m1()
 		}
