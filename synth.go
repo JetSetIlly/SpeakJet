@@ -59,6 +59,26 @@ func lerp(a, b frame, t float64) frame {
 	return r
 }
 
+// the low pass after the PWM output (the manual places a "two pole" filter
+// there). the openFPGA-7800 AtariVox engine (MIT licence) fitted a 2-pole
+// 2200Hz corner to recordings of games, and Stella's SpeakJet engine measured
+// 1700Hz. the VoxRecord recording's third take measures it directly: the sound
+// effects that sweep a single pure tone (B1 from 1.4 to 3.8kHz and back, and
+// nine others) lose level with frequency alone, and solving for one response
+// common to all of them gives it flat to 1.5kHz, then -2.2dB at 1.9kHz, -5.7
+// at 2.4, -10.8 at 2.9, -15.8 at 3.6 and -17.2 at 3.9. that is the shape of a
+// third-order butterworth at 2000Hz, but at this sample rate a recursive
+// filter can't keep it that close to 4096Hz, so this is an 11-tap
+// linear-phase FIR designed to it (within 0.9dB RMS of the measurements). it
+// includes whatever filtering the AtariVox and the recorder add
+const outputTaps = 11
+
+var outputFIR = [outputTaps]float64{
+	0.0070836153, -0.0046812003, -0.0276894693, -0.0319246056,
+	0.2395192408, 0.6353848384, 0.2395192408, -0.0319246056,
+	-0.0276894693, -0.0046812003, 0.0070836153,
+}
+
 // synth is the 5-channel synthesizer
 type synth struct {
 	// phase of oscillators 1 to 5 and of the envelope oscillator, in cycles
@@ -68,33 +88,13 @@ type synth struct {
 	// noise source for distortion (xorshift)
 	noise uint32
 
-	// 2-pole low pass output filter and dc blocker state
-	x1, x2, y1, y2 float64
-	dcIn, dcOut    float64
-	b0, b1, b2     float64
-	a1, a2         float64
+	// output filter history (newest first) and dc blocker state
+	hist        [outputTaps]float64
+	dcIn, dcOut float64
 }
 
 func newSynth() *synth {
-	s := &synth{noise: 0x2545f491}
-
-	// butterworth low pass for the "two pole" filter the manual places after
-	// the PWM output. its 2200Hz corner was fitted by the openFPGA-7800
-	// AtariVox engine (MIT licence) to a recording of the real chip, using a
-	// synthesizer like this one; the corner Stella's SpeakJet engine measured
-	// independently is close (1700Hz)
-	const cutoff = 2200.0
-	w := 2 * math.Pi * cutoff / SampleRate
-	alpha := math.Sin(w) / math.Sqrt2
-	cw := math.Cos(w)
-	a0 := 1 + alpha
-	s.b0 = (1 - cw) / 2 / a0
-	s.b1 = (1 - cw) / a0
-	s.b2 = (1 - cw) / 2 / a0
-	s.a1 = -2 * cw / a0
-	s.a2 = (1 - alpha) / a0
-
-	return s
+	return &synth{noise: 0x2545f491}
 }
 
 func (s *synth) random() float64 {
@@ -104,10 +104,9 @@ func (s *synth) random() float64 {
 	return float64(int32(s.noise)) / math.MaxInt32
 }
 
-// sample produces the next output sample, in the range -1 to 1. bend is the
-// frequency multiplier from the Bend control and master is the master volume
-// (0 to 127)
-func (s *synth) sample(f frame, bend float64, master float64) float64 {
+// sample produces the next output sample, in the range -1 to 1. master is the
+// master volume (0 to 127)
+func (s *synth) sample(f frame, master float64) float64 {
 	// envelope oscillator
 	env := 1.0
 	if f.pitch > 0 {
@@ -143,7 +142,7 @@ func (s *synth) sample(f frame, bend float64, master float64) float64 {
 	// mixer 1: oscillators 1 to 3
 	var mix1, total float64
 	for i := range 3 {
-		fr := math.Min(f.freq[i]*bend, maxFrequency)
+		fr := math.Min(f.freq[i], maxFrequency)
 		s.phase[i] += fr / SampleRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		v := math.Min(f.vol[i], maxOscVolume)
@@ -162,7 +161,7 @@ func (s *synth) sample(f frame, bend float64, master float64) float64 {
 	var mix2 float64
 	spread := f.distortion / 255 * 1.5
 	for i := 3; i < 5; i++ {
-		fr := math.Min(f.freq[i]*bend, maxFrequency)
+		fr := math.Min(f.freq[i], maxFrequency)
 		s.phase[i] += fr * (1 + spread*s.random()) / SampleRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])
@@ -180,9 +179,14 @@ func (s *synth) sample(f frame, bend float64, master float64) float64 {
 	s.dcOut = y
 
 	// output filter
-	out := s.b0*y + s.b1*s.x1 + s.b2*s.x2 - s.a1*s.y1 - s.a2*s.y2
-	s.x2, s.x1 = s.x1, y
-	s.y2, s.y1 = s.y1, out
+	for i := outputTaps - 1; i > 0; i-- {
+		s.hist[i] = s.hist[i-1]
+	}
+	s.hist[0] = y
+	var out float64
+	for i := range outputTaps {
+		out += outputFIR[i] * s.hist[i]
+	}
 
 	return out
 }

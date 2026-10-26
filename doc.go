@@ -5,8 +5,8 @@
 // 2004) and from general phonetics. Where two independent sets of
 // measurements of the real chip agree, those replace guesses: the
 // openFPGA-7800 AtariVox engine's, and those behind Stella's SpeakJet engine.
-// They set the output filter's corner and some formants of nine allophones
-// (see tables.go). No code or tables were taken from either.
+// They set some formants of nine allophones (see tables.go). No code or tables
+// were taken from either.
 //
 // The manual documents the chip's synthesizer but not the MSA "sound
 // component database" that drives it, so the package is in two parts:
@@ -16,8 +16,8 @@
 // mixer limited to 63; oscillators 4 and 5 with a shared distortion control
 // that spreads white noise around their frequency; a sixth oscillator that
 // envelopes the others (saw, sine, triangle or square); a master volume of 0
-// to 127; output at 8192 samples per second through a 2-pole low pass filter
-// at 2200Hz.
+// to 127; output at 8192 samples per second through a low pass filter (the
+// chip's, measured: see outputFIR in synth.go).
 // Choices not in the manual: oscillators 1 to 3 are sines whose phase restarts
 // at each envelope period (so they ring like formants excited by a glottal
 // pulse), and distortion is applied as random frequency modulation.
@@ -33,5 +33,7 @@
 // Speed, three pause lengths, each allophone's length, the shape of the
 // fricatives' hiss and the other sound effects, which are traced from the
 // recording (see allophoneLength and fxPoints in tables.go, and speedFactor in
-// msa.go).
+// msa.go); and the output filter, five vowels' formants, each allophone's level,
+// Bend, Stress, Relax and the pitch (see outputFIR in synth.go,
+// allophoneGainDB in tables.go, and bendHz, voiceHz and expand in msa.go).
 package speakjet

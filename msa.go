@@ -55,10 +55,6 @@ type msa struct {
 	jumpNextFreq  bool
 	autoSilenced  bool
 
-	// the sound playing is speech rather than a sound effect: Bend works
-	// differently on the two (see effectBendHz())
-	speech bool
-
 	segs     []segment
 	segPos   int
 	segStart frame
@@ -73,7 +69,6 @@ func newMSA() *msa {
 	// first sound fades in rather than sweeping up from 0Hz
 	m.current = silentFrame(fAX)
 	m.current.pitch = defaultPitch
-	m.speech = true
 
 	return m
 }
@@ -85,31 +80,30 @@ func (m *msa) resetControls() {
 	m.bend = defaultBend
 }
 
-// bendFactor is the multiplier the Bend control applies to oscillator
-// frequencies in speech. the manual only says that bend goes from a
-// "deep-hollow" to a "High-metallic" sounding voice, so the curve is a guess: a
-// semitone per step either side of the default. the recording's clipped vowels
-// can't confirm it. sound effects are bent by effectBendHz() instead
-func (m *msa) bendFactor() float64 {
-	if !m.speech {
-		return 1.0
-	}
-	return math.Pow(2, float64(m.bend-defaultBend)/12)
-}
-
-// on a sound effect Bend doesn't multiply the frequencies but adds to them.
-// measured from two takes of the VoxRecord recording (see speedFactor()), which
-// plays D1 and A5 at Bends 0, 1, 5, 10 and 15: D1's two tones move together and
-// keep their 512Hz spacing, by -198, -154, 0, +220 and +439Hz, and A5 by the
-// same at Bends 0 and 1. that is 44Hz a step from 5 up, and from 1 down;
-// between 1 and 5 it is 22Hz short, which these five Bends can't place, so the
-// shortfall is taken up at 5. the offset is applied to oscillators 1 to 3, the
-// tones; whether it moves the noise oscillators isn't known
-func (m *msa) effectBendHz() float64 {
+// Bend doesn't multiply the frequencies but adds to them. the manual only says
+// that bend goes from a "deep-hollow" to a "High-metallic" sounding voice.
+// measured from three takes of the VoxRecord recording (see speedFactor()):
+// D1's two tones move together and keep their 512Hz spacing, by -198, -154, 0,
+// +220 and +439Hz at Bends 0, 1, 5, 10 and 15, and A5 by the same at 0 and 1;
+// AW's three formants all move by about 40Hz a step (F3 from 2480 to 2912Hz at
+// Bend 15, where a multiplier would put it near 4400). that is 44Hz a step from
+// 5 up, and from 1 down; between 1 and 5 it is 22Hz short, which these Bends
+// can't place, so the shortfall is taken up at 5. it moves oscillators 1 to 3,
+// the formants and tones; SE's hiss (oscillators 4 and 5) doesn't move at all
+func (m *msa) bendHz() float64 {
 	if m.bend >= defaultBend {
 		return 44.0 * float64(m.bend-defaultBend)
 	}
 	return 44.0*float64(m.bend) - 198.0
+}
+
+// voiceHz is the envelope (voicing) frequency for a Pitch setting. the chip's
+// voice is slightly flat, more so the higher the pitch: three takes of the
+// VoxRecord recording give 87.1Hz for Pitch 88, 156.9 for 160, 195.2 for 200
+// and 242.6 for 250, which is each period one sample (at 8192Hz) longer than
+// Pitch asks for
+func voiceHz(pitch float64) float64 {
+	return pitch / (1 + pitch/SampleRate)
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
@@ -146,11 +140,13 @@ func lookup(code uint8) (sound, bool) {
 	return sound{}, false
 }
 
+// how far Stress raises F2 and F3 (see expand())
+const stressHz = 80.0
+
 // expand converts a sound into segments, applying the controls and modifiers
 func (m *msa) expand(s sound) []segment {
 	scale := 1.0
-	pitch := float64(m.pitch)
-	f1, f2 := 1.0, 1.0
+	stress := 0.0
 
 	if s.speech {
 		scale = m.speedFactor() * s.length
@@ -165,23 +161,16 @@ func (m *msa) expand(s sound) []segment {
 			scale *= 1.5
 		}
 
-		// "STRESS, IH sounds more like (but not quite) the IY sound". stress
-		// tenses the vowel (lower F1, higher F2) and raises the tone; relax
-		// does the opposite. the amounts are not given by the manual
+		// "STRESS, IH sounds more like (but not quite) the IY sound". on the
+		// chip (the VoxRecord recording's third take) stress raises F2 and F3
+		// by 65 to 100Hz in AW, EYIY and NE and leaves the pitch and F1 alone.
+		// relax changes nothing that can be measured, and so does nothing here
 		if m.stress {
-			pitch *= 1.12
-			f1, f2 = 0.94, 1.06
-		} else if m.relax {
-			pitch *= 0.9
-			f1, f2 = 1.06, 0.94
+			stress = stressHz
 		}
 	}
 
-	m.speech = s.speech
-	bendHz := 0.0
-	if !s.speech {
-		bendHz = m.effectBendHz()
-	}
+	bendHz := m.bendHz()
 
 	var segs []segment
 	for _, p := range s.parts {
@@ -194,14 +183,13 @@ func (m *msa) expand(s sound) []segment {
 
 		t := p.target
 		if s.speech {
-			t.pitch = pitch
-			t.freq[0] *= f1
-			t.freq[1] *= f2
-		} else {
-			for j := range 3 {
-				if t.freq[j] > 0 {
-					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
-				}
+			t.pitch = voiceHz(float64(m.pitch))
+			t.freq[1] += stress
+			t.freq[2] += stress
+		}
+		for j := range 3 {
+			if t.freq[j] > 0 {
+				t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
 			}
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
@@ -344,7 +332,7 @@ func (m *msa) autoSilence() {
 // false once the segments have all been played
 func (m *msa) next() (float64, bool) {
 	if len(m.segs) == 0 {
-		return m.synth.sample(m.current, m.bendFactor(), float64(m.volume)), false
+		return m.synth.sample(m.current, float64(m.volume)), false
 	}
 
 	sg := &m.segs[0]
@@ -354,7 +342,7 @@ func (m *msa) next() (float64, bool) {
 		m.current = sg.target
 	}
 
-	v := m.synth.sample(m.current, m.bendFactor(), float64(m.volume))
+	v := m.synth.sample(m.current, float64(m.volume))
 
 	m.segPos++
 	if m.segPos >= sg.samples {
