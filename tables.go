@@ -79,14 +79,14 @@ var allophoneLength = [...]float64{
 // too loud here (the hiss levels were set from an earlier, clipped recording,
 // which made the vowels read quiet) and BE, BO, PE and PO too quiet
 var allophoneGainDB = [...]float64{
-	1.1, 1.5, 1.4, 0.6, 1.1, 1.0, 0.6, 0.8, 0.0,
-	-0.8, -1.2, -1.4, -3.1, -3.7, -3.6, -3.8, -3.8, -2.4,
-	-2.5, -1.6, 0.4, 0.4, 0.8, 0.7, 0.1, -0.6, 1.0,
-	0.5, -0.5, 0.7, 0.6, -0.9, -0.6, 0.3, -1.1, -0.7,
-	-2.3, -12.2, -7.8, 2.6, -1.5, -2.6, 7.2, 7.1, 4.8,
-	4.5, 3.7, 3.8, -2.0, -2.3, 0.4, 0.4, 2.7, 3.0,
-	-17.4, -30.5, -29.3, -28.0, -22.9, -12.5, -13.6, -17.3, -23.1,
-	-2.6, -1.7, -15.6, -0.1, -0.1, -2.1, 0.4, 9.6, 8.6,
+	1.0, 1.5, 1.5, 0.6, 1.2, 1.0, 0.6, 0.7, 0.0,
+	-0.7, -1.0, -1.1, -3.6, -4.1, -4.1, -3.9, -4.1, -2.4,
+	-2.5, -1.6, 0.5, 0.4, 0.8, 0.7, 0.0, -0.6, 1.0,
+	0.6, -0.5, 0.7, 0.6, -0.9, -0.6, 0.3, -1.1, -0.7,
+	-2.2, -12.1, -7.9, 2.4, -1.5, -2.5, 7.1, 7.1, 4.2,
+	3.8, 3.7, 3.8, -2.5, -2.8, 0.3, 0.3, 2.3, 2.8,
+	-18.0, -30.3, -29.4, -28.1, -22.8, -9.6, -11.5, -16.5, -22.8,
+	-4.3, -2.4, -15.8, -2.0, -1.3, -2.6, -0.3, 8.2, 7.6,
 }
 
 func init() {
@@ -140,8 +140,9 @@ type formants [3]float64
 // recording and on this library's own output, so that the method's errors
 // cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
 // 870 to 1065), AY F1 and F2 (660 to 710, 1720 to 1660), OH F1 and F2 (730 to
-// 690, 1090 to 1150) and WW F1 and F2 (300 to 495, 650 to 765). IY and the
-// nasals can't be read this way
+// 690, 1090 to 1150) and WW F1 and F2 (300 to 495, 650 to 765). IY can't be
+// read this way. the nasals (MM among them) are fitted to its spectra instead
+// (see the allophones)
 
 var (
 	fIY = formants{270, 2290, 3010}
@@ -162,7 +163,14 @@ var (
 	fLE = formants{360, 1300, 2700}
 	fLO = formants{400, 900, 2500}
 	fWW = formants{495, 765, 2200}
-	fYY = formants{280, 2200, 2900}
+
+	// the start of AWRR, OWRR and OWIY keeps the earlier OH and AW: the third
+	// take's corrections to OH and AW (see above) put those three 1 to 3dB
+	// further from the chip's spectra, where the diphthongs that start from OH
+	// (OHIY, OHIH) came closer
+	fOHr = formants{730, 1090, 2440}
+	fAWr = formants{590, 998, 2540}
+	fYY  = formants{280, 2200, 2900}
 
 	// consonant loci: where the formants are at a consonant's place of
 	// articulation. the following sound glides out of them
@@ -189,7 +197,6 @@ func voicedFrame(f formants, v1, v2, v3 float64) frame {
 }
 
 func vowelFrame(f formants) frame  { return voicedFrame(f, 24, 18, 10) }
-func nasalFrame(f formants) frame  { return voicedFrame(f, 22, 7, 4) }
 func liquidFrame(f formants) frame { return voicedFrame(f, 22, 13, 7) }
 
 // silence keeps the formant frequencies so that the next sound glides from them
@@ -327,6 +334,10 @@ var (
 	frZH = hush(voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200), fricativeDB)
 )
 
+// the stops' burst and aspiration frequencies below were each scaled together
+// (by 0.5 to 1.15) to bring each stop's spectrum closest to the VoxRecord
+// recording's third take; most of the chip's bursts are lower than first
+// chosen here (PE and PO by half)
 // allophones, codes 128 to 199. durations are from the manual
 var allophones = [...]sound{
 	steady("IY", 70, vowelFrame(fIY)),
@@ -341,11 +352,16 @@ var allophones = [...]sound{
 	steady("OW", 70, vowelFrame(fOW)),
 	steady("UH", 70, vowelFrame(fUH)),
 	steady("UW", 70, vowelFrame(fUW)),
-	steady("MM", 70, nasalFrame(formants{268, 1000, 2187})),
-	steady("NE", 70, nasalFrame(formants{250, 1800, 2600})),
-	steady("NO", 70, nasalFrame(formants{250, 1300, 2400})),
-	steady("NGE", 70, nasalFrame(formants{250, 2100, 2700})),
-	steady("NGO", 70, nasalFrame(formants{250, 1100, 2300})),
+	// the nasals' resonances and volumes are fitted to the VoxRecord
+	// recording's third take (the middle of each, in sixth octaves from 200Hz
+	// to 3.9kHz): besides the low murmur the chip's nasals have strong
+	// resonances near 1.4 to 1.6kHz and 2.2 to 2.6kHz that the published values
+	// here lacked
+	steady("MM", 70, voicedFrame(formants{396, 1388, 2199}, 22.0, 8.6, 1.8)),
+	steady("NE", 70, voicedFrame(formants{310, 1564, 2570}, 22.0, 7.0, 11.6)),
+	steady("NO", 70, voicedFrame(formants{310, 1097, 2568}, 22.0, 6.0, 12.0)),
+	steady("NGE", 70, voicedFrame(formants{396, 2100, 2700}, 22.0, 7.0, 4.0)),
+	steady("NGO", 70, voicedFrame(formants{396, 1500, 1910}, 22.0, 6.5, 8.2)),
 	steady("LE", 70, liquidFrame(fLE)),
 	steady("LO", 70, liquidFrame(fLO)),
 	steady("WW", 70, liquidFrame(fWW)),
@@ -353,11 +369,11 @@ var allophones = [...]sound{
 	diphthong("IYRR", 200, vowelFrame(fIY), liquidFrame(fER)),
 	diphthong("EYRR", 200, vowelFrame(fEH), liquidFrame(fER)),
 	diphthong("AXRR", 190, vowelFrame(formants{500, 1400, 1750}), liquidFrame(fER)),
-	diphthong("AWRR", 200, vowelFrame(fOH), liquidFrame(fER)),
-	diphthong("OWRR", 185, vowelFrame(fAW), liquidFrame(fER)),
+	diphthong("AWRR", 200, vowelFrame(fOHr), liquidFrame(fER)),
+	diphthong("OWRR", 185, vowelFrame(fAWr), liquidFrame(fER)),
 	diphthong("EYIY", 165, vowelFrame(fEY), vowelFrame(fIY)),
 	diphthong("OHIY", 200, vowelFrame(fOH), vowelFrame(fIY)),
-	diphthong("OWIY", 225, vowelFrame(fAW), vowelFrame(fIY)),
+	diphthong("OWIY", 225, vowelFrame(fAWr), vowelFrame(fIY)),
 	diphthong("OHIH", 185, vowelFrame(fOH), vowelFrame(fIH)),
 	diphthong("IYEH", 170, vowelFrame(fYY), vowelFrame(fEH)),
 	diphthong("EHLL", 140, vowelFrame(fAX), liquidFrame(fLO)),
@@ -367,37 +383,37 @@ var allophones = [...]sound{
 	diphthong("AYWW", 200, vowelFrame(fAY), vowelFrame(fUH)),
 	diphthong("OWWW", 131, vowelFrame(fOW), vowelFrame(formants{330, 700, 2250})),
 	affricate("JH", stop{ms: 30, closure: 25, burst: 5, voiced: true, locus: lPalatal,
-		burstFreq: [2]float64{2600, 3300}, burstVol: [2]float64{12, 8}}, frZH, 40),
+		burstFreq: [2]float64{2080, 2640}, burstVol: [2]float64{12, 8}}, frZH, 40),
 	steady("VV", 70, hush(voicedNoiseFrame(formants{220, 1100, 2100}, 16, 3000, 3800, 8, 5, 255), fricativeDB)),
 	steady("ZZ", 70, hush(voicedNoiseFrame(formants{240, 1500, 2500}, 14, 3700, 3950, 14, 10, 160), fricativeDB)),
 	steady("ZH", 70, frZH),
 	steady("DH", 70, hush(voicedNoiseFrame(formants{250, 1300, 2400}, 16, 3000, 3800, 7, 5, 255), fricativeDB)),
 	plosive("BE", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabial,
-		burstFreq: [2]float64{700, 1200}, burstVol: [2]float64{10, 6}}),
+		burstFreq: [2]float64{805, 1380}, burstVol: [2]float64{10, 6}}),
 	plosive("BO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabialBack,
 		burstFreq: [2]float64{600, 1000}, burstVol: [2]float64{10, 6}}),
 	plosive("EB", stop{ms: 10, closure: 5, burst: 5, voiced: true, locus: lLabial,
 		burstFreq: [2]float64{700, 1200}, burstVol: [2]float64{8, 5}}),
 	plosive("OB", stop{ms: 10, closure: 5, burst: 5, voiced: true, locus: lLabialBack,
-		burstFreq: [2]float64{600, 1000}, burstVol: [2]float64{8, 5}}),
+		burstFreq: [2]float64{690, 1150}, burstVol: [2]float64{8, 5}}),
 	plosive("DE", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lAlveolar,
-		burstFreq: [2]float64{3300, 3900}, burstVol: [2]float64{12, 8}}),
+		burstFreq: [2]float64{2970, 3510}, burstVol: [2]float64{12, 8}}),
 	plosive("DO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lAlveolarBak,
-		burstFreq: [2]float64{3000, 3700}, burstVol: [2]float64{12, 8}}),
+		burstFreq: [2]float64{1800, 2220}, burstVol: [2]float64{12, 8}}),
 	plosive("ED", stop{ms: 10, closure: 5, burst: 5, voiced: true, locus: lAlveolar,
-		burstFreq: [2]float64{3300, 3900}, burstVol: [2]float64{10, 6}}),
+		burstFreq: [2]float64{2640, 3120}, burstVol: [2]float64{10, 6}}),
 	plosive("OD", stop{ms: 10, closure: 5, burst: 5, voiced: true, locus: lAlveolarBak,
-		burstFreq: [2]float64{3000, 3700}, burstVol: [2]float64{10, 6}}),
+		burstFreq: [2]float64{1500, 1850}, burstVol: [2]float64{10, 6}}),
 	plosive("GE", stop{ms: 55, closure: 30, burst: 10, voiced: true, locus: lVelar,
-		burstFreq: [2]float64{2300, 2900}, burstVol: [2]float64{12, 8}}),
+		burstFreq: [2]float64{1610, 2030}, burstVol: [2]float64{12, 8}}),
 	plosive("GO", stop{ms: 55, closure: 30, burst: 10, voiced: true, locus: lVelarBack,
-		burstFreq: [2]float64{1300, 1800}, burstVol: [2]float64{12, 8}}),
+		burstFreq: [2]float64{650, 900}, burstVol: [2]float64{12, 8}}),
 	plosive("EG", stop{ms: 55, closure: 35, burst: 10, voiced: true, locus: lVelar,
 		burstFreq: [2]float64{2300, 2900}, burstVol: [2]float64{10, 6}}),
 	plosive("OG", stop{ms: 55, closure: 35, burst: 10, voiced: true, locus: lVelarBack,
-		burstFreq: [2]float64{1300, 1800}, burstVol: [2]float64{10, 6}}),
+		burstFreq: [2]float64{910, 1260}, burstVol: [2]float64{10, 6}}),
 	affricate("CH", stop{ms: 30, closure: 25, burst: 5, locus: lPalatal,
-		burstFreq: [2]float64{3000, 3600}, burstVol: [2]float64{16, 12}}, frSH, 40),
+		burstFreq: [2]float64{1800, 2160}, burstVol: [2]float64{16, 12}}, frSH, 40),
 	steady("HE", 70, noiseFrame(formants{400, 1900, 2600}, 1468, 1865, 24.0, 20.9, 186)),
 	steady("HO", 70, noiseFrame(formants{600, 1000, 2400}, 1952, 1257, 13.5, 24.0, 201)),
 	steady("WH", 70, noiseFrame(fWW, 720, 3171, 24.0, 9.3, 207)),
@@ -407,23 +423,23 @@ var allophones = [...]sound{
 	steady("SH", 50, frSH),
 	steady("TH", 40, noiseFrame(lDental, 2797, 1841, 24.0, 9.9, 107)),
 	plosive("TT", stop{ms: 50, closure: 30, burst: 10, locus: lAlveolar,
-		burstFreq: [2]float64{3500, 3950}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{1800, 2600}}),
+		burstFreq: [2]float64{3150, 3555}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{1620, 2340}}),
 	plosive("TU", stop{ms: 70, closure: 30, burst: 8, locus: lAlveolar,
-		burstFreq: [2]float64{3500, 3950}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{1800, 2600}}),
+		burstFreq: [2]float64{4025, 4542}, burstVol: [2]float64{18, 14}, aspFreq: [2]float64{2070, 2990}}),
 	affricate("TS", stop{ms: 38, closure: 30, burst: 8, locus: lAlveolar,
-		burstFreq: [2]float64{3500, 3950}, burstVol: [2]float64{18, 14}}, frSE, 132),
+		burstFreq: [2]float64{1750, 1975}, burstVol: [2]float64{18, 14}}, frSE, 132),
 	plosive("KE", stop{ms: 55, closure: 25, burst: 12, locus: lVelar,
-		burstFreq: [2]float64{2300, 2800}, burstVol: [2]float64{18, 12}, aspFreq: [2]float64{2000, 2800}}),
+		burstFreq: [2]float64{2070, 2520}, burstVol: [2]float64{18, 12}, aspFreq: [2]float64{1800, 2520}}),
 	plosive("KO", stop{ms: 55, closure: 25, burst: 12, locus: lVelarBack,
 		burstFreq: [2]float64{1300, 1700}, burstVol: [2]float64{18, 12}, aspFreq: [2]float64{1100, 2300}}),
 	plosive("EK", stop{ms: 55, closure: 30, burst: 15, locus: lVelar,
-		burstFreq: [2]float64{2300, 2800}, burstVol: [2]float64{16, 10}, aspFreq: [2]float64{2000, 2800}}),
+		burstFreq: [2]float64{1840, 2240}, burstVol: [2]float64{16, 10}, aspFreq: [2]float64{1600, 2240}}),
 	plosive("OK", stop{ms: 45, closure: 25, burst: 15, locus: lVelarBack,
-		burstFreq: [2]float64{1300, 1700}, burstVol: [2]float64{16, 10}, aspFreq: [2]float64{1100, 2300}}),
+		burstFreq: [2]float64{1495, 1955}, burstVol: [2]float64{16, 10}, aspFreq: [2]float64{1265, 2645}}),
 	plosive("PE", stop{ms: 99, closure: 50, burst: 9, locus: lLabial,
-		burstFreq: [2]float64{600, 1500}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{1200, 2400}}),
+		burstFreq: [2]float64{300, 750}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{600, 1200}}),
 	plosive("PO", stop{ms: 99, closure: 50, burst: 9, locus: lLabialBack,
-		burstFreq: [2]float64{500, 1200}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{1000, 2300}}),
+		burstFreq: [2]float64{300, 720}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{600, 1380}}),
 }
 
 // effect constructors

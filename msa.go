@@ -308,6 +308,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 	if len(m.segs) > 0 && m.segs[0].jump {
 		m.segStart.freq = m.segs[0].target.freq
 	}
+	m.noiseOnset()
 
 	return true
 }
@@ -315,6 +316,21 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 // busy is true while there are segments still to play
 func (m *msa) busy() bool {
 	return len(m.segs) > 0
+}
+
+// noiseOnset makes noise that starts (oscillators 4 and 5 silent before,
+// sounding in the segment ahead) start at its own frequencies rather than
+// gliding up to them: on the chip SE and SO start as hiss, where gliding made
+// them sweep up from the previous sound's frequencies
+func (m *msa) noiseOnset() {
+	if len(m.segs) == 0 {
+		return
+	}
+	t := &m.segs[0].target
+	if m.segStart.vol[3]+m.segStart.vol[4] == 0 && t.vol[3]+t.vol[4] > 0 {
+		m.segStart.freq[3] = t.freq[3]
+		m.segStart.freq[4] = t.freq[4]
+	}
 }
 
 // autoSilence starts the ramp to silence once the input buffer is empty
@@ -352,6 +368,7 @@ func (m *msa) next() (float64, bool) {
 		if len(m.segs) > 0 && m.segs[0].jump {
 			m.segStart.freq = m.segs[0].target.freq
 		}
+		m.noiseOnset()
 	}
 
 	return v, len(m.segs) > 0
