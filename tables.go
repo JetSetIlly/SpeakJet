@@ -33,25 +33,39 @@ func (s sound) ms() float64 {
 }
 
 // formant targets. frequencies are approximate values for an adult male
-// speaker, from published measurements of English vowels and consonants
+// speaker, from published measurements of English vowels and consonants,
+// except where two independent measurements of the real chip agree (see
+// "measured on the chip" below)
 type formants [3]float64
+
+// measured on the chip: where two independent measurements of a sound's formant
+// agree, it is set to their mean. they agree when they are within 10% of each
+// other or within 88Hz (the spacing of the voice's harmonics at the default
+// pitch, about as finely as a formant can be read from a recording). the
+// measurements are the openFPGA-7800 AtariVox engine's, read from recordings
+// of games speaking (docs/ATARIVOX.md, MIT licence), and those behind Stella's
+// SpeakJet engine (feature/speakjet branch). formants where the two disagree,
+// or that only one of them measured, keep their published values:
+//
+//	OW: F1 F2      AX: F1 F2 F3   RR: F1 F2 F3   UX: F1 F2   IH: F1 F2 F3
+//	MM: F1 F3      EY: F1 F2 F3   EH: F1 F2      AW: F2
 
 var (
 	fIY = formants{270, 2290, 3010}
-	fIH = formants{390, 1990, 2550}
-	fEY = formants{470, 2000, 2600}
-	fEH = formants{530, 1840, 2480}
+	fIH = formants{322, 1774, 2490}
+	fEY = formants{508, 1820, 2425}
+	fEH = formants{600, 1666, 2480}
 	fAY = formants{660, 1720, 2410}
-	fAX = formants{520, 1500, 2450}
-	fUX = formants{640, 1190, 2390}
+	fAX = formants{521, 1510, 2395}
+	fUX = formants{613, 1328, 2390}
 	fOH = formants{730, 1090, 2440}
-	fAW = formants{590, 880, 2540}
-	fOW = formants{480, 900, 2350}
+	fAW = formants{590, 998, 2540}
+	fOW = formants{512, 891, 2350}
 	fUH = formants{440, 1020, 2240}
 	fUW = formants{300, 870, 2240}
 	fAH = formants{700, 1220, 2600}
 	fER = formants{480, 1350, 1650}
-	fRR = formants{350, 1100, 1450}
+	fRR = formants{439, 1318, 1720}
 	fLE = formants{360, 1300, 2700}
 	fLO = formants{400, 900, 2500}
 	fWW = formants{300, 650, 2200}
@@ -202,7 +216,7 @@ var allophones = [...]sound{
 	steady("OW", 70, vowelFrame(fOW)),
 	steady("UH", 70, vowelFrame(fUH)),
 	steady("UW", 70, vowelFrame(fUW)),
-	steady("MM", 70, nasalFrame(formants{250, 1000, 2200})),
+	steady("MM", 70, nasalFrame(formants{268, 1000, 2187})),
 	steady("NE", 70, nasalFrame(formants{250, 1800, 2600})),
 	steady("NO", 70, nasalFrame(formants{250, 1300, 2400})),
 	steady("NGE", 70, nasalFrame(formants{250, 2100, 2700})),
