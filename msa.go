@@ -10,8 +10,25 @@ const (
 	defaultBend   = 5   // 0 to 15
 )
 
-// pause lengths in milliseconds for codes 0 to 6, from the manual
-var pauseMs = [...]float64{0, 100, 200, 700, 30, 60, 90}
+// pause lengths in milliseconds for codes 0 to 6. the manual gives 0, 100, 200,
+// 700, 30, 60 and 90. the VoxProbe recording plays AW, a pause and AW three
+// times for each pause, and these lengths give the same silence between the AWs
+// as the chip, within about 5ms (the AWs measured the same way on both): 21,
+// 109, 212, 661, 26, 47 and 73ms. pause 0 is not nothing: the chip still leaves
+// a gap between the sounds
+var pauseMs = [...]float64{14, 107, 203, 645, 25, 43, 70}
+
+// Delay is longer than its 10ms intervals: on the chip (the VoxProbe recording)
+// delays of 30, 60 and 90ms leave 44, 75 and 116ms between two AWs, against
+// 26ms for pause 4. it doesn't change with Speed (500ms is 500 to 530ms at
+// speeds 40, 114 and 127)
+const delayExtraMs = 12.0
+
+// how much Fast and Slow change a sound's length
+const (
+	fastScale = 0.65
+	slowScale = 1.35
+)
 
 // how quickly the volume ramps down at the start of a pause, and at auto
 // silence when the input buffer has emptied. not given by the manual
@@ -49,10 +66,11 @@ type msa struct {
 	repeat        int
 	jumpNextFreq  bool
 	autoSilenced  bool
-	segs          []segment
-	segPos        int
-	segStart      frame
-	current       frame
+
+	segs     []segment
+	segPos   int
+	segStart frame
+	current  frame
 }
 
 func newMSA() *msa {
@@ -74,25 +92,65 @@ func (m *msa) resetControls() {
 	m.bend = defaultBend
 }
 
-// bendFactor is the multiplier the Bend control applies to oscillator
-// frequencies. the manual only says that bend goes from a "deep-hollow" to a
-// "High-metallic" sounding voice, so the curve is a guess: a semitone per step
-// either side of the default
-func (m *msa) bendFactor() float64 {
-	return math.Pow(2, float64(m.bend-defaultBend)/12)
+// Bend doesn't multiply the frequencies but adds to them. the manual only says
+// that bend goes from a "deep-hollow" to a "High-metallic" sounding voice.
+// measured from three takes of the VoxRecord recording (see speedFactor()):
+// D1's two tones move together and keep their 512Hz spacing, by -198, -154, 0,
+// +220 and +439Hz at Bends 0, 1, 5, 10 and 15, and A5 by the same at 0 and 1;
+// AW's three formants all move by about 40Hz a step (F3 from 2480 to 2912Hz at
+// Bend 15, where a multiplier would put it near 4400). that is 44Hz a step from
+// 5 up, and from 1 down; between 1 and 5 it is 22Hz short, which these Bends
+// can't place, so the shortfall is taken up at 5. it moves oscillators 1 to 3,
+// the formants and tones; SE's hiss (oscillators 4 and 5) doesn't move at all.
+// in the chip's frequency steps (freqStepHz) a Bend is 10 steps, and the short
+// step from 4 to 5 is 5
+func (m *msa) bendHz() float64 {
+	if m.bend >= defaultBend {
+		return 10 * freqStepHz * float64(m.bend-defaultBend)
+	}
+	return freqStepHz * float64(10*m.bend-45)
+}
+
+// the voicing frequency for a Pitch setting. the chip counts each voicing
+// period in whole ticks of a VOICE_TICK_HZ clock: 8000 / Pitch ticks (dividing
+// in whole numbers) and one more. on the second VoxProbe recording, which plays
+// every Pitch from 0 to 254, the frequency holds flat over runs of Pitch
+// settings and steps exactly where that count changes (201 to 205 all give
+// 199.7Hz), and at 12 settings the count is one more again, measured
+// consistently on both halves of each test; no simple arithmetic gives those,
+// so they are listed.
+//
+// not emulated: at very low pitch the chip also starts each sound (and each
+// copy of a repeated one) with a pulse, so pitch 0 gives a pulse a sound; but
+// at pitch 33 and 38 the pulses run on evenly across a repeat, and what decides
+// it isn't known. here pitch 0 is silent
+const voiceTickHz = 7986.0
+
+func voiceHz(pitch float64) float64 {
+	p := int(pitch)
+	if p <= 0 {
+		return 0
+	}
+	ticks := 8000/p + 1
+	switch p {
+	case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
+		ticks++
+	}
+	return voiceTickHz / float64(ticks)
 }
 
 // the duration multiplier from the Speed control. the manual gives the range
-// and default but not the curve. each step of speed changes the length by
-// about 2%: exp(-0.02 (speed - 114)), the curve the openFPGA-7800 AtariVox
-// engine fitted to recordings of games speaking at speeds 80 to 127 (MIT
-// licence). measurements of the chip behind Stella's SpeakJet engine agree
-// with it to within 8% from 60 to 114. above 114 and below 60 the two
-// disagree with each other, though both make sounds shorter than an inverse
-// law would at the top and longer at speed 40, so the curve is used for every
-// speed
+// and default but not the curve. measured from a recording of a real AtariVox
+// playing the VoxRecord ROM (TT AW EYIY SE at speeds 0 to 127): the length
+// falls in a straight line with speed, 2115ms at speed 0 and 955ms at 80, and
+// the line predicts speeds 20, 40 and 60 to within 2%. it reaches zero at
+// about 146, so relative to the default speed the multiplier is
+// (146 - speed) / 32: 4.6 at speed 0, 0.59 at 127. pauses are lengthened by it
+// too (see execute())
+const speedZero = 146.0
+
 func (m *msa) speedFactor() float64 {
-	return math.Exp(-0.02 * float64(m.speed-defaultSpeed))
+	return (speedZero - float64(m.speed)) / (speedZero - defaultSpeed)
 }
 
 // first frame of a sound after the controls in effect now. used to glide the
@@ -115,34 +173,49 @@ func lookup(code uint8) (sound, bool) {
 	return sound{}, false
 }
 
+// how far Stress raises F2 and F3 (see expand()): about 85Hz on the chip, which
+// is 19 of its frequency steps
+var stressHz = 19 * freqStepHz
+
 // expand converts a sound into segments, applying the controls and modifiers
 func (m *msa) expand(s sound) []segment {
-	scale := 1.0
-	pitch := float64(m.pitch)
-	f1, f2 := 1.0, 1.0
+	// Speed stretches every sound, the effects too: on the chip (the VoxProbe
+	// recording) A1, B1 and D1 take 2.6 to 2.7 times as long at speed 60 and
+	// 0.56 to 0.59 times at speed 127, as the speech does
+	scale := m.speedFactor()
+	stress := 0.0
+
+	// the copies after the first, when the sound is repeated, take the
+	// manual's length (scaled by Speed) rather than the chip's longer first
+	// one: on the chip each extra AW adds 70ms, and repeating IY, UW and MM six
+	// times takes one of them plus five times 70ms, to within 6ms
+	copyScale := scale
 
 	if s.speech {
-		scale = m.speedFactor()
+		scale *= s.length
+
+		// fast and slow, measured from the VoxProbe recording: fast plays OWIY
+		// and AXRR at 0.66 and 0.63 of their length, and slow at 1.42 and 1.31
+		// times
 		if m.fast {
-			scale *= 0.5
+			scale *= fastScale
 		}
 		if m.slow {
-			scale *= 1.5
+			scale *= slowScale
 		}
 
-		// "STRESS, IH sounds more like (but not quite) the IY sound". stress
-		// tenses the vowel (lower F1, higher F2) and raises the tone; relax
-		// does the opposite. the amounts are not given by the manual
+		// "STRESS, IH sounds more like (but not quite) the IY sound". on the
+		// chip (the VoxRecord recording's third take) stress raises F2 and F3
+		// by 65 to 100Hz in AW, EYIY and NE and leaves the pitch and F1 alone.
+		// relax changes nothing that can be measured, and so does nothing here
 		if m.stress {
-			pitch *= 1.12
-			f1, f2 = 0.94, 1.06
-		} else if m.relax {
-			pitch *= 0.9
-			f1, f2 = 1.06, 0.94
+			stress = stressHz
 		}
 	}
 
-	var segs []segment
+	bendHz := m.bendHz()
+
+	var segs, copies []segment
 	for _, p := range s.parts {
 		ms := p.ms * scale
 		glide := p.glideMs * scale
@@ -153,24 +226,41 @@ func (m *msa) expand(s sound) []segment {
 
 		t := p.target
 		if s.speech {
-			t.pitch = pitch
-			t.freq[0] *= f1
-			t.freq[1] *= f2
+			t.pitch = voiceHz(float64(m.pitch))
+			t.freq[1] += stress
+			t.freq[2] += stress
+		} else if t.wave == envVoice {
+			// a voiced effect follows the Pitch control: on the chip A1 and M2
+			// are voiced at 60.3, 87.9 and 149.5Hz at pitch 60, 88 and 150.
+			// their traced pitch is the chip's at the default pitch
+			t.pitch *= voiceHz(float64(m.pitch)) / voiceHz(defaultPitch)
+		}
+		for j := range 3 {
+			if t.freq[j] > 0 {
+				t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+			}
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
+
+		copyMs := p.ms * copyScale
+		copyGlide := p.glideMs * copyScale
+		if p.glideMs == autoGlide {
+			copyGlide = math.Min(math.Max(copyMs*0.35, 20), 50)
+		}
+		copies = append(copies, segment{samples: samples(copyMs), glide: samples(math.Min(copyGlide, copyMs)), target: t})
 	}
 
 	m.fast, m.slow, m.stress, m.relax = false, false, false, false
 
 	if len(segs) > 0 && m.jumpNextFreq {
 		segs[0].jump = true
+		copies[0].jump = true
 		m.jumpNextFreq = false
 	}
 
 	if m.repeat > 1 {
-		one := segs
 		for i := 1; i < m.repeat; i++ {
-			segs = append(segs, one...)
+			segs = append(segs, copies...)
 		}
 	}
 	m.repeat = 0
@@ -215,7 +305,9 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		} else if code >= 4 {
 			m.jumpNextFreq = true
 		}
-		m.segs = m.silence(pauseMs[code], towards)
+		// on the chip a pause stretches with the Speed control just as the
+		// sounds do: at speed 0 two pause 2s are 1845ms of silence
+		m.segs = m.silence(pauseMs[code]*m.speedFactor(), towards)
 
 	case code == 7:
 		m.fast = true
@@ -240,7 +332,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 
 	case code == 30:
 		// "the number of 10ms intervals to delay before continuing"
-		m.segs = m.silence(float64(data)*10, nil)
+		m.segs = m.silence(float64(data)*10+delayExtraMs, nil)
 
 	case code == 31:
 		m.resetControls()
@@ -271,6 +363,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 	if len(m.segs) > 0 && m.segs[0].jump {
 		m.segStart.freq = m.segs[0].target.freq
 	}
+	m.noiseOnset()
 
 	return true
 }
@@ -278,6 +371,21 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 // busy is true while there are segments still to play
 func (m *msa) busy() bool {
 	return len(m.segs) > 0
+}
+
+// noiseOnset makes noise that starts (oscillators 4 and 5 silent before,
+// sounding in the segment ahead) start at its own frequencies rather than
+// gliding up to them: on the chip SE and SO start as hiss, where gliding made
+// them sweep up from the previous sound's frequencies
+func (m *msa) noiseOnset() {
+	if len(m.segs) == 0 {
+		return
+	}
+	t := &m.segs[0].target
+	if m.segStart.vol[3]+m.segStart.vol[4] == 0 && t.vol[3]+t.vol[4] > 0 {
+		m.segStart.freq[3] = t.freq[3]
+		m.segStart.freq[4] = t.freq[4]
+	}
 }
 
 // autoSilence starts the ramp to silence once the input buffer is empty
@@ -295,7 +403,7 @@ func (m *msa) autoSilence() {
 // false once the segments have all been played
 func (m *msa) next() (float64, bool) {
 	if len(m.segs) == 0 {
-		return m.synth.sample(m.current, m.bendFactor(), float64(m.volume)), false
+		return m.synth.sample(m.current, float64(m.volume)), false
 	}
 
 	sg := &m.segs[0]
@@ -305,7 +413,7 @@ func (m *msa) next() (float64, bool) {
 		m.current = sg.target
 	}
 
-	v := m.synth.sample(m.current, m.bendFactor(), float64(m.volume))
+	v := m.synth.sample(m.current, float64(m.volume))
 
 	m.segPos++
 	if m.segPos >= sg.samples {
@@ -315,6 +423,7 @@ func (m *msa) next() (float64, bool) {
 		if len(m.segs) > 0 && m.segs[0].jump {
 			m.segStart.freq = m.segs[0].target.freq
 		}
+		m.noiseOnset()
 	}
 
 	return v, len(m.segs) > 0
