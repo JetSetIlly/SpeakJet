@@ -27,6 +27,9 @@ type sound struct {
 	length float64
 
 	parts []part
+
+	// the sound doesn't follow the Bend control (see expand())
+	noBend bool
 }
 
 // the chip's lengths for speech sounds, measured from a recording of a real
@@ -2314,6 +2317,38 @@ var fxGates = map[int]fxGate{
 	236: {125, envSaw},
 }
 
+// the fourth VoxProbe recording plays the gated effects at pitch 60 and 150 and
+// at bend 0 and 15, on both units. their gates follow the Pitch control, a
+// steady distance from the voicing frequency at all three pitches: C0 4.7Hz
+// under it, C2 20.5Hz under, C3 27.9Hz under, C4 on it and C6 42.7Hz over. and
+// each pulse has the same length whatever the rate: folded at the gate's
+// period, the envelope starts each pulse at full level and fades to nothing in
+// a fixed time, as the voicing does (see voiceFade): C4 as the voicing, C0
+// about 1.3 times as long, C3 and C6 about 1.6 times, and C2 as long but in two
+// humps (its tones beating, restarted together each pulse). at low pitch the
+// rest of each period is silent; at high pitch the next pulse cuts the fade
+// short.
+//
+// C2, C4 and C6 play that way here: voiced at the voicing frequency plus their
+// distance, along voiceFade stretched as measured, with their noise (see
+// fxNoiseFloors) refitted to it. fitted on both recordings at the default
+// pitch, at pitch 60 and at bend 0, and checked at pitch 150, at speeds 90 and
+// 127 and at bend 15, which were left out: C2 73 to 77% and 2.5 to 2.2dB on
+// those, C4 65 to 71% and 4.0 to 3.6dB, C6 65 to 67% and 3.0 to 2.1dB. C0 and
+// C3 keep their gates: played this way C0 came out flat on the ones left out
+// and worse on the VoxRecord recording, which gates it at 85Hz where the fourth
+// VoxProbe recording has 82Hz at the same pitch, and C3 came out worse on the
+// ones left out
+type fxPulse struct {
+	offsetHz, fade float64
+}
+
+var fxPulses = map[int]fxPulse{
+	232: {-20.5, 1.0},
+	234: {0.2, 1.0},
+	236: {42.7, 1.6},
+}
+
 // the noise under some of the traced effects. on both units of the VoxRecord
 // recording C0, C1, C2, C4, C6 and C7 have a broad noise under their tones
 // that the traces, which take the strongest peaks as tones, leave out (C1 is as
@@ -2322,7 +2357,9 @@ var fxGates = map[int]fxGate{
 // width, to both units at once. C0 70 to 78% and 2.7 to 2.3dB, C1 42 to 67% and
 // 5.7 to 1.7dB, C2 74 to 79% and 5.1 to 3.3dB, C4 68 to 75% and 4.8 to 4.3dB,
 // C6 66 to 72% and 3.8 to 2.7dB, C7 58 to 65% and 6.3 to 1.9dB. C3's made it
-// match one unit worse, so it has none.
+// match one unit worse, so it has none. C2's, C4's and C6's levels and depths
+// were fitted again for their pulses (see fxPulses): 3dB quieter each, and 0.4,
+// 1 and 0 deep.
 //
 // the tone effects (see fx2Points) have it too: on both units a pure tone sits
 // on a skirt of noise and scattered lines 15 to 30dB under it, across the band,
@@ -2339,9 +2376,9 @@ type fxNoiseFloor struct {
 var fxNoiseFloors = map[int]fxNoiseFloor{
 	230: {2361.6, 2282.7, 27.5, 0.371, -12.86},
 	231: {1810.5, 2003.4, 147.2, 0.324, -1.82},
-	232: {1935.8, 1748.1, 54.8, 0.287, -12.15},
-	234: {1704.5, 3553.6, 228.3, 0.909, -9.64},
-	236: {2357.3, 2947.3, 10.8, 0.670, -6.44},
+	232: {1935.8, 1748.1, 54.8, 0.4, -15.15},
+	234: {1704.5, 3553.6, 228.3, 1.0, -12.64},
+	236: {2357.3, 2947.3, 10.8, 0.0, -9.44},
 	237: {442.9, 1765.9, 199.9, 0.832, -7.05},
 	200: {600.9, 527.1, 135.1, 0, -17.96},
 	201: {1143.9, 3430.0, 31.9, 0, -10.65},
@@ -2407,6 +2444,13 @@ func fxFrame(p fxPoint, code int) frame {
 			f.pitch = float64(p.pitch)
 			f.wave = envVoice
 			f.voiced = true
+		} else if pl, ok := fxPulses[code]; ok {
+			f.pitch = voiceHz(defaultPitch) + pl.offsetHz
+			f.wave = envVoice
+			f.voiced = true
+			f.pulsed = true
+			f.pulseOffset = pl.offsetHz
+			f.fadeScale = pl.fade
 		} else if gt, ok := fxGates[code]; ok {
 			f.pitch = float64(gt.hz)
 			f.wave = gt.wave
@@ -2442,7 +2486,18 @@ func fxFrame(p fxPoint, code int) frame {
 // at the level both units have (the mean of the two, in dB against the
 // loudest); the frequencies, width and depth are fitted to both units at once,
 // and the depth comes out at 0.83 (-15dB), as measured. C8 and C9 34% to 58%
-// and 8.4 to 2.9dB
+// and 8.4 to 2.9dB.
+//
+// the fourth VoxProbe recording moves them with Bend (see expand()), and at
+// bend 15 both units' noise has a sharp lower edge, nothing under 560Hz within
+// 20dB, which a new random frequency every sample, spreading the noise in long
+// skirts around the oscillator, can't give. holding each random value 0.75ms
+// makes a band with edges instead; with the spread, the frequencies and the
+// hold fitted to both recordings at default and bend 0 and the pitches, and
+// scored over four noise sequences rather than one (the noise carries on from
+// the sounds before), C8 and C9 go from 49 to 55% and 2.8 to 2.3dB there, 52 to
+// 56% and 2.8 to 2.5dB on the VoxRecord recording, and at bend 15, left out of
+// the fit, from 37 to 62% and 8.3 to 4.4dB
 var c8DB = []float64{
 	-16.2, -11.8, -9.5, -5.5, -1.1, -0.5, -0.4, -0.3, -0.1, -0.3,
 	-0.2, -0.1, -0.3, -0.5, -0.5, -0.2, -0.9, -1.3, -1.8, -5.2,
@@ -2454,7 +2509,8 @@ var c9DB = []float64{
 }
 
 func cNoise(name string, db []float64) sound {
-	f := noiseFrame(lGlottal, 1316.3, 1855.6, 0, 0, 203.2)
+	f := noiseFrame(lGlottal, 1416.3, 1905.6, 0, 0, 100)
+	f.noiseHoldMs = 0.75
 	f.pitch = 52
 	f.wave = envSaw
 	f.noiseDepth = 0.826
@@ -2474,14 +2530,48 @@ func cNoise(name string, db []float64) sound {
 }
 
 // contour plays a traced effect: a quick start on the first point, then a
-// glide to each of the others in turn, then 3ms to silence
+// glide to each of the others in turn, then 3ms to silence. a tone doesn't move
+// while it is silent: it fades out where it was and fades in where it is going.
+// the traces give the silent points whatever the background held (C3's first
+// and last are 227Hz), and gliding from those swept each tone in from far
+// below, which at bend 15 put a strong sweep near 660Hz into C3 that neither
+// unit of the fourth VoxProbe recording has (10.6 to 10.1dB there)
 func contour(name string, p []fxPoint, code int) sound {
-	s := effect(name, hold(float64(p[0].ms), 2, fxFrame(p[0], code)))
-	for i := 1; i < len(p); i++ {
-		ms := float64(p[i].ms - p[i-1].ms)
-		s.parts = append(s.parts, hold(ms, ms, fxFrame(p[i], code))...)
+	n := len(p)
+	fr := make([]frame, n)
+	for i := range p {
+		fr[i] = fxFrame(p[i], code)
 	}
-	s.parts = append(s.parts, hold(3, 3, quiet(fxFrame(p[len(p)-1], code)))...)
+	for j := range 3 {
+		on := make([]bool, n)
+		for i := range p {
+			on[i] = p[i].db > -60 && p[i].freq[j] > 0 && (j == 0 || p[i].rel[j] > -59)
+		}
+		for i := range n {
+			if on[i] {
+				continue
+			}
+			if i > 0 && on[i-1] {
+				fr[i].freq[j] = fr[i-1].freq[j]
+				continue
+			}
+			k := i + 1
+			for k < n && !on[k] {
+				k++
+			}
+			if k < n {
+				fr[i].freq[j] = fr[k].freq[j]
+			} else if i > 0 {
+				fr[i].freq[j] = fr[i-1].freq[j]
+			}
+		}
+	}
+	s := effect(name, hold(float64(p[0].ms), 2, fr[0]))
+	for i := 1; i < n; i++ {
+		ms := float64(p[i].ms - p[i-1].ms)
+		s.parts = append(s.parts, hold(ms, ms, fr[i])...)
+	}
+	s.parts = append(s.parts, hold(3, 3, quiet(fr[n-1]))...)
 	return s
 }
 

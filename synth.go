@@ -128,6 +128,21 @@ type frame struct {
 	// how deeply the envelope gates oscillators 4 and 5 (0 to 1), when they
 	// aren't half enveloped
 	noiseDepth float64
+
+	// how far Bend moves oscillators 4 and 5 of a sound effect, in hertz, added
+	// after their distortion spread (see expand())
+	noiseShift float64
+
+	// how long each random value of the distortion is held, in ms; 0 for a new
+	// one every sample (see cNoise())
+	noiseHoldMs float64
+
+	// a gated effect that pulses as the voicing does (see fxPulse): its rate is
+	// pulseOffset hertz from the voicing, and its pulses fade along voiceFade
+	// stretched fadeScale times (0 is 1)
+	pulsed      bool
+	pulseOffset float64
+	fadeScale   float64
 }
 
 // lerp returns the frame part way between a and b. the envelope control
@@ -190,6 +205,11 @@ type synth struct {
 	// noise source for distortion (xorshift)
 	noise uint32
 
+	// the held random values of oscillators 4 and 5, and the samples left until
+	// the next (see noiseHoldMs)
+	held     [2]float64
+	holdLeft int64
+
 	// dc blocker state
 	dcIn, dcOut float64
 }
@@ -232,8 +252,13 @@ func (s *synth) sample(f frame, master float64) float64 {
 		// the chip's voicing: each pulse restarts the formant oscillators at full
 		// level and they fade to nothing along voiceFade in under 10ms, whatever
 		// the pitch or volume. at low pitch the rest of the period is silent; at
-		// high pitch the next pulse cuts the fade short
-		k := float64(s.envAge) * 1000 / chipRate / voiceFadeStepMs
+		// high pitch the next pulse cuts the fade short. a pulsed effect's fade
+		// can be longer (see fxPulse)
+		scale := 1.0
+		if f.fadeScale > 0 {
+			scale = f.fadeScale
+		}
+		k := float64(s.envAge) * 1000 / chipRate / voiceFadeStepMs / scale
 		i := int(k)
 		if i >= len(voiceFade)-1 {
 			env = 0
@@ -287,12 +312,31 @@ func (s *synth) sample(f frame, master float64) float64 {
 	}
 
 	// mixer 2: oscillators 4 and 5, with distortion spreading noise around
-	// the oscillator frequency
+	// the oscillator frequency, a new random value every sample or held for
+	// noiseHoldMs, and then moved by noiseShift
 	var mix2 float64
 	spread := f.distortion / 255 * 1.5
+	if f.noiseHoldMs > 0 {
+		s.holdLeft--
+		if s.holdLeft <= 0 {
+			s.held[0] = s.random()
+			s.held[1] = s.random()
+			s.holdLeft = int64(f.noiseHoldMs*chipRate/1000 + 0.5)
+		}
+	}
 	for i := 3; i < 5; i++ {
 		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
-		s.phase[i] += fr * (1 + spread*s.random()) / chipRate
+		var r float64
+		if f.noiseHoldMs > 0 {
+			r = s.held[i-3]
+		} else {
+			r = s.random()
+		}
+		hz := fr*(1+spread*r) + f.noiseShift
+		if spread == 0 {
+			hz = math.Max(math.Min(hz, maxFrequency), 0)
+		}
+		s.phase[i] += hz / chipRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])
 	}

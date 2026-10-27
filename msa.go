@@ -168,7 +168,9 @@ func lookup(code uint8) (sound, bool) {
 	case code >= 128 && code < 128+uint8(len(allophones)):
 		return allophones[code-128], true
 	case code >= 200 && int(code) < 200+len(effects):
-		return effects[code-200], true
+		s := effects[code-200]
+		s.noBend = code == 254 // M2 (see expand())
+		return s, true
 	}
 	return sound{}, false
 }
@@ -229,29 +231,38 @@ func (m *msa) expand(s sound) []segment {
 			t.pitch = voiceHz(float64(m.pitch))
 			t.freq[1] += stress
 			t.freq[2] += stress
+		} else if t.pulsed {
+			// a pulsed effect's gate keeps its distance from the voicing (see
+			// fxPulses)
+			t.pitch = math.Max(voiceHz(float64(m.pitch))+t.pulseOffset, 1)
 		} else if t.wave == envVoice {
 			// a voiced effect follows the Pitch control: on the chip A1 and M2
 			// are voiced at 60.3, 87.9 and 149.5Hz at pitch 60, 88 and 150.
 			// their traced pitch is the chip's at the default pitch
 			t.pitch *= voiceHz(float64(m.pitch)) / voiceHz(defaultPitch)
 		}
-		for j := range 3 {
-			if t.freq[j] > 0 {
-				t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
-			}
-		}
-		// Bend moves an effect's noise as well: on both units of the fourth
-		// VoxProbe recording C8's and C9's noise moves about 200Hz down at bend 0
-		// and 440Hz up at bend 15, as their tones do. the effects at bends 0 and
-		// 15 match both units better with it (4.30 to 4.25dB on one, 4.28 to
-		// 4.23dB on the other). whether the hiss of speech moves too isn't
-		// measured, so it doesn't here
-		if !s.speech {
-			for j := 3; j < 5; j++ {
+		// M2 doesn't follow Bend: on both units of the fourth VoxProbe recording
+		// it is the same at bend 0 and bend 15, its formants within half a hertz
+		// of each other over its whole length
+		if !s.noBend {
+			for j := range 3 {
 				if t.freq[j] > 0 {
 					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
 				}
 			}
+		}
+		// Bend moves an effect's noise as well: on both units of the fourth
+		// VoxProbe recording C8's and C9's noise moves about 200Hz down at bend 0
+		// and 440Hz up at bend 15, as their tones do. it moves as a block, its
+		// width unchanged: at bend 15 nothing is left under 560Hz within 20dB,
+		// where moving the oscillators, whose spread is in proportion to their
+		// frequency, widened it and left the noise reaching down to 300Hz. so the
+		// Bend is added after the spread (see sample()): C8 and C9 at bend 15 10.0
+		// to 8.8 and 10.0 to 7.5dB, and on the first VoxProbe recording, left
+		// out, C8 at bend 0 3.2 to 3.0 and at bend 15 9.8 to 8.6dB. whether the
+		// hiss of speech moves too isn't measured, so it doesn't here
+		if !s.speech {
+			t.noiseShift = bendHz
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
 
