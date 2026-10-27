@@ -35,8 +35,26 @@ const freqStepHz = 4.3845
 
 func onGrid(hz float64) float64 { return math.Floor(hz/freqStepHz+0.5) * freqStepHz }
 
-// how long the voicing ramp lasts (see envVoice in sample())
-const voiceEnvMs = 8.0
+// the chip's voicing fade: the level of the formant oscillators after each
+// voicing pulse, every voiceFadeStepMs from the pulse, in between in a straight
+// line, and after the last nothing (see envVoice in sample()). fitted to the
+// third VoxProbe recording, where at pitch 40 each pulse stands alone and about
+// 24 of them were averaged, on 18 vowels, nasals and liquids on two AtariVoxes:
+// their single-pulse spectra agree with each other within about 1dB. it falls
+// fast after 2ms, steps down through about a third and a sixth, holds near an
+// eighth and stops at about 9.5ms. fitted to either unit it fits the other as
+// well (3.0dB against 3.7 for a straight 8ms ramp); in the library it takes the
+// voiced sounds of both units' VoxRecord recordings from 85.7% to 87.0%
+// spectrogram match and the first VoxProbe recording's sustained sounds from
+// 3.55 to 3.33dB. Volume and Bend don't change it, and nor does Pitch from 25
+// to 60
+const voiceFadeStepMs = 0.5
+
+var voiceFade = [...]float64{
+	1.000, 0.898, 0.898, 0.898, 0.885, 0.721, 0.635, 0.569,
+	0.425, 0.323, 0.323, 0.171, 0.171, 0.171, 0.127, 0.127,
+	0.127, 0.127, 0.127, 0.038, 0.000,
+}
 
 // frame is a set of synthesizer register values. the MSA sequencer moves the
 // synthesizer from one frame to the next over time
@@ -145,11 +163,16 @@ func (s *synth) sample(f frame, master float64) float64 {
 	}
 	if f.wave == envVoice {
 		// the chip's voicing: each pulse restarts the formant oscillators at full
-		// level and they fall away in a straight line to nothing in a fixed time,
-		// whatever the pitch or volume. below 125Hz the rest of the period is
-		// silent; above it the next pulse cuts the ramp short. measured from the
-		// VoxProbe recordings, where at pitch 40 to 70 each pulse stands alone
-		env = math.Max(1-float64(s.envAge)/(SampleRate*voiceEnvMs/1000), 0)
+		// level and they fade to nothing along voiceFade in under 10ms, whatever
+		// the pitch or volume. at low pitch the rest of the period is silent; at
+		// high pitch the next pulse cuts the fade short
+		k := float64(s.envAge) * 1000 / SampleRate / voiceFadeStepMs
+		i := int(k)
+		if i >= len(voiceFade)-1 {
+			env = 0
+		} else {
+			env = voiceFade[i] + (voiceFade[i+1]-voiceFade[i])*(k-float64(i))
+		}
 	} else if f.pitch > 0 {
 		p := s.envPhase
 		switch f.wave {
