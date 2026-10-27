@@ -48,7 +48,7 @@ type segment struct {
 }
 
 func samples(ms float64) int {
-	return int(math.Round(ms * SampleRate / 1000))
+	return int(math.Round(ms * chipRate / 1000))
 }
 
 // msa sequences commands into segments and plays them on the synthesizer

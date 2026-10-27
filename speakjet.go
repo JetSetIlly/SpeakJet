@@ -31,6 +31,14 @@ type SpeakJet struct {
 	// accessed only by Render()
 	msa *msa
 
+	// the output (see chipRate): the sample being held, how far through it the
+	// output is (in samples at chipRate), whether the chip was sounding when it
+	// was made, and the low pass's state
+	held         float64
+	heldPos      float64
+	heldSounding bool
+	sosZ         [3][2]float64
+
 	// the amount of volume increase to apply to each sample. defaults to 1.0
 	Gain float32
 }
@@ -111,30 +119,58 @@ func (sj *SpeakJet) retire() {
 	sj.executing = 0
 }
 
+// chipSample is the chip's next sample, at chipRate
+func (sj *SpeakJet) chipSample() float64 {
+	m := sj.msa
+	for !m.busy() {
+		if sj.executing > 0 {
+			sj.retire()
+		}
+
+		c, ok := sj.pop()
+		if !ok {
+			m.autoSilence()
+			break
+		}
+
+		m.execute(c.code, c.data, sj.peek)
+	}
+
+	v, _ := m.next()
+	sj.heldSounding = m.busy() || sj.buffered > 0
+	return v
+}
+
 // Render fills buf with the next len(buf) samples of output, at SampleRate,
 // in the range -1 to 1. returns true if the chip is producing sound
 func (sj *SpeakJet) Render(buf []float32) bool {
-	m := sj.msa
-	sounding := false
+	const step = chipRate / SampleRate
+	sounding := sj.heldSounding || sj.buffered > 0 || sj.msa.busy()
 
 	for i := range buf {
-		for !m.busy() {
-			if sj.executing > 0 {
-				sj.retire()
-			}
-
-			c, ok := sj.pop()
-			if !ok {
-				m.autoSilence()
-				break
-			}
-
-			m.execute(c.code, c.data, sj.peek)
+		// the average of the held samples over this output sample's time
+		rest, sum := step, 0.0
+		for sj.heldPos+rest >= 1 {
+			sum += sj.held * (1 - sj.heldPos)
+			rest -= 1 - sj.heldPos
+			sj.held = sj.chipSample()
+			sj.heldPos = 0
+			sounding = sounding || sj.heldSounding
 		}
+		sum += sj.held * rest
+		sj.heldPos += rest
 
-		v, _ := m.next()
+		// the low pass after the chip (direct form II transposed)
+		v := sum / step
+		for k := range outputSOS {
+			c := &outputSOS[k]
+			z := &sj.sosZ[k]
+			y := c[0]*v + z[0]
+			z[0] = c[1]*v - c[4]*y + z[1]
+			z[1] = c[2]*v - c[5]*y
+			v = y
+		}
 		buf[i] = float32(v) * sj.Gain
-		sounding = sounding || m.busy() || sj.buffered > 0
 	}
 
 	sj.speaking = sounding

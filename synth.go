@@ -2,9 +2,12 @@ package speakjet
 
 import "math"
 
-// SampleRate is the rate at which the synthesizer produces samples. From the
-// manual: "The frequency is produced at a rate of 8192 samples per second"
-const SampleRate = 8192
+// SampleRate is the rate at which samples are produced. the chip makes its own
+// at about 8kHz (the manual: "The frequency is produced at a rate of 8192
+// samples per second"; measured, 8015 to 8040), but holds each until the next,
+// which puts images of the sound up to 20kHz and more; the output is at a rate
+// that carries them (see chipRate)
+const SampleRate = 48000
 
 // limits of the synthesizer registers, from the manual
 const (
@@ -42,7 +45,7 @@ func onGrid(hz float64) float64 { return math.Floor(hz/freqStepHz+0.5) * freqSte
 // 40 each pulse stands alone and about 24 of them were averaged, on 18 vowels,
 // nasals and liquids on two AtariVoxes. each pulse was fitted as three sines
 // starting together, times one envelope shared by every sound, through one
-// output filter (see outputFIR); the envelope and the filter were solved for
+// output filter (see chipRate); the envelope and the filter were solved for
 // along with each sound's frequencies and amplitudes. that leaves 1/470 of the
 // pulses' energy unexplained (-26.7dB), against 1/28 for the straight 8ms ramp
 // first used. the fade starts at full level, dips to about 0.7 within half a
@@ -140,24 +143,36 @@ func lerp(a, b frame, t float64) frame {
 	return r
 }
 
-// the low pass after the PWM output (the manual places a "two pole" filter
-// there). the openFPGA-7800 AtariVox engine (MIT licence) fitted a 2-pole
-// 2200Hz corner to recordings of games, and Stella's SpeakJet engine measured
-// 1700Hz. the VoxRecord recording's third take measured its level directly,
-// from the sound effects that sweep a single pure tone: flat to 1.5kHz, then
-// -2.2dB at 1.9kHz, -5.7 at 2.4, -10.8 at 2.9, -15.8 at 3.6. the voicing pulses
-// of the third VoxProbe recording (see voiceFade) measure it again, level and
-// phase, on both units: -1.2dB at 1kHz, -2.8 at 1.5, -5.4 at 2, -8.9 at 2.5,
-// -11.8 at 3 and -14.3 at 3.5kHz against 500Hz, with no delay that changes with
-// frequency. the two measurements agree within 2 to 3dB; this is the second, as
-// an 11-tap FIR at this sample rate (within 0.75dB RMS and 5 degrees of it). it
-// includes whatever filtering the AtariVox and the recorder add
-const outputTaps = 11
+// the chip's output. it makes its samples at chipRate, not the manual's 8192 a
+// second: on both units of the VoxRecord recording every steady tone has a
+// mirror image at the rate less the tone (B7's 3915Hz at 4124Hz, 1dB down),
+// which puts the rate at 8040Hz on one unit and 8015Hz on the other (their
+// clocks differ by the same 0.3 percent as their pitches), the same as their
+// voicing ticks. each sample is held until the next, so the images repeat above
+// that, around each multiple of the rate, at the levels holding gives, up to
+// 23kHz on the recordings, and a smooth analogue low pass after the chip shapes
+// them all.
+//
+// that low pass is measured twice. below 4kHz the voicing pulses of the third
+// VoxProbe recording give it, level and phase, on both units: -1.2dB at 1kHz,
+// -2.8 at 1.5, -5.4 at 2, -8.9 at 2.5, -11.8 at 3 and -14.3 at 3.5kHz against
+// 500Hz, holding included (it agrees within 2 to 3dB with the tone sweeps of the
+// VoxRecord recording, -10.8 at 2.9 and -15.8 at 3.6kHz). above 4kHz the images
+// give it: 160 of them from 26 tone effects on both units, each against its own
+// tone, less what holding accounts for (within 2dB of each other): -18dB at
+// 5.5kHz, -23 at 7.5, -27 at 10.5, -33 at 15.5 and -38 at 23.5kHz. it includes
+// whatever the AtariVox and the recorder add.
+//
+// so here the chip's samples are held, each output sample is the average of
+// what is held over its time, and outputSOS (a filter at SampleRate, fitted to
+// both measurements, within 0.3dB RMS below 4kHz and 1.6dB above) is the low
+// pass. the level at 500Hz is the one the output had before
+const chipRate = 8028.0
 
-var outputFIR = [outputTaps]float64{
-	0.0195866114, -0.0027854151, 0.0363309004, -0.0453457714,
-	0.3233301119, 0.5632340831, 0.2283437277, 0.0506567790,
-	-0.0181499488, 0.0017538421, -0.0052263971,
+var outputSOS = [3][6]float64{
+	{0.0636279260299, 0, 0, 1, 0.0618381585253, 0},
+	{1, -0.0974446347576, 0, 1, -1.63378468591, 0.680472611685},
+	{1, 0.985616684932, 0, 1, 1.0014122889, 0.0588508646104},
 }
 
 // synth is the 5-channel synthesizer
@@ -175,8 +190,7 @@ type synth struct {
 	// noise source for distortion (xorshift)
 	noise uint32
 
-	// output filter history (newest first) and dc blocker state
-	hist        [outputTaps]float64
+	// dc blocker state
 	dcIn, dcOut float64
 }
 
@@ -199,7 +213,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 	env := 1.0
 	pulse := false
 	if f.pitch > 0 {
-		s.envPhase += f.pitch / SampleRate
+		s.envPhase += f.pitch / chipRate
 		if s.envPhase >= 1 {
 			s.envPhase -= math.Floor(s.envPhase)
 			pulse = true
@@ -219,7 +233,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 		// level and they fade to nothing along voiceFade in under 10ms, whatever
 		// the pitch or volume. at low pitch the rest of the period is silent; at
 		// high pitch the next pulse cuts the fade short
-		k := float64(s.envAge) * 1000 / SampleRate / voiceFadeStepMs
+		k := float64(s.envAge) * 1000 / chipRate / voiceFadeStepMs
 		i := int(k)
 		if i >= len(voiceFade)-1 {
 			env = 0
@@ -252,7 +266,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 	var mix1, total float64
 	for i := range 3 {
 		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
-		s.phase[i] += fr / SampleRate
+		s.phase[i] += fr / chipRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		v := math.Min(f.vol[i], maxOscVolume)
 		total += v
@@ -267,8 +281,8 @@ func (s *synth) sample(f frame, master float64) float64 {
 	// the voicing coming up from silence (see onsetMs)
 	if total == 0 {
 		s.onsetAge = 0
-	} else if f.onsetMs > 0 && float64(s.onsetAge) < math.Floor(f.onsetMs*SampleRate/1000) {
-		mix1 *= float64(s.onsetAge) / (f.onsetMs * SampleRate / 1000)
+	} else if f.onsetMs > 0 && float64(s.onsetAge) < math.Floor(f.onsetMs*chipRate/1000) {
+		mix1 *= float64(s.onsetAge) / (f.onsetMs * chipRate / 1000)
 		s.onsetAge++
 	}
 
@@ -278,7 +292,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 	spread := f.distortion / 255 * 1.5
 	for i := 3; i < 5; i++ {
 		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
-		s.phase[i] += fr * (1 + spread*s.random()) / SampleRate
+		s.phase[i] += fr * (1 + spread*s.random()) / chipRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])
 	}
@@ -296,15 +310,5 @@ func (s *synth) sample(f frame, master float64) float64 {
 	s.dcIn = x
 	s.dcOut = y
 
-	// output filter
-	for i := outputTaps - 1; i > 0; i-- {
-		s.hist[i] = s.hist[i-1]
-	}
-	s.hist[0] = y
-	var out float64
-	for i := range outputTaps {
-		out += outputFIR[i] * s.hist[i]
-	}
-
-	return out
+	return y
 }

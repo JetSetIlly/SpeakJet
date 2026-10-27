@@ -954,7 +954,7 @@ var (
 //
 // all of them but BE, BO, DO, ED, OD, GE, GO, EG and OG (which are played from
 // the chip's frames: see vfPoints) and TT were then fitted again, with the
-// output filter measured from the voicing pulses (see outputFIR), to both
+// output filter measured from the voicing pulses (see chipRate), to both
 // units' VoxRecord recordings at once: the spectrogram, the spectrum and the
 // level over time, each unit's level compared down to its own background, so
 // that a part the chip doesn't play costs as much as one it plays wrongly (the
@@ -1165,7 +1165,7 @@ func dtmf(name string, low, high float64) sound {
 // three frequencies (0 for none) and the second and third's levels against the
 // first (-60 while a tone that comes and goes is absent, so that it fades
 // rather than sweeping from 0Hz). the levels are the recording's with the
-// output filter's loss at each frequency added back (see outputFIR), as the
+// output filter's loss at each frequency added back (see chipRate), as the
 // filter here takes it off again. many effects are nothing like their names
 // suggest, and many differ in length from the manual: A1 and A2 last about a
 // second, and M0 is a 1.2 second tone around 1.8kHz that dies away. the points
@@ -4138,3 +4138,92 @@ var effects = func() (e [len(effectNames)]sound) {
 	}
 	return
 }()
+
+// the noise refitted at the chip's own rate. the noise sounds were fitted while
+// this library ran at 8192 samples a second; at chipRate the same values make
+// different noise (it is a frequency jittered every sample, so its spread, and
+// where it folds back around half the rate, move with the rate), and those
+// sounds matched both units 1 to 15 points worse. so each sound with noise was
+// fitted again at chipRate, with changes to the noise oscillators (4 and 5) in
+// all its parts: a scale on their frequencies, a change to their width
+// (distortion) and the balance of their levels, against both units of the
+// VoxRecord recording with the background taken out and clipped sounds left
+// out. the sound's overall level is held where it was (each sound is scored
+// against its own loudest, so a fit left free to change it made SE and others
+// louder against the vowels, and the connected groups, which nothing was fitted
+// to, worse). each is kept only where it matches both units better, by at least
+// 0.05dB or half a point, and doesn't match the second take (which nothing was
+// fitted to) worse: TS 28 to 54%, CH 67 to 83%, TT 29 to 45%, KE 62 to 72%, C9
+// 51 to 58% on unit B. HO, WH, FF, SO, SH, TH, R5, R8, A7, A9, B0, B1, B2, B5,
+// B8, C5, M0 and M1 (clipped on both units) keep theirs
+type noiseFit struct {
+	freqScale, distortion, db4, db5 float64
+}
+
+var noiseRateFit = map[int]noiseFit{
+	165: {0.9836, -0.3, -0.28, 1.63},
+	166: {0.9824, 6.7, 3.06, -0.80},
+	170: {0.9310, -65.4, 3.72, -3.84},
+	172: {1.0617, -43.2, 8.47, -9.02},
+	173: {0.9253, 78.7, -1.43, -1.04},
+	174: {0.9881, -26.6, -1.23, 1.34},
+	182: {0.9778, 4.5, 0.80, -1.31},
+	183: {1.0414, -17.3, 0.07, 2.65},
+	187: {1.0507, -14.3, 3.45, -0.95},
+	191: {1.0258, 9.5, -2.09, 1.07},
+	192: {0.9785, -13.6, 1.15, -0.49},
+	193: {1.0706, -13.3, 10.28, -7.08},
+	194: {1.0126, 29.7, 0.95, -1.50},
+	195: {1.0266, 38.7, 0.68, -0.16},
+	196: {1.0444, -8.5, 5.29, 0.25},
+	197: {0.9356, 13.6, -0.62, 1.86},
+	198: {0.9956, 2.6, 0.55, -0.66},
+	199: {0.9547, 72.6, -0.02, -0.38},
+	200: {0.9870, 54.5, -7.08, 6.43},
+	201: {0.9336, -10.3, 1.43, -1.06},
+	202: {1.0186, 11.8, -4.17, 4.26},
+	204: {0.9880, -20.2, -0.10, 0.58},
+	206: {0.9968, -16.9, -1.95, 1.83},
+	207: {0.9756, 76.1, -0.32, -0.13},
+	209: {0.9111, -9.6, -1.21, 1.75},
+	210: {1.0497, 15.8, 2.86, -2.60},
+	214: {0.9786, 65.5, -1.43, 1.26},
+	216: {1.0994, -3.7, -0.16, -0.05},
+	218: {0.9956, 14.7, 8.70, -9.23},
+	226: {1.0477, -5.8, 0.02, 0.45},
+	230: {1.0215, 17.9, -0.72, 0.24},
+	231: {1.0252, -41.2, -1.28, 1.67},
+	232: {1.0196, 0.3, 3.26, -4.28},
+	234: {1.0933, 49.7, 2.56, -2.96},
+	236: {0.9841, 31.2, 1.12, -1.36},
+	237: {0.9611, 36.2, -0.42, -0.06},
+	238: {1.0423, 12.9, -0.26, 0.61},
+	239: {1.0203, 39.1, 2.42, -6.94},
+}
+
+func (n noiseFit) apply(s sound) sound {
+	parts := make([]part, len(s.parts))
+	copy(parts, s.parts)
+	g4 := math.Pow(10, n.db4/20)
+	g5 := math.Pow(10, n.db5/20)
+	for i := range parts {
+		f := &parts[i].target
+		f.freq[3] *= n.freqScale
+		f.freq[4] *= n.freqScale
+		f.distortion = math.Min(math.Max(f.distortion+n.distortion, 0), 255)
+		f.vol[3] *= g4
+		f.vol[4] *= g5
+	}
+	s.parts = parts
+	return s
+}
+
+func init() {
+	for code, n := range noiseRateFit {
+		if code < 200 {
+			allophones[code-128] = n.apply(allophones[code-128])
+		} else {
+			effects[code-200] = n.apply(effects[code-200])
+		}
+	}
+}
