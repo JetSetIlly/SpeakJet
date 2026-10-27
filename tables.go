@@ -94,7 +94,7 @@ var allophoneLength = [...]float64{
 
 // how much louder (in dB) the chip plays each allophone than the oscillator
 // volumes here give, against AW. fitted to the VoxRecord recording's third
-// take, whose vowels aren't clipped: each allophone's level (where it is within
+// take, whose vowels barely clip: each allophone's level (where it is within
 // 20dB of its loudest) was matched to the recording's, measured the same way,
 // relative to AW. the vowels needed little; the nasals, liquids and hiss were
 // too loud here (the hiss levels were set from an earlier, clipped recording,
@@ -595,7 +595,7 @@ func (s sound) ms() float64 {
 // F2 F3 EH: F1 F2 AW: F2
 //
 // the third take of the VoxRecord recording (see msa_speed_factor()), whose
-// vowels aren't clipped, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
+// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
 // within about 5% (formants read by linear prediction, the same way on the
 // recording and on this library's own output, so that the method's errors
 // cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
@@ -634,7 +634,7 @@ type formants [3]float64
 //	MM: F1 F3      EY: F1 F2 F3   EH: F1 F2      AW: F2
 //
 // the third take of the VoxRecord recording (see msa.speedFactor()), whose
-// vowels aren't clipped, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
+// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
 // within about 5% (formants read by linear prediction, the same way on the
 // recording and on this library's own output, so that the method's errors
 // cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
@@ -713,7 +713,13 @@ func voicedFrame(f formants, v1, v2, v3 float64) frame {
 // the dips between the formants: restarting all three together, as first
 // assumed here, leaves those dips up to 10dB too deep (IY, MM, NE) and the
 // single pulses 4.5dB from the chip's rather than 2.0. formantPhases gives a
-// voiced frame those phases
+// voiced frame those phases. but measured at pitch 40, they don't all hold at
+// speaking pitch: against the VoxRecord recording at the default pitch
+// (background removed, unit B and unit A's unclipped sounds) and the first
+// VoxProbe recording at pitches 88 and 60 (which nothing here was fitted to),
+// IY, EY, EH, AY, AX, UX, OH, AW and MM match better without theirs (IY 85 to
+// 91% and 3.2 to 2.0dB, and 3.4 to 2.2dB on VoxProbe), so those restart
+// together; OW, UH, UW, NGE, NGO, NE, LE, WW and RR keep theirs
 func formantPhases(f frame, p2, p3 float64) frame {
 	f.phase0[1] = p2
 	f.phase0[2] = p3
@@ -948,7 +954,7 @@ var (
 //
 // all of them but BE, BO, DO, ED, OD, GE, GO, EG and OG (which are played from
 // the chip's frames: see vfPoints) and TT were then fitted again, with the
-// output filter measured from the voicing pulses (see outputFIR), to both
+// output filter measured from the voicing pulses (see chipRate), to both
 // units' VoxRecord recordings at once: the spectrogram, the spectrum and the
 // level over time, each unit's level compared down to its own background, so
 // that a part the chip doesn't play costs as much as one it plays wrongly (the
@@ -968,15 +974,15 @@ var allophones = [...]sound{
 	// voiceFade) gives each one's amplitude, the mean of both units. some of
 	// these sounds are instead played from the chip's own frames, pulse by pulse
 	// (see vfPoints)
-	steady("IY", 70, formantPhases(voicedFrame(fIY, 24.0, 15.6, 9.8), 0.925, 0.925)),
+	steady("IY", 70, voicedFrame(fIY, 24.0, 15.6, 9.8)),
 	steady("IH", 70, formantPhases(voicedFrame(fIH, 24.0, 16.7, 10.0), 0.132, 0.175)),
-	steady("EY", 70, formantPhases(voicedFrame(fEY, 24.0, 14.0, 7.7), 0.032, 0.047)),
-	steady("EH", 70, formantPhases(voicedFrame(fEH, 24.0, 13.4, 9.3), 0.065, 0.107)),
-	steady("AY", 70, formantPhases(voicedFrame(fAY, 24.0, 11.3, 6.4), 0.975, 0.972)),
-	steady("AX", 70, formantPhases(voicedFrame(fAX, 24.0, 14.8, 8.8), 0.018, 0.054)),
-	steady("UX", 70, formantPhases(voicedFrame(fUX, 24.0, 15.4, 9.6), 0.014, 0.103)),
-	steady("OH", 70, formantPhases(voicedFrame(fOH, 24.0, 17.9, 9.1), 0.003, 0.091)),
-	steady("AW", 70, formantPhases(voicedFrame(fAW, 24.0, 22.3, 6.6), 0.995, 0.080)),
+	steady("EY", 70, voicedFrame(fEY, 24.0, 14.0, 7.7)),
+	steady("EH", 70, voicedFrame(fEH, 24.0, 13.4, 9.3)),
+	steady("AY", 70, voicedFrame(fAY, 24.0, 11.3, 6.4)),
+	steady("AX", 70, voicedFrame(fAX, 24.0, 14.8, 8.8)),
+	steady("UX", 70, voicedFrame(fUX, 24.0, 15.4, 9.6)),
+	steady("OH", 70, voicedFrame(fOH, 24.0, 17.9, 9.1)),
+	steady("AW", 70, voicedFrame(fAW, 24.0, 22.3, 6.6)),
 	steady("OW", 70, formantPhases(voicedFrame(fOW, 20.1, 24.0, 4.9), 0.954, 0.982)),
 	steady("UH", 70, formantPhases(voicedFrame(fUH, 22.5, 24.0, 6.0), 0.924, 0.928)),
 	steady("UW", 70, formantPhases(voicedFrame(fUW, 24.0, 22.5, 3.9), 0.955, 0.032)),
@@ -985,7 +991,7 @@ var allophones = [...]sound{
 	// to 3.9kHz): besides the low murmur the chip's nasals have strong
 	// resonances near 1.4 to 1.6kHz and 2.2 to 2.6kHz that the published values
 	// here lacked
-	steady("MM", 70, formantPhases(voicedFrame(formants{266, 1410, 2252}, 24.0, 6.3, 1.9), 0.247, 0.268)),
+	steady("MM", 70, voicedFrame(formants{266, 1410, 2252}, 24.0, 6.3, 1.9)),
 	steady("NE", 70, formantPhases(voicedFrame(formants{262, 1572, 2582}, 24.0, 3.6, 7.6), 0.032, 0.965)),
 	steady("NO", 70, formantPhases(voicedFrame(formants{269, 1169, 2590}, 24.0, 4.6, 7.3), 0.962, 0.031)),
 	// NGE and NGO had no measurement (VoxProbe 3 doesn't play them), but on the
@@ -1029,7 +1035,12 @@ var allophones = [...]sound{
 	plosive("BO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabialBack,
 		burstFreq: [2]float64{600, 1000}, burstVol: [2]float64{10, 6}}),
 	plosive("EB", stop{ms: 10, closure: 2.85, burst: 7.15, voiced: true, locus: formants{345, 918, 2893}, burstFreq: [2]float64{1733.4, 1870.5}, burstVol: [2]float64{15.96, 21.89}, burstDist: 99.2, closureVoice: 25.63, onsetVoice: 0.444}),
-	plosive("OB", stop{ms: 10, closure: 3.32, burst: 0.14, voiced: true, locus: formants{416, 1414, 2909}, burstFreq: [2]float64{1134.8, 3120.7}, burstVol: [2]float64{7.44, 23}, burstDist: 217.8, closureVoice: 13.43, onsetVoice: 0.168}),
+	// OB and PO keep the values they had before the refit through the new
+	// filter, which matched both units worse once the recordings' background was
+	// taken out (OB 66 to 75%, PO 48 to 64% and 4.9 to 3.0dB on unit B)
+	plosive("OB", stop{ms: 10, closure: 1, burst: 0.2, voiced: true, locus: formants{416, 1414, 2909},
+		burstFreq: [2]float64{835, 3504}, burstVol: [2]float64{29.1, 22.8},
+		burstDist: 201, closureVoice: 2.2, onsetVoice: 0.25}),
 	plosive("DE", stop{ms: 45, closure: 21.26, burst: 23.74, voiced: true, locus: lAlveolar, burstFreq: [2]float64{2535.3, 1885.7}, burstVol: [2]float64{29.96, 28.29}, burstDist: 57.5, closureVoice: 12.27, onsetVoice: 0.941}),
 	plosive("DO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lAlveolarBak,
 		burstFreq: [2]float64{1800, 2220}, burstVol: [2]float64{12, 8}}),
@@ -1067,7 +1078,8 @@ var allophones = [...]sound{
 	plosive("EK", stop{ms: 55, closure: 43.95, burst: 8.79, locus: lVelar, burstFreq: [2]float64{2933.4, 3338}, burstVol: [2]float64{0.86, 0.06}, aspFreq: [2]float64{3538.4, 1860.3}, burstDist: 56.9, aspDist: 108.4, aspVol: [2]float64{4.54, 25.1}}),
 	plosive("OK", stop{ms: 45, closure: 11.86, burst: 31.21, locus: lVelarBack, burstFreq: [2]float64{3171.3, 812.5}, burstVol: [2]float64{1.72, 0.23}, aspFreq: [2]float64{1975, 1050.1}, burstDist: 58.1, aspDist: 112.5, aspVol: [2]float64{26.71, 7.48}}),
 	plosive("PE", stop{ms: 99, closure: 59.57, burst: 31.25, locus: lLabial, burstFreq: [2]float64{410.4, 848.4}, burstVol: [2]float64{19.62, 14.17}, aspFreq: [2]float64{1315.3, 2497.7}, burstDist: 227.1, aspDist: 88.6, aspVol: [2]float64{9.82, 30.48}}),
-	plosive("PO", stop{ms: 99, closure: 62.04, burst: 36.86, locus: lLabialBack, burstFreq: [2]float64{642.9, 3293.2}, burstVol: [2]float64{15.35, 14.67}, aspFreq: [2]float64{1188.8, 2041.3}, burstDist: 247, aspDist: 53.9, aspVol: [2]float64{14.01, 15.39}}),
+	plosive("PO", stop{ms: 99, closure: 50, burst: 9, locus: lLabialBack,
+		burstFreq: [2]float64{300, 720}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{600, 1380}}),
 }
 
 // effect constructors
@@ -1138,7 +1150,7 @@ func dtmf(name string, low, high float64) sound {
 
 // the manual describes the sound effects only by name and length. the others
 // here are traced from the third take of the VoxRecord recording (see
-// msa_speed_factor()), which plays each on its own and isn't clipped: every 5ms
+// msa_speed_factor()), which plays each on its own and clips little: every 5ms
 // the level and the sound's kind were measured, and the trace reduced to the
 // points below, between which the sound glides in a straight line. a tone is up
 // to three pure sines (the chip's tones have no harmonics to speak of, 45dB and
@@ -1153,7 +1165,7 @@ func dtmf(name string, low, high float64) sound {
 // three frequencies (0 for none) and the second and third's levels against the
 // first (-60 while a tone that comes and goes is absent, so that it fades
 // rather than sweeping from 0Hz). the levels are the recording's with the
-// output filter's loss at each frequency added back (see outputFIR), as the
+// output filter's loss at each frequency added back (see chipRate), as the
 // filter here takes it off again. many effects are nothing like their names
 // suggest, and many differ in length from the manual: A1 and A2 last about a
 // second, and M0 is a 1.2 second tone around 1.8kHz that dies away. the points
@@ -1478,27 +1490,32 @@ var fxPoints = map[int][]fxPoint{
 		{995, fxBuzz, 71, -60.0, [3]int{160, 250, 731}, [3]float64{0, -39.9, -12.7}},
 		{1000, fxBuzz, 127, -60.0, [3]int{149, 250, 731}, [3]float64{0, -39.7, -10.4}},
 	},
+	// A3. its buzz was traced at 470 to 490Hz, but on both units of the fourth
+	// VoxProbe recording it repeats at the voicing frequency (60.2, 87.1 and
+	// 150Hz at pitch 60, 88 and 150), so its buzz is at the default voicing pitch
+	// here and follows Pitch: its items match both units better (79 to 80%, 80 to
+	// 82%)
 	213: { // A3
-		{5, fxBuzz, 128, -60.0, [3]int{576, 977, 1996}, [3]float64{0, 27.2, 36.5}},
-		{10, fxBuzz, 128, -60.0, [3]int{576, 980, 2002}, [3]float64{0, 27.3, 37.5}},
-		{15, fxBuzz, 468, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
-		{20, fxBuzz, 468, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
-		{25, fxBuzz, 473, -6.5, [3]int{577, 990, 2386}, [3]float64{0, -35.0, -12.1}},
-		{30, fxBuzz, 478, -5.5, [3]int{577, 978, 2386}, [3]float64{0, -1.6, -13.1}},
-		{35, fxBuzz, 87, -3.9, [3]int{577, 978, 2386}, [3]float64{0, -1.0, -13.9}},
-		{80, fxBuzz, 87, -4.6, [3]int{578, 1065, 2476}, [3]float64{0, 1.0, -14.0}},
-		{120, fxBuzz, 87, -3.5, [3]int{626, 1164, 2491}, [3]float64{0, 0.2, -15.2}},
-		{125, fxBuzz, 87, -5.5, [3]int{632, 1177, 1852}, [3]float64{0, 0.1, 3.6}},
-		{135, fxBuzz, 87, -4.9, [3]int{645, 1199, 1852}, [3]float64{0, -0.1, 2.7}},
-		{365, fxBuzz, 87, -9.1, [3]int{1121, 1915, 2760}, [3]float64{0, 3.0, 6.1}},
-		{520, fxBuzz, 87, -8.7, [3]int{1452, 2357, 3417}, [3]float64{0, 4.1, 6.0}},
-		{525, fxBuzz, 483, -10.9, [3]int{1462, 2370, 3440}, [3]float64{0, 4.3, 6.1}},
-		{545, fxBuzz, 487, -14.2, [3]int{1465, 2382, 3447}, [3]float64{0, 5.2, 6.6}},
-		{550, fxBuzz, 487, -26.0, [3]int{1459, 2382, 3431}, [3]float64{0, 4.0, 6.5}},
-		{555, fxBuzz, 487, -60.0, [3]int{1304, 2379, 3423}, [3]float64{0, -21.7, 6.5}},
-		{560, fxBuzz, 125, -60.0, [3]int{1283, 2184, 3423}, [3]float64{0, 1.5, -11.8}},
-		{565, fxBuzz, 142, -60.0, [3]int{1067, 1987, 2980}, [3]float64{0, 7.8, 15.7}},
-		{570, fxBuzz, 135, -60.0, [3]int{1011, 1986, 2975}, [3]float64{0, 9.0, 16.6}},
+		{5, fxBuzz, 88, -60.0, [3]int{576, 977, 1996}, [3]float64{0, 27.2, 36.5}},
+		{10, fxBuzz, 88, -60.0, [3]int{576, 980, 2002}, [3]float64{0, 27.3, 37.5}},
+		{15, fxBuzz, 88, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
+		{20, fxBuzz, 88, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
+		{25, fxBuzz, 88, -6.5, [3]int{577, 990, 2386}, [3]float64{0, -35.0, -12.1}},
+		{30, fxBuzz, 88, -5.5, [3]int{577, 978, 2386}, [3]float64{0, -1.6, -13.1}},
+		{35, fxBuzz, 88, -3.9, [3]int{577, 978, 2386}, [3]float64{0, -1.0, -13.9}},
+		{80, fxBuzz, 88, -4.6, [3]int{578, 1065, 2476}, [3]float64{0, 1.0, -14.0}},
+		{120, fxBuzz, 88, -3.5, [3]int{626, 1164, 2491}, [3]float64{0, 0.2, -15.2}},
+		{125, fxBuzz, 88, -5.5, [3]int{632, 1177, 1852}, [3]float64{0, 0.1, 3.6}},
+		{135, fxBuzz, 88, -4.9, [3]int{645, 1199, 1852}, [3]float64{0, -0.1, 2.7}},
+		{365, fxBuzz, 88, -9.1, [3]int{1121, 1915, 2760}, [3]float64{0, 3.0, 6.1}},
+		{520, fxBuzz, 88, -8.7, [3]int{1452, 2357, 3417}, [3]float64{0, 4.1, 6.0}},
+		{525, fxBuzz, 88, -10.9, [3]int{1462, 2370, 3440}, [3]float64{0, 4.3, 6.1}},
+		{545, fxBuzz, 88, -14.2, [3]int{1465, 2382, 3447}, [3]float64{0, 5.2, 6.6}},
+		{550, fxBuzz, 88, -26.0, [3]int{1459, 2382, 3431}, [3]float64{0, 4.0, 6.5}},
+		{555, fxBuzz, 88, -60.0, [3]int{1304, 2379, 3423}, [3]float64{0, -21.7, 6.5}},
+		{560, fxBuzz, 88, -60.0, [3]int{1283, 2184, 3423}, [3]float64{0, 1.5, -11.8}},
+		{565, fxBuzz, 88, -60.0, [3]int{1067, 1987, 2980}, [3]float64{0, 7.8, 15.7}},
+		{570, fxBuzz, 88, -60.0, [3]int{1011, 1986, 2975}, [3]float64{0, 9.0, 16.6}},
 	},
 	214: { // A4
 		{5, fxTone, 0, -60.0, [3]int{239, 467, 420}, [3]float64{0, -60.0, -60.0}},
@@ -4126,3 +4143,92 @@ var effects = func() (e [len(effectNames)]sound) {
 	}
 	return
 }()
+
+// the noise refitted at the chip's own rate. the noise sounds were fitted while
+// this library ran at 8192 samples a second; at chipRate the same values make
+// different noise (it is a frequency jittered every sample, so its spread, and
+// where it folds back around half the rate, move with the rate), and those
+// sounds matched both units 1 to 15 points worse. so each sound with noise was
+// fitted again at chipRate, with changes to the noise oscillators (4 and 5) in
+// all its parts: a scale on their frequencies, a change to their width
+// (distortion) and the balance of their levels, against both units of the
+// VoxRecord recording with the background taken out and clipped sounds left
+// out. the sound's overall level is held where it was (each sound is scored
+// against its own loudest, so a fit left free to change it made SE and others
+// louder against the vowels, and the connected groups, which nothing was fitted
+// to, worse). each is kept only where it matches both units better, by at least
+// 0.05dB or half a point, and doesn't match the second take (which nothing was
+// fitted to) worse: TS 28 to 54%, CH 67 to 83%, TT 29 to 45%, KE 62 to 72%, C9
+// 51 to 58% on unit B. HO, WH, FF, SO, SH, TH, R5, R8, A7, A9, B0, B1, B2, B5,
+// B8, C5, M0 and M1 (clipped on both units) keep theirs
+type noiseFit struct {
+	freqScale, distortion, db4, db5 float64
+}
+
+var noiseRateFit = map[int]noiseFit{
+	165: {0.9836, -0.3, -0.28, 1.63},
+	166: {0.9824, 6.7, 3.06, -0.80},
+	170: {0.9310, -65.4, 3.72, -3.84},
+	172: {1.0617, -43.2, 8.47, -9.02},
+	173: {0.9253, 78.7, -1.43, -1.04},
+	174: {0.9881, -26.6, -1.23, 1.34},
+	182: {0.9778, 4.5, 0.80, -1.31},
+	183: {1.0414, -17.3, 0.07, 2.65},
+	187: {1.0507, -14.3, 3.45, -0.95},
+	191: {1.0258, 9.5, -2.09, 1.07},
+	192: {0.9785, -13.6, 1.15, -0.49},
+	193: {1.0706, -13.3, 10.28, -7.08},
+	194: {1.0126, 29.7, 0.95, -1.50},
+	195: {1.0266, 38.7, 0.68, -0.16},
+	196: {1.0444, -8.5, 5.29, 0.25},
+	197: {0.9356, 13.6, -0.62, 1.86},
+	198: {0.9956, 2.6, 0.55, -0.66},
+	199: {0.9547, 72.6, -0.02, -0.38},
+	200: {0.9870, 54.5, -7.08, 6.43},
+	201: {0.9336, -10.3, 1.43, -1.06},
+	202: {1.0186, 11.8, -4.17, 4.26},
+	204: {0.9880, -20.2, -0.10, 0.58},
+	206: {0.9968, -16.9, -1.95, 1.83},
+	207: {0.9756, 76.1, -0.32, -0.13},
+	209: {0.9111, -9.6, -1.21, 1.75},
+	210: {1.0497, 15.8, 2.86, -2.60},
+	214: {0.9786, 65.5, -1.43, 1.26},
+	216: {1.0994, -3.7, -0.16, -0.05},
+	218: {0.9956, 14.7, 8.70, -9.23},
+	226: {1.0477, -5.8, 0.02, 0.45},
+	230: {1.0215, 17.9, -0.72, 0.24},
+	231: {1.0252, -41.2, -1.28, 1.67},
+	232: {1.0196, 0.3, 3.26, -4.28},
+	234: {1.0933, 49.7, 2.56, -2.96},
+	236: {0.9841, 31.2, 1.12, -1.36},
+	237: {0.9611, 36.2, -0.42, -0.06},
+	238: {1.0423, 12.9, -0.26, 0.61},
+	239: {1.0203, 39.1, 2.42, -6.94},
+}
+
+func (n noiseFit) apply(s sound) sound {
+	parts := make([]part, len(s.parts))
+	copy(parts, s.parts)
+	g4 := math.Pow(10, n.db4/20)
+	g5 := math.Pow(10, n.db5/20)
+	for i := range parts {
+		f := &parts[i].target
+		f.freq[3] *= n.freqScale
+		f.freq[4] *= n.freqScale
+		f.distortion = math.Min(math.Max(f.distortion+n.distortion, 0), 255)
+		f.vol[3] *= g4
+		f.vol[4] *= g5
+	}
+	s.parts = parts
+	return s
+}
+
+func init() {
+	for code, n := range noiseRateFit {
+		if code < 200 {
+			allophones[code-128] = n.apply(allophones[code-128])
+		} else {
+			effects[code-200] = n.apply(effects[code-200])
+		}
+	}
+}

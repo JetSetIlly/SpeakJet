@@ -48,7 +48,7 @@ type segment struct {
 }
 
 func samples(ms float64) int {
-	return int(math.Round(ms * SampleRate / 1000))
+	return int(math.Round(ms * chipRate / 1000))
 }
 
 // msa sequences commands into segments and plays them on the synthesizer
@@ -238,6 +238,19 @@ func (m *msa) expand(s sound) []segment {
 		for j := range 3 {
 			if t.freq[j] > 0 {
 				t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+			}
+		}
+		// Bend moves an effect's noise as well: on both units of the fourth
+		// VoxProbe recording C8's and C9's noise moves about 200Hz down at bend 0
+		// and 440Hz up at bend 15, as their tones do. the effects at bends 0 and
+		// 15 match both units better with it (4.30 to 4.25dB on one, 4.28 to
+		// 4.23dB on the other). whether the hiss of speech moves too isn't
+		// measured, so it doesn't here
+		if !s.speech {
+			for j := 3; j < 5; j++ {
+				if t.freq[j] > 0 {
+					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+				}
 			}
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})

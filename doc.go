@@ -16,8 +16,9 @@
 // mixer limited to 63; oscillators 4 and 5 with a shared distortion control
 // that spreads white noise around their frequency; a sixth oscillator that
 // envelopes the others (saw, sine, triangle or square); a master volume of 0
-// to 127; output at 8192 samples per second through a low pass filter (the
-// chip's, measured: see outputFIR in synth.go).
+// to 127; the chip's samples made at about 8kHz (measured, not the manual's
+// 8192) and held as the chip holds them, output at SampleRate (48kHz) through
+// the low pass after the chip, measured to 23kHz: see chipRate in synth.go.
 // Choices not in the manual: oscillators 1 to 3 are sines whose phase restarts
 // at each envelope period (so they ring like formants excited by a glottal
 // pulse), and distortion is applied as random frequency modulation.
@@ -34,6 +35,6 @@
 // fricatives' hiss and the other sound effects, which are traced from the
 // recording (see allophoneLength and fxPoints in tables.go, and speedFactor in
 // msa.go); and the output filter, five vowels' formants, each allophone's level,
-// Bend, Stress, Relax and the pitch (see outputFIR in synth.go,
+// Bend, Stress, Relax and the pitch (see chipRate in synth.go,
 // allophoneGainDB in tables.go, and bendHz, voiceHz and expand in msa.go).
 package speakjet
