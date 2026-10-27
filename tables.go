@@ -94,7 +94,7 @@ var allophoneLength = [...]float64{
 
 // how much louder (in dB) the chip plays each allophone than the oscillator
 // volumes here give, against AW. fitted to the VoxRecord recording's third
-// take, whose vowels aren't clipped: each allophone's level (where it is within
+// take, whose vowels barely clip: each allophone's level (where it is within
 // 20dB of its loudest) was matched to the recording's, measured the same way,
 // relative to AW. the vowels needed little; the nasals, liquids and hiss were
 // too loud here (the hiss levels were set from an earlier, clipped recording,
@@ -595,7 +595,7 @@ func (s sound) ms() float64 {
 // F2 F3 EH: F1 F2 AW: F2
 //
 // the third take of the VoxRecord recording (see msa_speed_factor()), whose
-// vowels aren't clipped, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
+// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
 // within about 5% (formants read by linear prediction, the same way on the
 // recording and on this library's own output, so that the method's errors
 // cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
@@ -634,7 +634,7 @@ type formants [3]float64
 //	MM: F1 F3      EY: F1 F2 F3   EH: F1 F2      AW: F2
 //
 // the third take of the VoxRecord recording (see msa.speedFactor()), whose
-// vowels aren't clipped, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
+// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
 // within about 5% (formants read by linear prediction, the same way on the
 // recording and on this library's own output, so that the method's errors
 // cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
@@ -713,7 +713,13 @@ func voicedFrame(f formants, v1, v2, v3 float64) frame {
 // the dips between the formants: restarting all three together, as first
 // assumed here, leaves those dips up to 10dB too deep (IY, MM, NE) and the
 // single pulses 4.5dB from the chip's rather than 2.0. formantPhases gives a
-// voiced frame those phases
+// voiced frame those phases. but measured at pitch 40, they don't all hold at
+// speaking pitch: against the VoxRecord recording at the default pitch
+// (background removed, unit B and unit A's unclipped sounds) and the first
+// VoxProbe recording at pitches 88 and 60 (which nothing here was fitted to),
+// IY, EY, EH, AY, AX, UX, OH, AW and MM match better without theirs (IY 85 to
+// 91% and 3.2 to 2.0dB, and 3.4 to 2.2dB on VoxProbe), so those restart
+// together; OW, UH, UW, NGE, NGO, NE, LE, WW and RR keep theirs
 func formantPhases(f frame, p2, p3 float64) frame {
 	f.phase0[1] = p2
 	f.phase0[2] = p3
@@ -968,15 +974,15 @@ var allophones = [...]sound{
 	// voiceFade) gives each one's amplitude, the mean of both units. some of
 	// these sounds are instead played from the chip's own frames, pulse by pulse
 	// (see vfPoints)
-	steady("IY", 70, formantPhases(voicedFrame(fIY, 24.0, 15.6, 9.8), 0.925, 0.925)),
+	steady("IY", 70, voicedFrame(fIY, 24.0, 15.6, 9.8)),
 	steady("IH", 70, formantPhases(voicedFrame(fIH, 24.0, 16.7, 10.0), 0.132, 0.175)),
-	steady("EY", 70, formantPhases(voicedFrame(fEY, 24.0, 14.0, 7.7), 0.032, 0.047)),
-	steady("EH", 70, formantPhases(voicedFrame(fEH, 24.0, 13.4, 9.3), 0.065, 0.107)),
-	steady("AY", 70, formantPhases(voicedFrame(fAY, 24.0, 11.3, 6.4), 0.975, 0.972)),
-	steady("AX", 70, formantPhases(voicedFrame(fAX, 24.0, 14.8, 8.8), 0.018, 0.054)),
-	steady("UX", 70, formantPhases(voicedFrame(fUX, 24.0, 15.4, 9.6), 0.014, 0.103)),
-	steady("OH", 70, formantPhases(voicedFrame(fOH, 24.0, 17.9, 9.1), 0.003, 0.091)),
-	steady("AW", 70, formantPhases(voicedFrame(fAW, 24.0, 22.3, 6.6), 0.995, 0.080)),
+	steady("EY", 70, voicedFrame(fEY, 24.0, 14.0, 7.7)),
+	steady("EH", 70, voicedFrame(fEH, 24.0, 13.4, 9.3)),
+	steady("AY", 70, voicedFrame(fAY, 24.0, 11.3, 6.4)),
+	steady("AX", 70, voicedFrame(fAX, 24.0, 14.8, 8.8)),
+	steady("UX", 70, voicedFrame(fUX, 24.0, 15.4, 9.6)),
+	steady("OH", 70, voicedFrame(fOH, 24.0, 17.9, 9.1)),
+	steady("AW", 70, voicedFrame(fAW, 24.0, 22.3, 6.6)),
 	steady("OW", 70, formantPhases(voicedFrame(fOW, 20.1, 24.0, 4.9), 0.954, 0.982)),
 	steady("UH", 70, formantPhases(voicedFrame(fUH, 22.5, 24.0, 6.0), 0.924, 0.928)),
 	steady("UW", 70, formantPhases(voicedFrame(fUW, 24.0, 22.5, 3.9), 0.955, 0.032)),
@@ -985,7 +991,7 @@ var allophones = [...]sound{
 	// to 3.9kHz): besides the low murmur the chip's nasals have strong
 	// resonances near 1.4 to 1.6kHz and 2.2 to 2.6kHz that the published values
 	// here lacked
-	steady("MM", 70, formantPhases(voicedFrame(formants{266, 1410, 2252}, 24.0, 6.3, 1.9), 0.247, 0.268)),
+	steady("MM", 70, voicedFrame(formants{266, 1410, 2252}, 24.0, 6.3, 1.9)),
 	steady("NE", 70, formantPhases(voicedFrame(formants{262, 1572, 2582}, 24.0, 3.6, 7.6), 0.032, 0.965)),
 	steady("NO", 70, formantPhases(voicedFrame(formants{269, 1169, 2590}, 24.0, 4.6, 7.3), 0.962, 0.031)),
 	// NGE and NGO had no measurement (VoxProbe 3 doesn't play them), but on the
@@ -1029,7 +1035,12 @@ var allophones = [...]sound{
 	plosive("BO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lLabialBack,
 		burstFreq: [2]float64{600, 1000}, burstVol: [2]float64{10, 6}}),
 	plosive("EB", stop{ms: 10, closure: 2.85, burst: 7.15, voiced: true, locus: formants{345, 918, 2893}, burstFreq: [2]float64{1733.4, 1870.5}, burstVol: [2]float64{15.96, 21.89}, burstDist: 99.2, closureVoice: 25.63, onsetVoice: 0.444}),
-	plosive("OB", stop{ms: 10, closure: 3.32, burst: 0.14, voiced: true, locus: formants{416, 1414, 2909}, burstFreq: [2]float64{1134.8, 3120.7}, burstVol: [2]float64{7.44, 23}, burstDist: 217.8, closureVoice: 13.43, onsetVoice: 0.168}),
+	// OB and PO keep the values they had before the refit through the new
+	// filter, which matched both units worse once the recordings' background was
+	// taken out (OB 66 to 75%, PO 48 to 64% and 4.9 to 3.0dB on unit B)
+	plosive("OB", stop{ms: 10, closure: 1, burst: 0.2, voiced: true, locus: formants{416, 1414, 2909},
+		burstFreq: [2]float64{835, 3504}, burstVol: [2]float64{29.1, 22.8},
+		burstDist: 201, closureVoice: 2.2, onsetVoice: 0.25}),
 	plosive("DE", stop{ms: 45, closure: 21.26, burst: 23.74, voiced: true, locus: lAlveolar, burstFreq: [2]float64{2535.3, 1885.7}, burstVol: [2]float64{29.96, 28.29}, burstDist: 57.5, closureVoice: 12.27, onsetVoice: 0.941}),
 	plosive("DO", stop{ms: 45, closure: 25, burst: 8, voiced: true, locus: lAlveolarBak,
 		burstFreq: [2]float64{1800, 2220}, burstVol: [2]float64{12, 8}}),
@@ -1067,7 +1078,8 @@ var allophones = [...]sound{
 	plosive("EK", stop{ms: 55, closure: 43.95, burst: 8.79, locus: lVelar, burstFreq: [2]float64{2933.4, 3338}, burstVol: [2]float64{0.86, 0.06}, aspFreq: [2]float64{3538.4, 1860.3}, burstDist: 56.9, aspDist: 108.4, aspVol: [2]float64{4.54, 25.1}}),
 	plosive("OK", stop{ms: 45, closure: 11.86, burst: 31.21, locus: lVelarBack, burstFreq: [2]float64{3171.3, 812.5}, burstVol: [2]float64{1.72, 0.23}, aspFreq: [2]float64{1975, 1050.1}, burstDist: 58.1, aspDist: 112.5, aspVol: [2]float64{26.71, 7.48}}),
 	plosive("PE", stop{ms: 99, closure: 59.57, burst: 31.25, locus: lLabial, burstFreq: [2]float64{410.4, 848.4}, burstVol: [2]float64{19.62, 14.17}, aspFreq: [2]float64{1315.3, 2497.7}, burstDist: 227.1, aspDist: 88.6, aspVol: [2]float64{9.82, 30.48}}),
-	plosive("PO", stop{ms: 99, closure: 62.04, burst: 36.86, locus: lLabialBack, burstFreq: [2]float64{642.9, 3293.2}, burstVol: [2]float64{15.35, 14.67}, aspFreq: [2]float64{1188.8, 2041.3}, burstDist: 247, aspDist: 53.9, aspVol: [2]float64{14.01, 15.39}}),
+	plosive("PO", stop{ms: 99, closure: 50, burst: 9, locus: lLabialBack,
+		burstFreq: [2]float64{300, 720}, burstVol: [2]float64{12, 9}, aspFreq: [2]float64{600, 1380}}),
 }
 
 // effect constructors
@@ -1138,7 +1150,7 @@ func dtmf(name string, low, high float64) sound {
 
 // the manual describes the sound effects only by name and length. the others
 // here are traced from the third take of the VoxRecord recording (see
-// msa_speed_factor()), which plays each on its own and isn't clipped: every 5ms
+// msa_speed_factor()), which plays each on its own and clips little: every 5ms
 // the level and the sound's kind were measured, and the trace reduced to the
 // points below, between which the sound glides in a straight line. a tone is up
 // to three pure sines (the chip's tones have no harmonics to speak of, 45dB and
