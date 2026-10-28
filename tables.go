@@ -52,115 +52,49 @@ type sound struct {
 	stop bool
 }
 
-// the chip's lengths for speech sounds, measured from a recording of a real
-// SpeakJet playing Alex Herbert's vox_test ROM (2004), compared sound by sound
-// with this library playing the same codes. at the default speed the steady
-// sounds (vowels, nasals, liquids, fricatives) last about 1.5 times the
-// manual's length (EH 2.07, IH 1.6, NGE 1.43, and SE 1.67, TH 1.42, NE 1.14
-// when slow), diphthongs about 1.2 times (EYIY 1.0, IHWW 1.5, and OHIY 1.2,
-// AXRR 1.3 when fast), and voiceless stops what the manual gives (TT 1.0). at
-// speed 127 the same steady and stop lengths and the speed curve give the
-// recording's syllable length to within a few milliseconds. the stops and
-// affricates still use these; the other allophones now have their own lengths
-// from a later recording (see allophoneLength)
+// the lengths the stops and affricates are built with, against the manual's:
+// steady sounds about 1.5 times, diphthongs 1.2 times, stops as given (from a
+// recording of a real SpeakJet). the other allophones have their own (see
+// allophoneLength)
 const (
 	steadyLength    = 1.5
 	diphthongLength = 1.2
 	stopLength      = 1.0
 )
 
-// how much longer than the manual's length the chip plays the vowels, nasals,
-// liquids and diphthongs (codes 128 to 164): a fixed time, rather than a
-// multiple of the length. repeating a sound on the chip (the VoxProbe
-// recording) adds just the manual's length for each extra copy (AW 70ms; IY,
-// UW and MM six times are one of them and five times 70ms, to within 6ms), so
-// the first copy is the manual's length and a fixed time more. 28ms matches
-// the VoxRecord recording's third take nearly as well as a length fitted to
-// each of the 37 sounds did: sounds played alone within 13ms on average (13ms
-// before), the 30 connected groups within 15ms (13ms). it is stretched by
-// Speed with the rest of the sound
-const transitionMs = 28.0
-
-// how much longer the chip plays each allophone than the manual's length, at
-// the default speed, fitted to the VoxRecord recording's third take in two
-// steps. first each allophone was played on its own and its audible length on
-// the chip, from where it rises out of silence to where it falls back, was
-// matched here measured the same way. but strung together the chip gives
-// sounds longer slots than that (MM IY MM: 320ms on the chip, 235 here), so
-// then one multiplier for each class was fitted to 30 connected groups (AW MM
-// at eight pitches, AW SE at eight bends, TT AW EYIY SE at five speeds, and
-// nine syllables such as HE OH TT and MM IY MM): vowels 0.92, nasals 1.32,
-// diphthongs 1.10, voiceless fricatives 1.14, stops and affricates 1.40 (on
-// the class length). that takes the groups from 6% short to within 1% (16ms on
-// average; 22ms when each is left out of the fit), at the cost of sounds
-// played alone running 13ms long on average. the liquids and voiced
-// fricatives, which no group has, keep their first-step lengths.
-//
-// the stops, the affricates and the voiceless fricatives SE, SO, SH, FF and TH
-// that were fitted as whole sounds (see frSE) have their lengths from that fit
-// instead, matched to each played alone, with TT and SE also fitted to the
-// connected groups. that takes the groups to within 2% (12ms on average).
-// TS is 190ms, measured from both units
-//
-// the vowels, nasals, liquids and diphthongs (codes 128 to 164) are 0 here:
-// they are the manual's length and transitionMs more
+// how much longer the chip plays each allophone than the manual's length (what
+// its parts add up to), at the default speed, measured and fitted on both
+// units, alone and in connected groups. the framed sounds (see vfPoints) are
+// the measured length already, so theirs is near 1
 var allophoneLength = [...]float64{
-	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-	0.00, 0.8686, 0.84, 0.99, 0.88, 0.88, 1.63, 1.40, 2.67,
-	3.27, 1.40, 1.40, 3.74, 3.16, 1.40, 1.40, 1.40, 1.40,
-	2.4090, 1.17, 1.15, 1.11, 1.49, 2.80, 2.23, 1.17, 1.77,
-	2.07, 2.78, 1.117647, 2.44, 1.40, 2.40, 2.46, 1.40, 1.40,
+	1.4, 1, 1.96, 1.47, 2.0825, 1.96, 1.4, 1.7325, 1.4,
+	1.68, 1.68, 1.4, 1.4, 1.33, 1.0375, 1.2425, 1.3475, 1.3825,
+	1.0625, 1.54, 1.5925, 0.9375, 1.177734, 1, 1.025, 1.0492, 1.169697,
+	1.254, 0.875, 0.921081, 1.05, 1.0625, 1, 1.05, 1, 1.0125,
+	1.025, 0.890315, 0.8295, 0.8906, 1.175, 1, 1.63, 0.975, 2.87025,
+	3.27, 1.3475, 1, 0.8375, 0.8875, 1.0875, 1, 1, 0.8328,
+	2.800463, 1.17, 1.12125, 1.11, 1.49, 2.45, 1.862719, 1.17, 1.28325,
+	2.07, 2.67575, 0.922059, 2.5315, 1.085, 2.49, 2.706, 1.4175, 1.37984,
 }
 
-// how much louder (in dB) the chip plays each allophone than the oscillator
-// volumes here give, against AW. fitted to the VoxRecord recording's third
-// take, whose vowels barely clip: each allophone's level (where it is within
-// 20dB of its loudest) was matched to the recording's, measured the same way,
-// relative to AW. the vowels needed little; the nasals, liquids and hiss were
-// too loud here (the hiss levels were set from an earlier, clipped recording,
-// which made the vowels read quiet) and BE, BO, PE and PO too quiet
+// how much louder (in dB) the chip plays each allophone than its oscillator
+// volumes give: against AW on its own, and refitted where sounds sit next to
+// each other
 var allophoneGainDB = [...]float64{
-	1.1, 2.0, 2.0, 1.2, 2.0, 1.7, 1.3, 0.8, 0.0,
-	-1.8, -1.9, -1.3, -3.9, -4.6, -4.5, -4.5, -4.7, -4.2,
-	-3.2, -4.2, 0.4, 0.3, 0.8, 0.2, -0.5, -1.1, 1.2,
-	0.5, -0.7, 0.9, 0.4, -0.9, -1.0, -0.2, -1.6, -0.6,
-	-3.0, -11.3, -2.1, 1.7, -2.2, -3.3, 5.9, 6.3, -2.6,
-	2.7, 2.9, 3.0, -4.6, -8.6, -0.4, -0.5, 1.7, 2.1,
-	-15.5, -32.3, -31.1, -29.8, -26.3, -15.9, -17.6, -16.6, -26.8,
-	-2.1, -3.3, -26.4, 1.5, -3.0, 2.5, -3.8, 6.4, 5.9,
+	3.54, 0, 2, 1.2, 2, 1.7, 1.3, 3.99, 0,
+	-1.8, -1.9, -1.3, -5.96, -10.97, 0, -4.5, -4.7, -4.2,
+	0, -4.2, 0.4, 0, 0.8, 0, 0, 0, 1.2,
+	0.5, 0, 0.9, 0, 0, 0, 0, 0, 0,
+	0, -11.3, -2.1, 4.31, 0, 0, 5.9, 0, -2.6,
+	2.7, -0.1, 0, 0, 0, 0, 0, 0, 0,
+	-15.5, -26.49, -31.1, -29.8, -26.3, -15.9, -17.6, -16.6, -26.8,
+	-2.1, -3.3, -26.4, 1.5, -3, -2.38, -3.8, 6.4, 5.9,
 }
 
-// REFIT-BEGIN
-// each allophone's length and level refitted on every recording of both
-// AtariVoxes (VoxRecord's sounds alone and its connected groups, the fourth
-// VoxProbe, Man Goes Down), the library given each recording's own background
-// and both measured by the same rule: length, level over time, the
-// time-frequency picture after alignment, timing inside the sound, sideways
-// shifts of the spectrum, the whole-sound spectrum and pitch, each against how
-// closely the two units agree with each other. each sound's fit was kept only
-// where no kind of recording came out worse.
-//
-// refitLength multiplies the length above. finalLength multiplies it again
-// when the sound is the last before a pause or the end and isn't repeated: on
-// the chip a vowel played last is longer than the same vowel inside a phrase
-// (IY 1.25, AW 1.25, EH 1.18 times) and TT and FF shorter (0.64, 0.79), which
-// no one length fitted both ways (IY alone wanted 1.125 times, Man Goes Down
-// and the VoxProbe groups shorter). refitGainDB is in dB on the sound's
-// level, fitted where sounds sit next to each other
-var refitLength = [...]float64{
-	1, 1, 1.4, 1.05, 1.4875, 1.4, 1, 1.2375, 1,
-	1.2, 1.2, 1, 1, 0.95, 1.0375, 0.8875, 0.9625, 0.9875,
-	1.0625, 1.1, 1.1375, 0.9375, 1.0331, 1, 1.025, 1.0492, 1,
-	1.1, 0.875, 0.8, 1.05, 1.0625, 1, 1.05, 1, 1.0125,
-	1.025, 1.025, 0.9875, 0.8906, 1.175, 1, 1, 0.975, 1.075,
-	1, 0.9625, 1, 0.8375, 0.8875, 1.0875, 1, 1, 0.8328,
-	1.1625, 1, 0.975, 1, 1, 0.875, 0.8353, 1, 0.725,
-	1, 0.9625, 0.825, 1.0375, 0.775, 1.0375, 1.1, 1.0125, 0.9856,
-}
-
+// finalLength multiplies an allophone's length when it is the last before a
+// pause or the end and isn't repeated: on the chip a vowel played last is
+// longer than inside a phrase (IY and AW 1.25 times) and TT and FF shorter
+// (0.64, 0.79)
 var finalLength = [...]float64{
 	1.25, 1.175, 1, 1.175, 1, 1, 1, 1, 1.25,
 	1, 1, 1.15, 1, 1, 0.9, 1.025, 0.9375, 1,
@@ -172,24 +106,9 @@ var finalLength = [...]float64{
 	0.6375, 1.05, 1, 1, 1.3, 1, 0.8, 1, 0.925,
 }
 
-var refitGainDB = [...]float64{
-	2.4375, 0, 0, 0, 0, 0, 0, 3.1875, 0,
-	0, 0, 0, -2.0625, -6.375, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 4.3125, 0, 0, 0, 0, 0,
-	0, -3, 0, 0, 0, 0, 0, 0, 0,
-	0, 5.8125, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, -4.875, 0, 0, 0,
-}
-
 // the copies after the first, when a sound is repeated, as a multiple of the
-// manual's length (see expand()), fitted the same way on the fourth
-// VoxProbe recording's repeats (five of each diphthong and voiced stop, ten of
-// each at pitch 40) and VoxRecord's: on the chip many copies are shorter than
-// the manual says (LO and DO 0.75 and 0.7 times, ZZ 0.69, EB 0.51), which
-// left the copies drifting out of step: LO 1.14 to 0.25, ZZ 1.44 to 0.87, DO
-// 1.24 to 0.91
+// manual's length (see expand()): on the chip many are shorter than the manual
+// says (DO 0.7 times, ZZ 0.69, EB 0.51)
 var copyLength = [...]float64{
 	1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 0.9875, 0.925, 1,
@@ -203,21 +122,13 @@ var copyLength = [...]float64{
 
 // REFIT-END
 
-// VF-BEGIN
-// some voiced sounds are played as the chip plays them, frame by frame. at the
-// default pitch each voicing pulse of the VoxRecord recording stands alone (the
-// fade is over long before the next pulse), so each pulse of every voiced sound
-// alone was fitted as three formant sines with the chip's fade and output
-// filter (see voiceFade), on both units, and the two units' pulses paired and
-// averaged. each point is a pulse: its time after the one before, the glide to
-// it, the three frequencies and their volumes (an absolute level: AW's first
-// formant is 24). a formant too weak to measure takes the frequency it has
-// where it is strongest. these are the sounds whose recordings this brings
-// closer on both units: the diphthongs, which move between their formants in
-// steps rather than one straight line, the voiced fricatives, which on the chip
-// are mostly voicing, and voiced stops such as BO and GE, which are a voice bar
-// and then a short vowel-like release with no noise burst to speak of. their
-// length is the one measured, not stretched (see allophoneLength)
+// voiced sounds played as the chip plays them, frame by frame: each point is a
+// voicing pulse fitted as three formant sines with the chip's fade and output
+// filter (see voiceFade), the two units averaged: its time after the one
+// before, the glide to it, the three frequencies and their volumes (AW's first
+// formant is 24). for the diphthongs (which move in steps), the voiced
+// fricatives (mostly voicing) and voiced stops such as BO and GE (a voice bar,
+// then a short vowel-like release)
 type vfPoint struct {
 	ms, glide float64
 	freq      formants
@@ -225,401 +136,240 @@ type vfPoint struct {
 }
 
 // the allophones played from the chip's frames, by code
-var vfPoints = map[int][]vfPoint{
+// each frame as its time and glide in hundredths of a millisecond, the three
+// formants in freqStepHz steps and their volumes in eighths (see vfPoint)
+var vfPointsRows = map[int][][8]float64{
 	129: { // IH
-		{1.00, 1.00, formants{352, 1750, 2524}, [3]float64{10.64, 7.00, 4.52}},
-		{11.18, 11.18, formants{351, 1767, 2486}, [3]float64{21.55, 16.20, 9.46}},
-		{11.54, 11.54, formants{347, 1772, 2475}, [3]float64{23.65, 18.11, 10.93}},
-		{11.46, 11.46, formants{348, 1771, 2471}, [3]float64{23.66, 18.01, 11.14}},
-		{11.44, 11.44, formants{347, 1771, 2471}, [3]float64{23.64, 18.06, 11.16}},
-		{11.46, 11.46, formants{347, 1766, 2483}, [3]float64{23.65, 18.16, 10.79}},
-		{11.41, 11.41, formants{347, 1772, 2474}, [3]float64{23.59, 18.04, 10.94}},
-		{11.46, 11.46, formants{346, 1770, 2471}, [3]float64{22.77, 17.49, 10.08}},
-		{11.56, 11.56, formants{346, 1772, 2477}, [3]float64{15.41, 12.37, 6.42}},
-		{12.69, 12.69, formants{348, 1751, 2497}, [3]float64{5.84, 5.68, 2.93}},
-		{11.50, 11.50, formants{348, 1751, 2497}, [3]float64{5.84, 5.68, 2.93}},
+		{100, 100, 80, 399, 576, 85, 56, 36},
+		{7995, 7995, 79, 404, 564, 182, 140, 81},
+		{2425, 2425, 79, 399, 570, 47, 45, 23},
+		{1150, 1150, 79, 399, 570, 47, 45, 23},
 	},
 	142: { // NO
-		{1.00, 1.00, formants{251, 1149, 2596}, [3]float64{0.81, 0.23, 0.25}},
-		{12.39, 12.39, formants{254, 1116, 2604}, [3]float64{7.53, 1.69, 3.23}},
-		{11.41, 11.41, formants{251, 1142, 2601}, [3]float64{9.26, 2.04, 4.02}},
-		{11.44, 11.44, formants{253, 1154, 2596}, [3]float64{9.10, 2.01, 4.29}},
-		{11.44, 11.44, formants{251, 1146, 2620}, [3]float64{9.21, 2.01, 4.02}},
-		{11.44, 11.44, formants{253, 1149, 2590}, [3]float64{9.21, 2.08, 3.99}},
-		{11.46, 11.46, formants{253, 1154, 2599}, [3]float64{9.20, 2.04, 4.05}},
-		{11.52, 11.52, formants{260, 1157, 2555}, [3]float64{6.99, 1.31, 2.92}},
-		{11.50, 11.50, formants{260, 1157, 2555}, [3]float64{6.99, 1.31, 2.92}},
+		{100, 100, 57, 262, 592, 6, 2, 2},
+		{1239, 1239, 58, 255, 594, 60, 14, 26},
+		{5719, 5719, 58, 263, 593, 74, 16, 32},
+		{1152, 1152, 59, 264, 583, 56, 10, 23},
+		{1150, 1150, 59, 264, 583, 56, 10, 23},
 	},
 	146: { // LO
-		{1.00, 1.00, formants{442, 875, 2394}, [3]float64{4.79, 5.02, 0.42}},
-		{12.53, 12.53, formants{446, 875, 2465}, [3]float64{9.33, 10.33, 1.45}},
-		{11.46, 11.46, formants{446, 875, 2458}, [3]float64{9.32, 10.31, 1.50}},
-		{11.44, 11.44, formants{447, 876, 2459}, [3]float64{9.34, 10.37, 1.51}},
-		{11.44, 11.44, formants{447, 875, 2463}, [3]float64{9.28, 10.33, 1.46}},
-		{11.44, 11.44, formants{447, 876, 2394}, [3]float64{9.30, 10.39, 1.70}},
-		{11.46, 11.46, formants{447, 874, 2390}, [3]float64{9.30, 10.28, 1.61}},
-		{11.39, 11.39, formants{443, 869, 2450}, [3]float64{5.54, 6.05, 0.56}},
-		{11.50, 11.50, formants{443, 869, 2450}, [3]float64{5.54, 6.05, 0.56}},
+		{100, 100, 101, 200, 546, 38, 40, 3},
+		{5831, 5831, 102, 200, 546, 74, 83, 14},
+		{2285, 2285, 101, 198, 559, 44, 48, 4},
+		{1150, 1150, 101, 198, 559, 44, 48, 4},
 	},
 	149: { // IYRR
-		{1.00, 1.00, formants{358, 1336, 2487}, [3]float64{3.97, 2.40, 2.83}},
-		{12.15, 12.15, formants{234, 2208, 2552}, [3]float64{12.00, 8.04, 6.25}},
-		{11.56, 11.56, formants{248, 2199, 2522}, [3]float64{14.79, 10.39, 8.21}},
-		{11.50, 11.50, formants{251, 2123, 2494}, [3]float64{15.21, 9.36, 8.26}},
-		{11.50, 11.50, formants{262, 2061, 2441}, [3]float64{15.28, 8.68, 8.73}},
-		{11.48, 11.48, formants{256, 2048, 2441}, [3]float64{16.38, 8.91, 7.61}},
-		{11.07, 11.07, formants{279, 1936, 2295}, [3]float64{16.90, 9.59, 8.69}},
-		{11.47, 11.47, formants{289, 1906, 2259}, [3]float64{16.36, 10.86, 6.08}},
-		{11.49, 11.49, formants{311, 1860, 2226}, [3]float64{16.03, 10.48, 6.62}},
-		{11.56, 11.56, formants{324, 1790, 2259}, [3]float64{15.30, 11.65, 3.39}},
-		{10.02, 10.02, formants{351, 1712, 2441}, [3]float64{16.56, 12.69, 2.11}},
-		{11.46, 11.46, formants{358, 1692, 2412}, [3]float64{18.58, 14.54, 2.78}},
-		{12.40, 12.40, formants{369, 1646, 2441}, [3]float64{16.97, 13.38, 1.59}},
-		{11.48, 11.48, formants{375, 1591, 2441}, [3]float64{16.78, 13.13, 1.71}},
-		{11.60, 11.60, formants{396, 1510, 2441}, [3]float64{16.18, 12.84, 1.04}},
-		{12.36, 12.36, formants{398, 1471, 2503}, [3]float64{13.98, 11.22, 2.27}},
-		{11.62, 11.62, formants{417, 1396, 2334}, [3]float64{11.07, 8.89, 2.40}},
-		{11.55, 11.55, formants{439, 1330, 2441}, [3]float64{10.25, 9.06, 1.20}},
-		{9.13, 9.13, formants{425, 1336, 2441}, [3]float64{17.90, 15.13, 1.72}},
-		{11.73, 11.73, formants{429, 1322, 2441}, [3]float64{10.24, 9.55, 1.29}},
-		{11.50, 11.50, formants{429, 1322, 2441}, [3]float64{10.24, 9.55, 1.29}},
+		{100, 100, 82, 305, 567, 32, 19, 23},
+		{1215, 1215, 53, 504, 582, 96, 64, 50},
+		{14859, 14859, 90, 344, 557, 129, 103, 8},
+		{6789, 6789, 98, 302, 557, 82, 76, 10},
 	},
 	151: { // AXRR
-		{1.00, 1.00, formants{532, 1502, 2368}, [3]float64{12.05, 7.97, 5.86}},
-		{11.89, 11.89, formants{530, 1501, 2374}, [3]float64{23.40, 15.20, 10.74}},
-		{11.78, 11.78, formants{525, 1500, 2347}, [3]float64{26.63, 16.67, 12.24}},
-		{11.48, 11.48, formants{520, 1490, 2295}, [3]float64{26.49, 16.89, 12.04}},
-		{11.40, 11.40, formants{514, 1474, 2250}, [3]float64{26.24, 16.54, 10.32}},
-		{11.49, 11.49, formants{507, 1468, 2426}, [3]float64{25.00, 16.61, 6.10}},
-		{11.54, 11.54, formants{502, 1461, 2230}, [3]float64{24.25, 16.01, 10.16}},
-		{11.45, 11.45, formants{499, 1446, 2138}, [3]float64{23.77, 16.42, 8.41}},
-		{11.48, 11.48, formants{493, 1437, 2084}, [3]float64{23.02, 16.27, 7.66}},
-		{11.45, 11.45, formants{486, 1427, 2042}, [3]float64{23.00, 16.12, 6.56}},
-		{11.46, 11.46, formants{483, 1414, 1959}, [3]float64{21.75, 15.30, 6.74}},
-		{11.48, 11.48, formants{476, 1408, 1933}, [3]float64{21.41, 15.09, 6.00}},
-		{11.46, 11.46, formants{468, 1384, 1943}, [3]float64{21.36, 14.98, 5.50}},
-		{11.50, 11.50, formants{463, 1377, 2347}, [3]float64{19.81, 15.16, 2.10}},
-		{11.46, 11.46, formants{456, 1373, 2347}, [3]float64{19.87, 15.25, 2.11}},
-		{11.44, 11.44, formants{449, 1358, 2347}, [3]float64{19.37, 14.87, 2.31}},
-		{11.44, 11.44, formants{447, 1355, 2347}, [3]float64{18.55, 15.28, 2.04}},
-		{10.89, 10.89, formants{435, 1340, 2347}, [3]float64{19.49, 16.07, 0.90}},
-		{11.48, 11.48, formants{433, 1334, 2347}, [3]float64{15.41, 13.03, 0.82}},
-		{12.06, 12.06, formants{436, 1324, 2347}, [3]float64{7.40, 6.72, 0.73}},
-		{11.50, 11.50, formants{436, 1324, 2347}, [3]float64{7.40, 6.72, 0.73}},
+		{100, 100, 121, 343, 540, 96, 64, 47},
+		{5804, 5804, 116, 335, 553, 200, 133, 49},
+		{6886, 6886, 109, 321, 441, 171, 121, 48},
+		{1146, 1146, 107, 316, 443, 171, 120, 44},
+		{1150, 1150, 106, 314, 535, 158, 121, 17},
+		{4523, 4523, 99, 306, 535, 156, 129, 7},
+		{3504, 3504, 99, 302, 535, 59, 54, 6},
 	},
 	152: { // AWRR
-		{1.00, 1.00, formants{726, 930, 2530}, [3]float64{7.32, 6.79, 2.55}},
-		{12.36, 12.36, formants{708, 964, 2486}, [3]float64{19.98, 17.80, 5.78}},
-		{11.40, 11.40, formants{694, 981, 2460}, [3]float64{22.75, 21.26, 6.22}},
-		{11.48, 11.48, formants{676, 1003, 2397}, [3]float64{22.60, 20.86, 6.42}},
-		{11.42, 11.42, formants{662, 1025, 2350}, [3]float64{22.83, 20.99, 6.31}},
-		{11.42, 11.42, formants{646, 1047, 2345}, [3]float64{22.62, 21.16, 6.17}},
-		{11.40, 11.40, formants{631, 1066, 2247}, [3]float64{23.13, 20.87, 6.14}},
-		{11.54, 11.54, formants{615, 1090, 2207}, [3]float64{22.91, 20.36, 5.74}},
-		{11.36, 11.36, formants{599, 1110, 2164}, [3]float64{23.02, 20.37, 5.53}},
-		{12.73, 12.73, formants{590, 1127, 2130}, [3]float64{20.81, 17.55, 5.24}},
-		{11.42, 11.42, formants{582, 1139, 2148}, [3]float64{17.76, 15.72, 4.41}},
-		{11.44, 11.44, formants{563, 1178, 2094}, [3]float64{17.64, 15.89, 3.77}},
-		{11.44, 11.44, formants{547, 1195, 1971}, [3]float64{17.72, 15.93, 4.21}},
-		{11.41, 11.41, formants{529, 1233, 2229}, [3]float64{18.15, 15.80, 4.08}},
-		{11.44, 11.44, formants{511, 1247, 2153}, [3]float64{18.10, 15.97, 2.93}},
-		{11.48, 11.48, formants{492, 1283, 2168}, [3]float64{18.16, 15.73, 4.00}},
-		{11.39, 11.39, formants{470, 1305, 2388}, [3]float64{18.57, 15.85, 2.19}},
-		{12.54, 12.54, formants{453, 1308, 2382}, [3]float64{13.33, 10.73, 4.80}},
-		{11.42, 11.42, formants{448, 1321, 2405}, [3]float64{11.59, 9.75, 2.80}},
-		{10.25, 10.25, formants{446, 1318, 2397}, [3]float64{9.51, 9.62, 0.97}},
-		{11.50, 11.50, formants{446, 1318, 2397}, [3]float64{9.51, 9.62, 0.97}},
+		{100, 100, 166, 212, 577, 59, 54, 20},
+		{2376, 2376, 158, 224, 561, 182, 170, 50},
+		{11565, 11565, 125, 273, 450, 142, 127, 34},
+		{1141, 1141, 121, 281, 508, 145, 126, 33},
+		{8002, 8002, 102, 301, 547, 76, 77, 8},
 	},
 	153: { // OWRR
-		{1.00, 1.00, formants{519, 910, 2400}, [3]float64{1.06, 0.89, 0.85}},
-		{12.89, 12.89, formants{562, 865, 2400}, [3]float64{6.87, 7.72, 0.86}},
-		{9.68, 9.68, formants{529, 883, 2427}, [3]float64{16.52, 20.16, 4.58}},
-		{11.48, 11.48, formants{522, 910, 2391}, [3]float64{18.00, 21.92, 5.28}},
-		{11.49, 11.49, formants{519, 937, 2315}, [3]float64{18.26, 21.88, 5.42}},
-		{13.48, 13.48, formants{524, 950, 2400}, [3]float64{11.75, 13.56, 7.44}},
-		{10.74, 10.74, formants{520, 993, 2313}, [3]float64{14.28, 16.08, 2.91}},
-		{11.34, 11.34, formants{517, 1024, 2400}, [3]float64{14.71, 16.57, 1.08}},
-		{11.43, 11.43, formants{508, 1050, 2511}, [3]float64{14.71, 16.30, 1.96}},
-		{11.44, 11.44, formants{497, 1083, 2555}, [3]float64{14.91, 15.93, 3.20}},
-		{11.29, 11.29, formants{486, 1113, 2619}, [3]float64{15.74, 16.09, 3.04}},
-		{11.38, 11.38, formants{484, 1147, 2584}, [3]float64{17.47, 16.34, 3.30}},
-		{11.56, 11.56, formants{479, 1170, 2583}, [3]float64{17.39, 16.17, 2.47}},
-		{11.37, 11.37, formants{473, 1205, 2528}, [3]float64{17.05, 15.93, 1.88}},
-		{11.44, 11.44, formants{464, 1236, 2379}, [3]float64{17.32, 15.97, 2.06}},
-		{11.49, 11.49, formants{456, 1269, 2518}, [3]float64{17.10, 15.56, 2.35}},
-		{11.25, 11.25, formants{451, 1305, 2583}, [3]float64{17.41, 15.90, 1.92}},
-		{12.62, 12.62, formants{450, 1322, 2482}, [3]float64{12.43, 11.20, 4.01}},
-		{9.59, 9.59, formants{449, 1316, 2400}, [3]float64{11.05, 9.98, 1.70}},
-		{13.29, 13.29, formants{450, 910, 2400}, [3]float64{5.79, 5.13, 0.38}},
-		{11.50, 11.50, formants{450, 910, 2400}, [3]float64{5.79, 5.13, 0.38}},
+		{100, 100, 118, 208, 547, 8, 7, 7},
+		{1289, 1289, 128, 197, 547, 55, 62, 7},
+		{968, 968, 121, 201, 554, 132, 161, 37},
+		{3645, 3645, 120, 217, 547, 94, 108, 60},
+		{1074, 1074, 119, 226, 528, 114, 129, 23},
+		{1134, 1134, 118, 234, 547, 118, 133, 9},
+		{2287, 2287, 113, 247, 583, 119, 127, 26},
+		{3423, 3423, 109, 267, 589, 139, 129, 20},
+		{2281, 2281, 106, 282, 543, 139, 128, 16},
+		{2274, 2274, 103, 298, 589, 139, 127, 15},
+		{1262, 1262, 103, 302, 566, 99, 90, 32},
+		{959, 959, 102, 300, 547, 88, 80, 14},
+		{1329, 1329, 103, 208, 547, 46, 41, 3},
+		{1150, 1150, 103, 208, 547, 46, 41, 3},
 	},
 	156: { // OWIY
-		{1.00, 1.00, formants{367, 1006, 2461}, [3]float64{0.43, 0.48, 0.48}},
-		{13.15, 13.15, formants{551, 871, 2461}, [3]float64{5.79, 6.16, 1.14}},
-		{12.23, 12.23, formants{552, 904, 2543}, [3]float64{10.17, 12.25, 4.25}},
-		{11.38, 11.38, formants{534, 917, 2503}, [3]float64{11.71, 13.00, 7.05}},
-		{10.49, 10.49, formants{518, 1006, 2427}, [3]float64{14.37, 16.32, 4.82}},
-		{11.50, 11.50, formants{498, 1081, 2428}, [3]float64{14.59, 15.80, 5.49}},
-		{11.38, 11.38, formants{478, 1156, 2393}, [3]float64{15.07, 15.69, 5.67}},
-		{11.38, 11.38, formants{457, 1231, 2424}, [3]float64{16.43, 15.58, 3.73}},
-		{10.81, 10.81, formants{436, 1308, 2429}, [3]float64{14.99, 13.52, 7.32}},
-		{11.43, 11.43, formants{418, 1380, 2456}, [3]float64{18.27, 16.19, 7.37}},
-		{12.54, 12.54, formants{417, 1443, 2457}, [3]float64{14.70, 12.58, 5.85}},
-		{11.27, 11.27, formants{390, 1537, 2517}, [3]float64{15.50, 12.45, 6.37}},
-		{11.38, 11.38, formants{380, 1597, 2595}, [3]float64{16.72, 12.66, 4.93}},
-		{10.52, 10.52, formants{367, 1665, 2473}, [3]float64{18.91, 15.11, 8.64}},
-		{11.42, 11.42, formants{357, 1724, 2461}, [3]float64{18.40, 14.76, 9.17}},
-		{12.86, 12.86, formants{336, 1809, 2522}, [3]float64{16.10, 13.08, 7.15}},
-		{11.21, 11.21, formants{311, 1893, 2554}, [3]float64{16.15, 10.91, 6.30}},
-		{11.31, 11.31, formants{294, 1946, 2548}, [3]float64{16.52, 10.38, 7.09}},
-		{11.87, 11.87, formants{260, 2042, 2536}, [3]float64{16.66, 9.22, 7.40}},
-		{11.43, 11.43, formants{243, 2092, 2561}, [3]float64{16.16, 8.68, 8.00}},
-		{11.39, 11.39, formants{245, 2198, 2536}, [3]float64{15.07, 9.97, 8.38}},
-		{11.52, 11.52, formants{232, 2231, 2561}, [3]float64{14.13, 8.52, 7.00}},
-		{12.68, 12.68, formants{249, 2232, 2545}, [3]float64{7.17, 5.18, 3.47}},
-		{11.50, 11.50, formants{249, 2232, 2545}, [3]float64{7.17, 5.18, 3.47}},
+		{100, 100, 84, 229, 561, 3, 4, 4},
+		{1315, 1315, 126, 199, 561, 46, 49, 9},
+		{1223, 1223, 126, 206, 580, 81, 98, 34},
+		{1138, 1138, 122, 209, 571, 94, 104, 56},
+		{3337, 3337, 109, 264, 546, 121, 126, 45},
+		{1138, 1138, 104, 281, 553, 131, 125, 30},
+		{1081, 1081, 99, 298, 554, 120, 108, 59},
+		{4662, 4662, 87, 364, 592, 134, 101, 39},
+		{3480, 3480, 77, 413, 575, 129, 105, 57},
+		{4582, 4582, 55, 477, 584, 129, 69, 64},
+		{2291, 2291, 53, 509, 584, 113, 68, 56},
+		{1268, 1268, 57, 509, 580, 57, 41, 28},
+		{1150, 1150, 57, 509, 580, 57, 41, 28},
 	},
 	158: { // IYEH
-		{1.00, 1.00, formants{595, 1732, 2592}, [3]float64{1.13, 0.41, 0.39}},
-		{13.69, 13.69, formants{595, 2137, 2553}, [3]float64{5.36, 3.89, 3.71}},
-		{10.56, 10.56, formants{263, 2190, 2496}, [3]float64{13.73, 10.61, 7.87}},
-		{12.67, 12.67, formants{255, 2169, 2526}, [3]float64{16.77, 10.04, 8.61}},
-		{11.47, 11.47, formants{262, 2146, 2592}, [3]float64{17.51, 10.52, 8.76}},
-		{11.04, 11.04, formants{310, 2081, 2510}, [3]float64{17.74, 10.01, 9.51}},
-		{11.46, 11.46, formants{347, 2055, 2518}, [3]float64{19.26, 10.71, 10.32}},
-		{11.41, 11.41, formants{377, 1999, 2592}, [3]float64{19.86, 9.44, 11.70}},
-		{11.46, 11.46, formants{410, 1944, 2592}, [3]float64{19.88, 9.37, 10.56}},
-		{11.05, 11.05, formants{433, 1944, 2461}, [3]float64{22.43, 12.88, 9.16}},
-		{11.50, 11.50, formants{464, 1901, 2444}, [3]float64{23.21, 13.24, 8.47}},
-		{11.41, 11.41, formants{494, 1840, 2477}, [3]float64{23.16, 12.84, 8.85}},
-		{11.46, 11.46, formants{524, 1793, 2512}, [3]float64{22.79, 12.85, 7.46}},
-		{11.38, 11.38, formants{549, 1771, 2577}, [3]float64{24.62, 11.59, 9.68}},
-		{11.47, 11.47, formants{575, 1726, 2484}, [3]float64{24.11, 11.74, 9.96}},
-		{11.12, 11.12, formants{595, 1732, 2392}, [3]float64{26.14, 15.40, 11.58}},
-		{11.33, 11.33, formants{613, 1687, 2356}, [3]float64{25.88, 15.32, 10.01}},
-		{11.97, 11.97, formants{613, 1696, 2335}, [3]float64{18.88, 11.07, 7.06}},
-		{13.22, 13.22, formants{610, 1692, 2342}, [3]float64{9.04, 5.22, 3.41}},
-		{11.50, 11.50, formants{610, 1692, 2342}, [3]float64{9.04, 5.22, 3.41}},
+		{100, 100, 136, 395, 591, 9, 3, 3},
+		{1369, 1369, 136, 487, 582, 43, 31, 30},
+		{1056, 1056, 60, 499, 569, 110, 85, 63},
+		{1267, 1267, 58, 495, 576, 134, 80, 69},
+		{1147, 1147, 60, 489, 591, 140, 84, 70},
+		{2250, 2250, 79, 469, 574, 154, 86, 83},
+		{6829, 6829, 120, 409, 573, 182, 103, 60},
+		{4530, 4530, 140, 385, 537, 207, 123, 80},
+		{2519, 2519, 139, 386, 534, 72, 42, 27},
+		{1150, 1150, 139, 386, 534, 72, 42, 27},
 	},
 	159: { // EHLL
-		{1.00, 1.00, formants{617, 1681, 2416}, [3]float64{0.57, 0.38, 0.19}},
-		{10.47, 10.47, formants{617, 1681, 2416}, [3]float64{4.82, 3.19, 2.38}},
-		{11.83, 11.83, formants{618, 1688, 2357}, [3]float64{17.73, 10.48, 7.59}},
-		{12.37, 12.37, formants{617, 1681, 2353}, [3]float64{25.21, 14.61, 10.75}},
-		{11.51, 11.51, formants{601, 1607, 2408}, [3]float64{24.98, 14.31, 10.23}},
-		{11.47, 11.47, formants{587, 1550, 2416}, [3]float64{24.03, 13.82, 10.94}},
-		{12.49, 12.49, formants{579, 1469, 2454}, [3]float64{19.73, 12.32, 7.48}},
-		{10.43, 10.43, formants{558, 1414, 2503}, [3]float64{21.30, 13.43, 8.51}},
-		{11.58, 11.58, formants{545, 1361, 2551}, [3]float64{19.05, 13.16, 6.49}},
-		{11.56, 11.56, formants{532, 1288, 2466}, [3]float64{17.32, 12.10, 3.41}},
-		{11.43, 11.43, formants{515, 1227, 2485}, [3]float64{15.96, 12.00, 4.87}},
-		{11.25, 11.25, formants{498, 1158, 2630}, [3]float64{14.83, 11.29, 3.62}},
-		{11.70, 11.70, formants{481, 1096, 2580}, [3]float64{12.90, 11.26, 3.74}},
-		{11.59, 11.59, formants{471, 1037, 2633}, [3]float64{11.05, 10.59, 3.05}},
-		{11.53, 11.53, formants{457, 971, 2416}, [3]float64{9.68, 10.34, 1.19}},
-		{11.47, 11.47, formants{617, 965, 2416}, [3]float64{5.21, 6.13, 0.49}},
-		{11.50, 11.50, formants{617, 965, 2416}, [3]float64{5.21, 6.13, 0.49}},
+		{100, 100, 141, 383, 551, 5, 3, 2},
+		{1047, 1047, 141, 383, 551, 39, 26, 19},
+		{2420, 2420, 141, 383, 537, 202, 117, 86},
+		{9172, 9172, 114, 264, 600, 119, 90, 29},
+		{3482, 3482, 104, 221, 551, 77, 83, 10},
+		{1147, 1147, 141, 220, 551, 42, 49, 4},
+		{1150, 1150, 141, 220, 551, 42, 49, 4},
 	},
 	160: { // IYUW
-		{1.00, 1.00, formants{214, 1118, 2504}, [3]float64{4.23, 2.83, 2.45}},
-		{12.44, 12.44, formants{208, 2176, 2548}, [3]float64{14.05, 7.71, 5.76}},
-		{11.08, 11.08, formants{214, 2208, 2507}, [3]float64{18.49, 9.82, 8.01}},
-		{11.49, 11.49, formants{242, 2081, 2548}, [3]float64{15.07, 9.33, 7.62}},
-		{11.49, 11.49, formants{260, 2045, 2552}, [3]float64{14.67, 8.20, 8.25}},
-		{11.02, 11.02, formants{256, 1926, 2439}, [3]float64{16.79, 10.54, 7.65}},
-		{11.49, 11.49, formants{265, 1837, 2504}, [3]float64{15.25, 11.07, 6.06}},
-		{10.23, 10.23, formants{305, 1767, 2368}, [3]float64{15.78, 14.49, 7.55}},
-		{11.51, 11.51, formants{303, 1680, 2360}, [3]float64{16.44, 13.51, 7.94}},
-		{13.04, 13.04, formants{289, 1598, 2419}, [3]float64{13.28, 9.14, 3.37}},
-		{9.99, 9.99, formants{311, 1523, 2345}, [3]float64{15.92, 14.61, 5.33}},
-		{11.47, 11.47, formants{319, 1447, 2269}, [3]float64{15.83, 14.54, 5.28}},
-		{12.52, 12.52, formants{311, 1370, 2225}, [3]float64{15.07, 12.61, 5.51}},
-		{11.55, 11.55, formants{320, 1273, 2336}, [3]float64{12.66, 10.78, 2.81}},
-		{10.26, 10.26, formants{333, 1205, 2198}, [3]float64{13.66, 12.58, 3.89}},
-		{11.54, 11.54, formants{333, 1118, 2321}, [3]float64{15.55, 14.63, 3.30}},
-		{11.46, 11.46, formants{336, 1064, 2342}, [3]float64{14.98, 14.53, 3.10}},
-		{12.12, 12.12, formants{326, 1062, 2552}, [3]float64{8.86, 8.49, 0.65}},
-		{11.50, 11.50, formants{326, 1062, 2552}, [3]float64{8.86, 8.49, 0.65}},
+		{100, 100, 49, 255, 571, 34, 23, 20},
+		{1244, 1244, 47, 496, 581, 112, 62, 46},
+		{1108, 1108, 49, 504, 572, 148, 79, 64},
+		{2298, 2298, 59, 466, 582, 117, 66, 66},
+		{2251, 2251, 60, 419, 571, 122, 89, 48},
+		{1023, 1023, 70, 403, 540, 126, 116, 60},
+		{2455, 2455, 66, 364, 552, 106, 73, 27},
+		{5579, 5579, 76, 275, 501, 109, 101, 31},
+		{2300, 2300, 77, 243, 534, 120, 116, 25},
+		{1212, 1212, 74, 242, 582, 71, 68, 5},
+		{1150, 1150, 74, 242, 582, 71, 68, 5},
 	},
 	161: { // AXUW
-		{1.00, 1.00, formants{675, 1207, 2378}, [3]float64{2.26, 2.07, 1.53}},
-		{10.99, 10.99, formants{531, 1504, 2358}, [3]float64{13.51, 8.71, 6.50}},
-		{11.64, 11.64, formants{530, 1500, 2376}, [3]float64{24.66, 15.78, 11.67}},
-		{12.77, 12.77, formants{546, 1465, 2378}, [3]float64{22.59, 14.49, 11.76}},
-		{11.49, 11.49, formants{570, 1437, 2385}, [3]float64{22.55, 15.03, 11.33}},
-		{11.47, 11.47, formants{589, 1397, 2409}, [3]float64{22.13, 14.82, 10.42}},
-		{10.37, 10.37, formants{605, 1357, 2379}, [3]float64{25.60, 16.82, 11.24}},
-		{11.46, 11.46, formants{624, 1314, 2389}, [3]float64{24.82, 16.60, 10.32}},
-		{11.47, 11.47, formants{645, 1280, 2407}, [3]float64{24.58, 16.61, 10.70}},
-		{11.51, 11.51, formants{663, 1238, 2411}, [3]float64{23.91, 16.86, 10.89}},
-		{11.48, 11.48, formants{675, 1207, 2415}, [3]float64{26.24, 18.88, 11.19}},
-		{11.88, 11.88, formants{699, 1180, 2450}, [3]float64{20.31, 15.66, 8.64}},
-		{11.51, 11.51, formants{683, 1137, 2432}, [3]float64{23.12, 17.14, 8.71}},
-		{11.64, 11.64, formants{594, 1120, 2423}, [3]float64{18.48, 14.54, 5.84}},
-		{10.82, 10.82, formants{515, 1090, 2341}, [3]float64{18.61, 15.28, 3.74}},
-		{11.56, 11.56, formants{407, 1080, 2511}, [3]float64{16.19, 13.59, 3.08}},
-		{11.54, 11.54, formants{343, 1061, 2378}, [3]float64{14.28, 13.74, 1.20}},
-		{11.58, 11.58, formants{317, 1059, 2378}, [3]float64{8.03, 7.35, 0.48}},
-		{11.50, 11.50, formants{317, 1059, 2378}, [3]float64{8.03, 7.35, 0.48}},
+		{100, 100, 154, 275, 542, 18, 17, 12},
+		{1099, 1099, 121, 343, 538, 108, 70, 52},
+		{1164, 1164, 121, 342, 542, 197, 126, 93},
+		{11541, 11541, 156, 259, 555, 185, 137, 70},
+		{2246, 2246, 117, 249, 534, 149, 122, 30},
+		{1156, 1156, 93, 246, 573, 130, 109, 25},
+		{1154, 1154, 78, 242, 542, 114, 110, 10},
+		{1158, 1158, 72, 242, 542, 64, 59, 4},
+		{1150, 1150, 72, 242, 542, 64, 59, 4},
 	},
 	162: { // IHWW
-		{1.00, 1.00, formants{351, 1664, 2435}, [3]float64{4.35, 2.15, 1.70}},
-		{11.70, 11.70, formants{354, 1762, 2499}, [3]float64{14.62, 10.95, 6.09}},
-		{11.81, 11.81, formants{348, 1732, 2484}, [3]float64{19.41, 14.16, 8.04}},
-		{11.44, 11.44, formants{351, 1713, 2435}, [3]float64{22.44, 17.04, 9.58}},
-		{11.46, 11.46, formants{355, 1664, 2434}, [3]float64{21.72, 17.43, 9.12}},
-		{11.42, 11.42, formants{358, 1595, 2422}, [3]float64{21.35, 16.35, 9.22}},
-		{11.43, 11.43, formants{362, 1542, 2378}, [3]float64{20.12, 16.58, 8.63}},
-		{12.44, 12.44, formants{369, 1463, 2484}, [3]float64{17.12, 13.04, 3.95}},
-		{11.50, 11.50, formants{376, 1416, 2416}, [3]float64{15.99, 12.82, 4.15}},
-		{11.50, 11.50, formants{381, 1354, 2439}, [3]float64{15.07, 12.86, 2.93}},
-		{11.55, 11.55, formants{386, 1290, 2404}, [3]float64{14.17, 11.95, 3.29}},
-		{10.43, 10.43, formants{380, 1255, 2283}, [3]float64{16.49, 15.57, 5.75}},
-		{12.06, 12.06, formants{383, 1187, 2443}, [3]float64{15.61, 14.27, 3.15}},
-		{11.45, 11.45, formants{393, 1129, 2435}, [3]float64{14.04, 13.58, 2.39}},
-		{11.51, 11.51, formants{398, 1064, 2228}, [3]float64{13.16, 13.37, 3.76}},
-		{11.47, 11.47, formants{408, 1013, 2435}, [3]float64{12.30, 13.21, 1.68}},
-		{11.57, 11.57, formants{413, 953, 2435}, [3]float64{11.25, 13.31, 1.71}},
-		{11.54, 11.54, formants{426, 898, 2435}, [3]float64{10.46, 12.38, 1.98}},
-		{12.33, 12.33, formants{415, 844, 2448}, [3]float64{8.18, 10.63, 2.46}},
-		{11.49, 11.49, formants{430, 811, 2435}, [3]float64{6.70, 9.13, 2.27}},
-		{12.16, 12.16, formants{351, 802, 2435}, [3]float64{3.25, 4.83, 1.14}},
-		{11.50, 11.50, formants{351, 802, 2435}, [3]float64{3.25, 4.83, 1.14}},
+		{100, 100, 80, 380, 555, 35, 17, 14},
+		{3495, 3495, 80, 391, 555, 180, 136, 77},
+		{6975, 6975, 87, 309, 556, 121, 103, 23},
+		{5700, 5700, 91, 243, 508, 105, 107, 30},
+		{1147, 1147, 93, 231, 555, 98, 106, 13},
+		{4693, 4693, 98, 185, 555, 54, 73, 18},
+		{1216, 1216, 80, 183, 555, 26, 39, 9},
+		{1150, 1150, 80, 183, 555, 26, 39, 9},
 	},
 	163: { // AYWW
-		{1.00, 1.00, formants{679, 1567, 2175}, [3]float64{1.02, 0.71, 0.70}},
-		{11.71, 11.71, formants{716, 1647, 2175}, [3]float64{10.26, 4.78, 1.39}},
-		{12.58, 12.58, formants{712, 1671, 2607}, [3]float64{19.40, 9.73, 2.08}},
-		{11.67, 11.67, formants{707, 1657, 2377}, [3]float64{26.18, 12.68, 4.52}},
-		{11.55, 11.55, formants{698, 1609, 2251}, [3]float64{26.21, 13.45, 6.23}},
-		{10.67, 10.67, formants{679, 1567, 2483}, [3]float64{28.31, 15.13, 5.04}},
-		{11.44, 11.44, formants{661, 1517, 2467}, [3]float64{26.91, 14.71, 5.48}},
-		{11.47, 11.47, formants{649, 1452, 2464}, [3]float64{25.75, 14.36, 4.56}},
-		{11.44, 11.44, formants{633, 1397, 2110}, [3]float64{24.43, 14.07, 4.74}},
-		{11.55, 11.55, formants{618, 1350, 2115}, [3]float64{23.02, 14.13, 5.69}},
-		{11.46, 11.46, formants{602, 1293, 2175}, [3]float64{21.54, 13.92, 6.41}},
-		{11.51, 11.51, formants{589, 1234, 2157}, [3]float64{19.90, 14.05, 4.93}},
-		{11.46, 11.46, formants{573, 1175, 2170}, [3]float64{19.05, 12.90, 5.33}},
-		{11.54, 11.54, formants{560, 1116, 2228}, [3]float64{17.16, 13.35, 4.35}},
-		{11.47, 11.47, formants{539, 1067, 2705}, [3]float64{16.03, 13.33, 2.33}},
-		{11.58, 11.58, formants{527, 1015, 2710}, [3]float64{14.00, 13.41, 1.93}},
-		{11.55, 11.55, formants{515, 952, 2620}, [3]float64{12.43, 12.51, 2.33}},
-		{12.22, 12.22, formants{490, 924, 2524}, [3]float64{9.27, 10.25, 4.21}},
-		{11.63, 11.63, formants{470, 870, 2538}, [3]float64{7.84, 10.14, 3.79}},
-		{11.53, 11.53, formants{459, 814, 2459}, [3]float64{7.25, 9.89, 2.54}},
-		{11.77, 11.77, formants{679, 791, 2175}, [3]float64{4.58, 6.03, 1.26}},
-		{11.50, 11.50, formants{679, 791, 2175}, [3]float64{4.58, 6.03, 1.26}},
+		{100, 100, 155, 357, 496, 8, 6, 6},
+		{2429, 2429, 162, 381, 595, 155, 78, 17},
+		{6824, 6824, 144, 319, 481, 195, 113, 38},
+		{5752, 5752, 128, 255, 508, 137, 107, 35},
+		{1147, 1147, 123, 243, 617, 128, 107, 19},
+		{5851, 5851, 105, 186, 561, 58, 79, 20},
+		{1177, 1177, 155, 180, 496, 37, 48, 10},
+		{1150, 1150, 155, 180, 496, 37, 48, 10},
 	},
 	164: { // OWWW
-		{1.00, 1.00, formants{564, 862, 2501}, [3]float64{6.51, 7.02, 0.82}},
-		{11.98, 11.98, formants{549, 905, 2529}, [3]float64{10.07, 11.94, 4.16}},
-		{11.48, 11.48, formants{561, 891, 2482}, [3]float64{10.26, 13.15, 2.52}},
-		{11.46, 11.46, formants{542, 892, 2501}, [3]float64{10.05, 12.72, 4.18}},
-		{11.47, 11.47, formants{548, 866, 2387}, [3]float64{9.95, 12.89, 2.26}},
-		{11.43, 11.43, formants{519, 869, 2602}, [3]float64{8.82, 12.02, 2.70}},
-		{11.46, 11.46, formants{518, 844, 2556}, [3]float64{9.07, 11.88, 3.30}},
-		{11.46, 11.46, formants{520, 832, 2506}, [3]float64{9.18, 11.78, 3.43}},
-		{11.46, 11.46, formants{485, 827, 2543}, [3]float64{8.68, 11.40, 2.06}},
-		{11.48, 11.48, formants{501, 837, 2529}, [3]float64{8.22, 11.09, 1.07}},
-		{11.46, 11.46, formants{487, 824, 2595}, [3]float64{8.10, 11.03, 3.34}},
-		{11.46, 11.46, formants{476, 823, 2586}, [3]float64{8.17, 11.09, 3.09}},
-		{11.48, 11.48, formants{468, 818, 2535}, [3]float64{7.15, 10.09, 2.54}},
-		{11.47, 11.47, formants{466, 826, 2584}, [3]float64{7.05, 9.64, 3.75}},
-		{11.44, 11.44, formants{457, 811, 2496}, [3]float64{7.20, 9.73, 2.52}},
-		{11.43, 11.43, formants{452, 793, 2494}, [3]float64{6.41, 8.73, 2.24}},
-		{12.41, 12.41, formants{561, 789, 2501}, [3]float64{2.56, 3.98, 1.02}},
-		{11.50, 11.50, formants{561, 789, 2501}, [3]float64{2.56, 3.98, 1.02}},
+		{100, 100, 129, 197, 570, 52, 56, 7},
+		{1198, 1198, 125, 206, 577, 81, 96, 33},
+		{1148, 1148, 128, 203, 566, 82, 105, 20},
+		{1146, 1146, 124, 203, 570, 80, 102, 33},
+		{1147, 1147, 125, 198, 544, 80, 103, 18},
+		{1143, 1143, 118, 198, 593, 71, 96, 22},
+		{2292, 2292, 119, 190, 572, 73, 94, 27},
+		{1146, 1146, 111, 189, 580, 69, 91, 16},
+		{1148, 1148, 114, 191, 577, 66, 89, 9},
+		{1146, 1146, 111, 188, 592, 65, 88, 27},
+		{2294, 2294, 107, 187, 578, 57, 81, 20},
+		{1147, 1147, 106, 188, 589, 56, 77, 30},
+		{2287, 2287, 103, 181, 569, 51, 70, 18},
+		{1241, 1241, 128, 180, 570, 20, 32, 8},
+		{1150, 1150, 128, 180, 570, 20, 32, 8},
 	},
 	167: { // ZZ
-		{1.00, 1.00, formants{271, 1499, 2383}, [3]float64{0.40, 0.24, 0.21}},
-		{11.45, 11.45, formants{298, 1491, 2394}, [3]float64{4.81, 3.49, 3.70}},
-		{11.39, 11.39, formants{274, 1499, 2392}, [3]float64{10.03, 6.86, 7.25}},
-		{11.26, 11.26, formants{270, 1498, 2397}, [3]float64{10.21, 6.59, 7.12}},
-		{11.17, 11.17, formants{271, 1495, 2391}, [3]float64{10.54, 6.61, 7.17}},
-		{11.14, 11.14, formants{273, 1500, 2394}, [3]float64{10.23, 6.74, 7.19}},
-		{11.23, 11.23, formants{270, 1499, 2383}, [3]float64{10.36, 6.60, 7.31}},
-		{11.21, 11.21, formants{274, 1498, 2392}, [3]float64{10.26, 6.74, 7.06}},
-		{11.42, 11.42, formants{276, 1508, 2395}, [3]float64{8.23, 5.19, 5.43}},
-		{11.50, 11.50, formants{276, 1508, 2395}, [3]float64{8.23, 5.19, 5.43}},
+		{100, 100, 62, 342, 544, 3, 2, 2},
+		{1145, 1145, 68, 340, 546, 38, 28, 30},
+		{1139, 1139, 62, 342, 546, 80, 55, 58},
+		{7893, 7893, 63, 344, 546, 66, 42, 43},
 	},
 	168: { // ZH
-		{1.00, 1.00, formants{434, 1676, 2563}, [3]float64{6.69, 4.59, 1.88}},
-		{10.94, 10.94, formants{441, 1673, 2540}, [3]float64{8.29, 5.79, 2.75}},
-		{10.87, 10.87, formants{435, 1682, 2447}, [3]float64{8.14, 5.29, 3.14}},
-		{11.05, 11.05, formants{437, 1671, 2488}, [3]float64{7.92, 5.50, 2.21}},
-		{11.80, 11.80, formants{434, 1662, 2551}, [3]float64{6.39, 3.57, 2.98}},
-		{10.94, 10.94, formants{439, 1677, 2500}, [3]float64{6.58, 4.44, 2.37}},
-		{11.50, 11.50, formants{439, 1677, 2500}, [3]float64{6.58, 4.44, 2.37}},
+		{100, 100, 99, 382, 585, 54, 37, 15},
+		{6710, 6710, 100, 382, 570, 53, 36, 19},
 	},
 	169: { // DH
-		{1.00, 1.00, formants{282, 1589, 2352}, [3]float64{3.90, 3.82, 1.28}},
-		{11.36, 11.36, formants{294, 1581, 2464}, [3]float64{6.18, 5.96, 2.72}},
-		{11.67, 11.67, formants{272, 1578, 2420}, [3]float64{6.64, 5.96, 2.79}},
-		{10.94, 10.94, formants{269, 1586, 2397}, [3]float64{6.64, 5.89, 2.13}},
-		{11.87, 11.87, formants{280, 1592, 2379}, [3]float64{5.99, 5.85, 1.88}},
-		{10.96, 10.96, formants{281, 1590, 2372}, [3]float64{6.12, 5.78, 2.37}},
-		{10.91, 10.91, formants{265, 1590, 2493}, [3]float64{5.74, 5.06, 1.14}},
-		{11.12, 11.12, formants{246, 1598, 2331}, [3]float64{2.44, 2.02, 0.76}},
-		{11.50, 11.50, formants{246, 1598, 2331}, [3]float64{2.44, 2.02, 0.76}},
+		{100, 100, 64, 362, 536, 31, 31, 10},
+		{9033, 9033, 56, 364, 532, 20, 16, 6},
 	},
 	171: { // BO
-		{1.00, 1.00, formants{624, 1406, 2392}, [3]float64{1.19, 0.41, 0.17}},
-		{11.12, 11.12, formants{274, 1406, 2392}, [3]float64{6.89, 0.33, 0.61}},
-		{11.37, 11.37, formants{271, 1406, 2392}, [3]float64{7.40, 0.29, 0.72}},
-		{11.30, 11.30, formants{410, 1406, 2392}, [3]float64{8.53, 1.49, 1.65}},
-		{11.87, 11.87, formants{624, 1406, 2392}, [3]float64{20.14, 14.98, 7.74}},
-		{11.44, 11.44, formants{624, 1405, 2394}, [3]float64{17.24, 12.95, 6.59}},
-		{12.09, 12.09, formants{622, 1400, 2395}, [3]float64{8.18, 6.33, 3.09}},
-		{11.50, 11.50, formants{622, 1400, 2395}, [3]float64{8.18, 6.33, 3.09}},
+		{100, 100, 142, 321, 546, 10, 3, 1},
+		{1112, 1112, 62, 321, 546, 55, 3, 5},
+		{1137, 1137, 62, 321, 546, 59, 2, 6},
+		{1130, 1130, 94, 321, 546, 68, 12, 13},
+		{1187, 1187, 142, 321, 546, 161, 120, 62},
+		{3503, 3503, 142, 319, 546, 65, 51, 25},
 	},
 	175: { // DO
-		{1.00, 1.00, formants{440, 1486, 2485}, [3]float64{0.35, 0.29, 0.43}},
-		{11.33, 11.33, formants{263, 1486, 2485}, [3]float64{4.58, 0.28, 0.59}},
-		{10.16, 10.16, formants{272, 1486, 2485}, [3]float64{7.37, 0.36, 0.55}},
-		{11.47, 11.47, formants{274, 1486, 2485}, [3]float64{7.52, 0.38, 0.72}},
-		{12.34, 12.34, formants{440, 1486, 2485}, [3]float64{10.49, 7.15, 4.09}},
-		{12.41, 12.41, formants{439, 1486, 2514}, [3]float64{7.92, 5.46, 2.77}},
-		{11.77, 11.77, formants{440, 1486, 2485}, [3]float64{1.67, 1.00, 0.26}},
-		{11.50, 11.50, formants{440, 1486, 2485}, [3]float64{1.67, 1.00, 0.26}},
+		{100, 100, 100, 339, 567, 3, 2, 3},
+		{1133, 1133, 60, 339, 567, 37, 2, 5},
+		{2163, 2163, 62, 339, 567, 60, 3, 6},
+		{1234, 1234, 100, 339, 567, 84, 57, 33},
+		{1241, 1241, 100, 339, 573, 63, 44, 22},
+		{1177, 1177, 100, 339, 567, 13, 8, 2},
+		{1150, 1150, 100, 339, 567, 13, 8, 2},
 	},
 	176: { // ED
-		{1.00, 1.00, formants{254, 1972, 2404}, [3]float64{2.56, 1.69, 1.06}},
-		{11.53, 11.53, formants{239, 1951, 2635}, [3]float64{3.99, 1.83, 1.51}},
-		{12.84, 12.84, formants{205, 1951, 2635}, [3]float64{1.99, 0.41, 0.18}},
-		{11.50, 11.50, formants{205, 1951, 2635}, [3]float64{1.99, 0.41, 0.18}},
+		{100, 100, 58, 450, 548, 20, 14, 8},
+		{1153, 1153, 55, 445, 601, 32, 15, 12},
+		{1284, 1284, 47, 445, 601, 16, 3, 1},
+		{1150, 1150, 47, 445, 601, 16, 3, 1},
 	},
 	177: { // OD
-		{1.00, 1.00, formants{265, 1504, 2470}, [3]float64{3.32, 3.27, 1.48}},
-		{10.81, 10.81, formants{260, 1522, 2447}, [3]float64{3.12, 2.00, 1.06}},
-		{12.92, 12.92, formants{273, 1504, 2470}, [3]float64{1.57, 0.48, 0.19}},
-		{11.50, 11.50, formants{273, 1504, 2470}, [3]float64{1.57, 0.48, 0.19}},
+		{100, 100, 60, 343, 563, 27, 26, 12},
+		{1081, 1081, 59, 347, 558, 25, 16, 8},
+		{1292, 1292, 62, 343, 563, 13, 4, 2},
+		{1150, 1150, 62, 343, 563, 13, 4, 2},
 	},
 	178: { // GE
-		{1.00, 1.00, formants{254, 1306, 2523}, [3]float64{3.01, 0.37, 0.49}},
-		{10.53, 10.53, formants{265, 1063, 2551}, [3]float64{6.37, 0.29, 0.69}},
-		{11.46, 11.46, formants{265, 1307, 2508}, [3]float64{6.36, 0.35, 0.61}},
-		{11.41, 11.41, formants{267, 1960, 2582}, [3]float64{5.72, 0.35, 0.91}},
-		{11.50, 11.50, formants{267, 1960, 2582}, [3]float64{5.72, 0.35, 0.91}},
+		{100, 100, 58, 298, 575, 24, 3, 4},
+		{1053, 1053, 60, 242, 582, 51, 2, 6},
+		{1146, 1146, 60, 298, 572, 51, 3, 5},
+		{1141, 1141, 61, 447, 589, 46, 3, 7},
+		{1150, 1150, 61, 447, 589, 46, 3, 7},
 	},
 	179: { // GO
-		{1.00, 1.00, formants{250, 2012, 2386}, [3]float64{5.66, 0.19, 0.54}},
-		{11.45, 11.45, formants{258, 2012, 2480}, [3]float64{6.87, 1.03, 0.53}},
-		{11.43, 11.43, formants{264, 1436, 2570}, [3]float64{6.73, 0.55, 0.82}},
-		{11.47, 11.47, formants{282, 1718, 2551}, [3]float64{2.94, 0.62, 0.37}},
-		{11.50, 11.50, formants{282, 1718, 2551}, [3]float64{2.94, 0.62, 0.37}},
+		{100, 100, 57, 459, 544, 45, 2, 4},
+		{1145, 1145, 59, 459, 566, 55, 8, 4},
+		{1143, 1143, 60, 328, 586, 54, 4, 7},
+		{2297, 2297, 64, 392, 582, 24, 5, 3},
 	},
 	180: { // EG
-		{1.00, 1.00, formants{264, 2117, 2480}, [3]float64{8.05, 5.10, 1.17}},
-		{11.45, 11.45, formants{258, 2124, 2467}, [3]float64{5.51, 3.38, 0.63}},
-		{11.50, 11.50, formants{258, 2124, 2467}, [3]float64{5.51, 3.38, 0.63}},
+		{100, 100, 60, 483, 566, 64, 41, 9},
+		{1145, 1145, 59, 484, 563, 44, 27, 5},
+		{1150, 1150, 59, 484, 563, 44, 27, 5},
 	},
 	181: { // OG
-		{1.00, 1.00, formants{279, 1314, 2503}, [3]float64{1.06, 0.51, 0.38}},
-		{10.62, 10.62, formants{279, 1314, 2423}, [3]float64{7.49, 6.23, 0.95}},
-		{11.44, 11.44, formants{262, 1319, 2480}, [3]float64{5.45, 3.96, 0.82}},
-		{11.50, 11.50, formants{262, 1319, 2480}, [3]float64{5.45, 3.96, 0.82}},
+		{100, 100, 64, 300, 571, 8, 4, 3},
+		{1062, 1062, 64, 300, 553, 60, 50, 8},
+		{2294, 2294, 60, 301, 566, 44, 32, 7},
 	},
 }
+
+var vfPoints = func() map[int][]vfPoint {
+	m := map[int][]vfPoint{}
+	for code, rows := range vfPointsRows {
+		for _, r := range rows {
+			m[code] = append(m[code], vfPoint{ms: r[0] / 100, glide: r[1] / 100, freq: formants{r[2] * freqStepHz, r[3] * freqStepHz, r[4] * freqStepHz}, vol: [3]float64{r[5] / 8, r[6] / 8, r[7] / 8}})
+		}
+	}
+	return m
+}()
 
 // framed plays an allophone from the chip's frames, at their measured length
 func framed(name string, p []vfPoint) sound {
@@ -632,15 +382,9 @@ func framed(name string, p []vfPoint) sound {
 
 // VF-END
 
-// the hiss of ZZ and ZH. their frames are the voicing alone, measured where
-// nothing above 4kHz was compared, but both units have hiss at 3.5 to 4.5kHz 20
-// to 24dB under the voicing's loudest band, 7 to 8dB more than the voicing
-// gives (ZZ and ZH at pitch 40 on the fourth VoxProbe recording, and ZZ in Man
-// Goes Down). here oscillators 4 and 5 give it, half enveloped by the voicing
-// and following each frame's level; their frequencies, width and level are
-// fitted to the fourth VoxProbe recording, where ZZ goes from 3.8 to 1.9dB and
-// ZH 5.2 to 2.4dB (full band). left out, the VoxRecord recording's ZH goes from
-// 3.9 to 1.8dB, and Man Goes Down's ZZ is within 1dB at 3.5 and 4.5kHz
+// the hiss of ZZ and ZH: oscillators 4 and 5 at 3.5 to 4.5kHz, about 20dB under
+// the voicing's loudest band, half enveloped by the voicing and following each
+// frame's level
 var framedHiss = map[int]struct{ n1, n2, db, dist float64 }{
 	167: {3600, 4100, -22, 30}, // ZZ
 	168: {3300, 4100, -24, 60}, // ZH
@@ -669,22 +413,22 @@ func framedNoise(s *sound, code int) {
 
 func init() {
 	for i, l := range allophoneLength {
+		g := math.Pow(10, allophoneGainDB[i]/20)
 		if p := vfPoints[128+i]; p != nil {
 			allophones[i] = framed(allophones[i].name, p)
+			allophones[i].length = l
 			for j := range allophones[i].parts {
 				allophones[i].parts[j].target.onsetMs = onsetFor(128 + i)
 			}
 			framedNoise(&allophones[i], 128+i)
+			for j := range allophones[i].parts {
+				for k := range 5 {
+					allophones[i].parts[j].target.vol[k] *= g
+				}
+			}
 			continue
 		}
-		if l > 0 {
-			allophones[i].length = l
-		} else {
-			// the manual's length and transitionMs more
-			ms := allophones[i].ms()
-			allophones[i].length = (ms + transitionMs) / ms
-		}
-		g := math.Pow(10, allophoneGainDB[i]/20)
+		allophones[i].length = l
 		parts := make([]part, len(allophones[i].parts))
 		copy(parts, allophones[i].parts)
 		for j := range parts {
@@ -708,80 +452,12 @@ func (s sound) ms() float64 {
 	return t
 }
 
-// formant targets. frequencies are approximate values for an adult male
-// speaker, from published measurements of English vowels and consonants, except
-// where two independent measurements of the real chip agree.
-//
-// measured on the chip: where two independent measurements of a sound's formant
-// agree, it is set to their mean. they agree when they are within 10% of each
-// other or within 88Hz (the spacing of the voice's harmonics at the default
-// pitch, about as finely as a formant can be read from a recording). the
-// measurements are the openFPGA-7800 AtariVox engine's, read from recordings of
-// games speaking (docs/ATARIVOX.md, MIT licence), and those behind Stella's
-// SpeakJet engine (feature/speakjet branch). formants where the two disagree,
-// or that only one of them measured, keep their published values:
-//
-// OW: F1 F2 AX: F1 F2 F3 RR: F1 F2 F3 UX: F1 F2 IH: F1 F2 F3 MM: F1 F3 EY: F1
-// F2 F3 EH: F1 F2 AW: F2
-//
-// the third take of the VoxRecord recording (see msa_speed_factor()), whose
-// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
-// within about 5% (formants read by linear prediction, the same way on the
-// recording and on this library's own output, so that the method's errors
-// cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
-// 870 to 1065), AY F1 and F2 (660 to 710, 1720 to 1660), OH F1 and F2 (730 to
-// 690, 1090 to 1150) and WW F1 and F2 (300 to 495, 650 to 765). IY can't be
-// read this way. the nasals (MM among them) are fitted to its spectra instead
-// (see allophone()).
-//
-// the second VoxProbe recording then measured the oscillators directly: at
-// pitch 40 each voicing pulse stands alone, a few milliseconds of the three
-// formant sines starting together, so their frequencies can be fitted to the
-// waveform itself. IY, IH, EY, EH, AY (but its weak F3), AX, UX, OH, AW, OW,
-// UH, UW, LE, WW, RR and MM take those frequencies (NE and NO were worse with
-// them on both recordings, and keep theirs). the biggest changes: IY F3 3010 to
-// 2539Hz, LE F2 1300 to 970, WW F1 495 to 385, MM F1 396 to 257. with them the
-// sustained sounds of the first VoxProbe recording (not used to measure them)
-// go from 4.5 to 3.7dB of the chip's spectra.
-//
-// the third VoxProbe recording measures them again, on two units, with the
-// chip's own fade and output filter (see voiceFade): IY, IH, EY, EH, AY, AX,
-// UX, OH, AW, OW, UH, UW, LE, WW, RR, MM, NE and NO are those, the mean of both
-// units (unit B's clock is 0.29% slow), which agree within a few hertz. F1 and
-// F2 of all 18 are whole multiples of about 88.4Hz less 3.5Hz, within 2.2Hz RMS
+// formant targets in Hz. the vowels, nasals and liquids are the chip's,
+// measured from single voicing pulses on two units with the chip's fade and
+// output filter (see voiceFade): their F1 and F2 are whole multiples of about
+// 88.4Hz less 3.5Hz. the rest are published values for an adult male speaker,
+// or the mean of two independent measurements of the chip where they agree
 type formants [3]float64
-
-// measured on the chip: where two independent measurements of a sound's formant
-// agree, it is set to their mean. they agree when they are within 10% of each
-// other or within 88Hz (the spacing of the voice's harmonics at the default
-// pitch, about as finely as a formant can be read from a recording). the
-// measurements are the openFPGA-7800 AtariVox engine's, read from recordings
-// of games speaking (docs/ATARIVOX.md, MIT licence), and those behind Stella's
-// SpeakJet engine (feature/speakjet branch). formants where the two disagree,
-// or that only one of them measured, keep their published values:
-//
-//	OW: F1 F2      AX: F1 F2 F3   RR: F1 F2 F3   UX: F1 F2   IH: F1 F2 F3
-//	MM: F1 F3      EY: F1 F2 F3   EH: F1 F2      AW: F2
-//
-// the third take of the VoxRecord recording (see msa.speedFactor()), whose
-// vowels barely clip, confirms AX, UX, EH, EY, IH, OW, UH, LO and RR to
-// within about 5% (formants read by linear prediction, the same way on the
-// recording and on this library's own output, so that the method's errors
-// cancel). it corrects five: AW F1 (590 to 695Hz), UW F1 and F2 (300 to 380,
-// 870 to 1065), AY F1 and F2 (660 to 710, 1720 to 1660), OH F1 and F2 (730 to
-// 690, 1090 to 1150) and WW F1 and F2 (300 to 495, 650 to 765). IY can't be
-// read this way. the nasals (MM among them) are fitted to its spectra instead
-// (see the allophones).
-//
-// the second VoxProbe recording then measured the oscillators directly: at
-// pitch 40 each voicing pulse stands alone, a few milliseconds of the three
-// formant sines starting together, so their frequencies can be fitted to the
-// waveform itself. IY, IH, EY, EH, AY (but its weak F3), AX, UX, OH, AW, OW,
-// UH, UW, LE, WW, RR and MM take those frequencies (NE and NO were worse with
-// them on both recordings, and keep theirs). the biggest changes: IY F3 3010 to
-// 2539Hz, LE F2 1300 to 970, WW F1 495 to 385, MM F1 396 to 257. with them the
-// sustained sounds of the first VoxProbe recording (not used to measure them)
-// go from 4.5 to 3.7dB of the chip's spectra
 
 var (
 	fIY = formants{256, 2208, 2551}
@@ -835,21 +511,10 @@ func voicedFrame(f formants, v1, v2, v3 float64) frame {
 	}
 }
 
-// the chip doesn't restart all three formant sines at the same phase: fitted to
-// the single pulses of the third VoxProbe recording with the chip's fade and
-// output filter (see voiceFade), each sound's second and third formants start
-// at their own phase against the first, the same on both units (IH's 0.13 and
-// 0.17 of a cycle ahead, MM's 0.25 and 0.27, IY's 0.92 and 0.93). they shape
-// the dips between the formants: restarting all three together, as first
-// assumed here, leaves those dips up to 10dB too deep (IY, MM, NE) and the
-// single pulses 4.5dB from the chip's rather than 2.0. formantPhases gives a
-// voiced frame those phases. but measured at pitch 40, they don't all hold at
-// speaking pitch: against the VoxRecord recording at the default pitch
-// (background removed, unit B and unit A's unclipped sounds) and the first
-// VoxProbe recording at pitches 88 and 60 (which nothing here was fitted to),
-// IY, EY, EH, AY, AX, UX, OH, AW and MM match better without theirs (IY 85 to
-// 91% and 3.2 to 2.0dB, and 3.4 to 2.2dB on VoxProbe), so those restart
-// together; OW, UH, UW, NGE, NGO, NE, LE, WW and RR keep theirs
+// the chip doesn't restart all three formant sines at the same phase: each
+// sound's second and third formants start at their own phase against the first
+// (as fractions of a cycle). only the sounds that match the chip better with
+// them at speaking pitch have them
 func formantPhases(f frame, p2, p3 float64) frame {
 	f.phase0[1] = p2
 	f.phase0[2] = p3
@@ -895,15 +560,9 @@ func hush(f frame, db float64) frame {
 	return f
 }
 
-// how much quieter the chip's noise is than the levels first chosen here.
-// measured from the vox_test recording (see steadyLength) by comparing each
-// noise sound's level against the vowel beside it, on the chip and here. on
-// the chip hiss sits 16 to 23dB under the vowels; here it was level with them.
-// the corrections: SE 23dB, CH (the SH frame) 16.4dB, TH 11.8dB, FF 13.7dB,
-// stop bursts 19.5dB (TT 23dB, KE 16dB) and aspiration 14.5dB (TT). sounds the
-// recording doesn't have take the mean of the fricatives that it does. the
-// voiceless fricatives now have these levels built into their frames (see
-// frSE)
+// how much quieter the chip's noise is than levels first chosen here: hiss sits
+// 16 to 23dB under the vowels beside it. the fricatives have their levels in
+// their frames (see frSE()); these are for the bursts and aspiration
 const (
 	fricativeDB  = 17.0
 	burstDB      = 19.5
@@ -1019,15 +678,8 @@ func plosive(name string, st stop) sound {
 	return sound{name: name, speech: true, length: stopLength, parts: parts, stop: true}
 }
 
-// on both units (the VoxRecord recording) TS is hiss that starts at its
-// loudest, peaked at 3.5kHz, and dies away: 6dB down 40ms on, 14dB by 120ms,
-// spreading out to a flat spectrum with a little left at 3.5kHz. the fit as a
-// stop had it the other way round, a long broad burst into a short hiss at the
-// end. the hiss here is that fit's, then the same oscillators spread wide
-// (distortion) and moved up, gliding down to 20dB under it. against both units
-// this matches 37% (13% before) where they match each other 35%, its spectrum
-// 3.7dB off (3.5 before, 3.5 between the two). the parts are 50, 10, 40 and
-// 90ms (with the glides) at the manual's 170ms: see allophoneLength
+// TS is hiss that starts at its loudest, peaked at 3.5kHz, and dies away (6dB
+// down at 40ms, 14dB by 120ms), spreading out to a flat spectrum
 func ts() sound {
 	hiss := noiseFrame(lAlveolar, 3282.5, 3250.4, 8.04, 19.69, 48.6)
 	return sound{name: "TS", speech: true, length: stopLength, parts: []part{
@@ -1045,21 +697,10 @@ func affricate(name string, st stop, fric frame, fricMs float64) sound {
 	return s
 }
 
-// frames for the fricatives SE, SO and SH. the noise of the voiceless
-// fricatives (here and HE, HO, WH, FF and TH below) is shaped to the VoxRecord
-// recording (see msa.speedFactor()). HE, HO and WH have their spectra on the
-// chip, measured in third octaves from 250Hz to 4kHz in three takes, fitted
-// through the output filter here. SE, SO, SH, FF and TH, like the stops and
-// affricates (see the stops below), were fitted further, as whole sounds: each
-// was played here from a set of values, which a search (differential evolution)
-// moved to bring its spectrogram closest to the chip's in the first and third
-// takes together, and its length to the chip's. two takes rather than one,
-// because on the hiss sounds the chip's own takes match each other only 30 to
-// 70%, so fitting one fits that take's noise. the chip's hiss is narrow bands,
-// peaked where these were broad: SE and SO at 3 to 4kHz, SH at 2.5 to  3.2kHz,
-// HE and HO around 1 to 1.5kHz, WH at 0.6 to 0.9kHz. their levels are set by
-// allophoneGainDB. all of them were then fitted again to both units at once
-// (see stop)
+// the noise frames of the voiceless fricatives, fitted as whole sounds to both
+// units: the chip's hiss is narrow bands (SE and SO at 3 to 4kHz, SH at 2.5 to
+// 3.2kHz, HE and HO around 1 to 1.5kHz, WH at 0.6 to 0.9kHz). their levels are
+// set by allophoneGainDB
 var (
 	frSE = noiseFrame(lAlveolar, 3629.7, 2609.1, 25.87, 5.78, 33.4)
 	frSO = noiseFrame(lAlveolarBak, 2953.5, 3580, 17.5, 30.41, 27.3)
@@ -1068,42 +709,15 @@ var (
 )
 
 // a stop's noise widths, aspiration volumes and voicing default to the first
-// ones chosen here (see stop.withDefaults()). the stops that give them (BE, EB,
-// OB, ED, OD, TT, TU, KE, EK and OK) and the affricates (CH, JH and TS) were
-// fitted as whole sounds to the VoxRecord recording (see frSE). the chip's
-// bursts and aspiration are narrower noise than first chosen here (TT and TU
-// hiss at 2.6 to 3.9kHz, which the first values spread from 1 to 2kHz), its
-// voiced stops' loci differ from the published ones, and EB, OB, ED and OD last
-// 25 to 35ms on the chip, not 10. a closure that is silent can't be measured
-// from a sound played alone, so those keep the length they had (35 to 42ms, 7ms
-// for ED and OD), and TT's comes from the connected groups (see
-// allophoneLength). the other stops' burst and aspiration frequencies were
-// scaled together (by 0.5 to 1.15) to bring each spectrum closest to the
-// recording's third take; most of the chip's bursts are lower than first chosen
-// here (PE and PO by half).
-//
-// all of them but BE, BO, DO, ED, OD, GE, GO, EG and OG (which are played from
-// the chip's frames: see vfPoints) and TT were then fitted again, with the
-// output filter measured from the voicing pulses (see chipRate), to both
-// units' VoxRecord recordings at once: the spectrogram, the spectrum and the
-// level over time, each unit's level compared down to its own background, so
-// that a part the chip doesn't play costs as much as one it plays wrongly (the
-// first fit had put faint tails and tones at the background's level, where they
-// cost nothing). each keeps the length it had (see allophoneLength), which
-// comes from the connected groups; fitted to the sounds alone the lengths came
-// out shorter, and connected speech went from 21 to 60ms out. TT keeps its
-// values, which the connected groups fix: its refit made groups ending in TT
-// 100ms short. with these KE went from 54 to 74% spectrogram match and 11.3 to
-// 4.2dB, KO 55 to 81%, EK 71 to 88%, OK 68 to 86%, DE 44 to 86%, JH 49 to 80%
-// and CH 65 to 75%
+// ones chosen here (see stop.withDefaults()). the stops and affricates are
+// fitted as whole sounds to both units, each keeping the length it has (see
+// allophoneLength): a closure that is silent can't be measured from a sound
+// alone
 // allophones, codes 128 to 199. durations are from the manual
 var allophones = [...]sound{
-	// the vowels' and liquids' three volumes are the chip's: at pitch 40 on the
-	// third VoxProbe recording each voicing pulse is the three formant sines
-	// alone, and fitting them through the chip's fade and output filter (see
-	// voiceFade) gives each one's amplitude, the mean of both units. some of
-	// these sounds are instead played from the chip's own frames, pulse by pulse
-	// (see vfPoints)
+	// the vowels' and liquids' three volumes are the chip's, from single voicing
+	// pulses (see voiceFade). some sounds are played from the chip's own frames
+	// instead (see vfPoints)
 	steady("IY", 70, voicedFrame(fIY, 24.0, 15.6, 9.8)),
 	steady("IH", 70, formantPhases(voicedFrame(fIH, 24.0, 16.7, 10.0), 0.132, 0.175)),
 	steady("EY", 70, voicedFrame(fEY, 24.0, 14.0, 7.7)),
@@ -1124,12 +738,8 @@ var allophones = [...]sound{
 	steady("MM", 70, voicedFrame(formants{266, 1410, 2252}, 24.0, 6.3, 1.9)),
 	steady("NE", 70, formantPhases(voicedFrame(formants{262, 1572, 2582}, 24.0, 3.6, 7.6), 0.032, 0.965)),
 	steady("NO", 70, formantPhases(voicedFrame(formants{269, 1169, 2590}, 24.0, 4.6, 7.3), 0.962, 0.031)),
-	// NGE and NGO had no measurement (VoxProbe 3 doesn't play them), but on the
-	// VoxRecord recording both units agree on every harmonic of them to within
-	// 0.5dB RMS. their frequencies, volumes and phases are fitted to those
-	// harmonics, played here: NGE 87.0% to 97.0% and 3.93 to 1.11dB, NGO 93.1%
-	// to 96.2% and 2.98 to 1.83dB. on the chip NGE's second and third formants
-	// are one peak near 2.3kHz, where they had been 2.1 and 2.7kHz
+	// NGE and NGO are fitted to their harmonics on both units: on the chip NGE's
+	// second and third formants are one peak near 2.3kHz
 	steady("NGE", 70, formantPhases(voicedFrame(formants{368.334, 2266.3, 2386.423}, 22.0, 6.845, 2.093), 0.225, 0.909)),
 	steady("NGO", 70, formantPhases(voicedFrame(formants{374.718, 1491.004, 1938.775}, 22.0, 4.018, 9.051), 0.868, 0.994)),
 	steady("LE", 70, formantPhases(voicedFrame(fLE, 23.3, 24.0, 4.3), 0.945, 0.930)),
@@ -1214,16 +824,6 @@ var allophones = [...]sound{
 
 // effect constructors
 
-// tone is a plain sine on oscillator 1 (and optionally 2) with no envelope
-func tone(f1, f2 float64) frame {
-	t := frame{freq: [5]float64{f1, f2, 0, 0, 0}, vol: [5]float64{28, 0, 0, 0, 0}}
-	if f2 > 0 {
-		t.vol[0] = 24
-		t.vol[1] = 24
-	}
-	return t
-}
-
 func quiet(f frame) frame {
 	f.vol = [5]float64{}
 	return f
@@ -1238,12 +838,8 @@ func fade(f frame, db float64) frame {
 	return f
 }
 
-// m1 is measured from the vox_test recording (see steadyLength): 30ms of noise
-// with most of its energy under 2kHz, then noise around 1 to 2kHz that dies
-// away by 30dB, fastest at the start and the end. on both units of the
-// VoxRecord recording the hiss holds within 3dB of the bang for 80ms, is 8dB
-// down by 130ms, 13 by 200ms, 17 by 250ms and 27 by 290ms, and stops at 300ms:
-// these fades, where it had been faded sooner and stopped at 250ms
+// a bang of noise, then hiss around 1 to 2kHz that dies away by 27dB and stops
+// at 300ms
 func m1() sound {
 	bang := noiseFrame(lGlottal, 500, 1400, 31, 26, 255)
 	hiss := noiseFrame(lGlottal, 1000, 1700, 31, 26, 160)
@@ -1270,58 +866,14 @@ func hold(ms, glide float64, f frame) []part {
 	return []part{{ms: ms, glideMs: glide, target: f}}
 }
 
-// the manual gives the DTMF tones 95ms, but on the VoxRecord recording (see
-// msa.speedFactor()) all twelve sound for 152 to 154ms, 2.4dB quieter against
-// AW than tone() plays them
-func dtmf(name string, low, high float64) sound {
-	t := fade(tone(low, high), 2.4)
-	return effect(name, hold(150, 3, t), hold(3, 3, quiet(t)))
-}
-
-// the manual describes the sound effects only by name and length. the others
-// here are traced from the third take of the VoxRecord recording (see
-// msa_speed_factor()), which plays each on its own and clips little: every 5ms
-// the level and the sound's kind were measured, and the trace reduced to the
-// points below, between which the sound glides in a straight line. a tone is up
-// to three pure sines (the chip's tones have no harmonics to speak of, 45dB and
-// more down): the strongest peaks, within 15dB of the loudest, that aren't its
-// harmonics (R0 to R9, for example, are three tones each). noise (a flat
-// spectrum) is noise around the frequency. a buzz (a pitch between 40 and 500Hz
-// found by autocorrelation, with six or more peaks) is voiced at that pitch
-// with oscillators 1 to 3 on its three formants, read by linear prediction: A1,
-// A2, A3 and M2 buzz at 87Hz, the default speech pitch, and M2 ("WOW") is a
-// vowel glide. each point is where it is reached (in ms from the start of the
-// sound), its kind, the buzz's pitch, its level in dB (-60 is silence), the
+// the effects traced from recordings that are not pure tones (the tone effects
+// are in fxTones). each point is where it is reached (ms from the start of the
+// sound), its kind, a buzz's pitch, its level in dB (-60 is silence), up to
 // three frequencies (0 for none) and the second and third's levels against the
-// first (-60 while a tone that comes and goes is absent, so that it fades
-// rather than sweeping from 0Hz). the levels are the recording's with the
-// output filter's loss at each frequency added back (see chipRate), as the
-// filter here takes it off again. many effects are nothing like their names
-// suggest, and many differ in length from the manual: A1 and A2 last about a
-// second, and M0 is a 1.2 second tone around 1.8kHz that dies away. the points
-// at the start and end of an effect that were no louder than the recording's
-// background (within 6dB of the first point) are silent: the trace had taken
-// that background for part of the effect, making each one 20 to 50ms too long.
-// the tone effects are traced again in fx2Points.
-//
-// A1 is traced again: its trace had taken the strongest peaks, which jump
-// between its parts. on both units of the VoxRecord and fourth VoxProbe
-// recordings, read from the peaks of its harmonics every 25ms (within 10Hz of
-// each other), it is three formants: one steady at 207Hz, one rising from 720
-// to 1645Hz and one from about 120 to 2870Hz, faster, crossing the other near
-// 300ms. the same at pitch 60 and 150 and at speeds 90 and 127, and at bend 15
-// all three 440Hz higher. the levels were fitted to the harmonics' peaks at the
-// default pitch: on the rest, left out (both units of the fourth VoxProbe
-// recording at pitch 60 and 150, bend 15 and speeds 90 and 127), 30 to 93% and
-// 7.4 to 1.3dB, and on the first VoxProbe recording, which nothing here was
-// fitted to, 36 to 91% and 7.3 to 1.1dB. at bend 0 the chip plays something
-// else: the second formant moves 197Hz down as it should, but the third is
-// mirrored, falling as 2.5kHz less its rise, and a line holds near
-// 2.4kHz. both are a frequency Bend took under nothing (see expand()): the
-// third formant starts at 120Hz, and the steady line is the first, which read
-// 207Hz off the harmonics but goes under at bend 0 too, so it is put at 175Hz,
-// the lowest that does: every A1 item 91.0 to 94.5% and 1.63 to 1.33dB, bend 0
-// 59 to 82% and 3.8 to 2.3dB
+// first. a tone is a pure sine; noise is noise around its frequency; a buzz is
+// voiced at its pitch with oscillators 1 to 3 on its formants. the levels have
+// the output filter's loss added back (see chipRate). A1 is three formants
+// (steady at 175Hz, rising 720 to 1645Hz, and rising faster from 120 to 2870Hz)
 const (
 	fxTone = iota
 	fxNoise
@@ -1331,1497 +883,418 @@ const (
 type fxPoint struct {
 	ms, kind, pitch int
 	db              float64
-	freq            [3]int
+	freq            [3]float64
 	rel             [3]float64
 }
 
-// the traced effects, by code
-var fxPoints = map[int][]fxPoint{
-	200: { // R0
-		{5, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{25, fxTone, 0, -9.1, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{30, fxTone, 0, -2.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{35, fxTone, 0, 1.4, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{40, fxTone, 0, 3.3, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{45, fxTone, 0, 4.6, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{70, fxTone, 0, 5.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{95, fxTone, 0, 2.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{100, fxTone, 0, -0.8, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{105, fxTone, 0, -6.5, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{110, fxTone, 0, -12.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{115, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{120, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{125, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-		{135, fxTone, 0, -60.0, [3]int{799, 511, 0}, [3]float64{0, -15.1, -60.0}},
-	},
-	201: { // R1
-		{5, fxTone, 0, -60.0, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{25, fxTone, 0, -14.8, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{30, fxTone, 0, -5.2, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{35, fxTone, 0, -1.6, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{80, fxTone, 0, 1.9, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{100, fxTone, 0, -4.4, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{105, fxTone, 0, -10.8, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{110, fxTone, 0, -20.4, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{115, fxTone, 0, -60.0, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-		{130, fxTone, 0, -60.0, [3]int{1100, 731, 0}, [3]float64{0, -19.3, -60.0}},
-	},
-	202: { // R2
-		{5, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{25, fxTone, 0, -13.7, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{30, fxTone, 0, -5.5, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{35, fxTone, 0, -2.5, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{60, fxTone, 0, 0.1, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{65, fxTone, 0, -0.2, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{95, fxTone, 0, -2.9, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{100, fxTone, 0, -5.5, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{105, fxTone, 0, -11.7, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{110, fxTone, 0, -16.4, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{115, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{120, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{125, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-		{135, fxTone, 0, -60.0, [3]int{1299, 531, 0}, [3]float64{0, -21.0, -60.0}},
-	},
-	203: { // R3
-		{5, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{10, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{15, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{20, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{25, fxTone, 0, -17.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{30, fxTone, 0, -8.1, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{35, fxTone, 0, -4.4, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{40, fxTone, 0, -2.6, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{65, fxTone, 0, -1.5, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{70, fxTone, 0, -1.5, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{90, fxTone, 0, -3.2, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{95, fxTone, 0, -5.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{100, fxTone, 0, -9.3, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{105, fxTone, 0, -15.1, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{110, fxTone, 0, -21.9, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{115, fxTone, 0, -25.8, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{120, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-		{130, fxTone, 0, -60.0, [3]int{1599, 726, 360}, [3]float64{0, -14.1, -15.2}},
-	},
-	204: { // R4
-		{5, fxTone, 0, -60.0, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{20, fxTone, 0, -60.0, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{25, fxTone, 0, -17.0, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{30, fxTone, 0, -7.5, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{55, fxTone, 0, -1.4, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{60, fxTone, 0, -1.6, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{65, fxTone, 0, -1.5, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{90, fxTone, 0, -3.2, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{95, fxTone, 0, -7.3, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{100, fxTone, 0, -10.4, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{105, fxTone, 0, -15.2, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{110, fxTone, 0, -19.1, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{115, fxTone, 0, -20.6, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{120, fxTone, 0, -60.0, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-		{130, fxTone, 0, -60.0, [3]int{1898, 305, 561}, [3]float64{0, -18.5, -23.3}},
-	},
-	205: { // R5
-		{5, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{10, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{15, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{20, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{25, fxTone, 0, -13.1, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{30, fxTone, 0, -7.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{45, fxTone, 0, -2.1, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{90, fxTone, 0, -3.5, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{95, fxTone, 0, -5.2, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{100, fxTone, 0, -12.5, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{105, fxTone, 0, -16.5, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{110, fxTone, 0, -22.1, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{115, fxTone, 0, -27.2, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{120, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{125, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-		{130, fxTone, 0, -60.0, [3]int{2198, 381, 2667}, [3]float64{0, -14.3, -18.3}},
-	},
-	206: { // R6
-		{5, fxTone, 0, -60.0, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{10, fxTone, 0, -60.0, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{15, fxTone, 0, -60.0, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{20, fxTone, 0, -21.5, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{25, fxTone, 0, -16.4, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{30, fxTone, 0, -11.8, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{35, fxTone, 0, -9.7, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{40, fxTone, 0, -1.5, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{65, fxTone, 0, -0.8, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{70, fxTone, 0, -0.7, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{80, fxTone, 0, -0.8, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{85, fxTone, 0, -8.2, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{100, fxTone, 0, -14.1, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{105, fxTone, 0, -18.3, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{110, fxTone, 0, -20.2, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{115, fxTone, 0, -27.1, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{120, fxTone, 0, -60.0, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-		{125, fxTone, 0, -60.0, [3]int{2498, 314, 546}, [3]float64{0, -19.0, -22.2}},
-	},
-	207: { // R7
-		{5, fxTone, 0, -60.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{10, fxTone, 0, -60.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{15, fxTone, 0, -60.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{20, fxTone, 0, -9.9, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{25, fxTone, 0, -5.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{30, fxTone, 0, -2.7, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{50, fxTone, 0, -0.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{55, fxTone, 0, -0.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{60, fxTone, 0, -0.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{70, fxTone, 0, -0.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{80, fxTone, 0, -0.9, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{85, fxTone, 0, -1.7, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{95, fxTone, 0, -5.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{100, fxTone, 0, -8.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{105, fxTone, 0, -13.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{110, fxTone, 0, -16.8, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{115, fxTone, 0, -17.5, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{120, fxTone, 0, -60.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-		{125, fxTone, 0, -60.0, [3]int{2797, 253, 1055}, [3]float64{0, -17.8, -24.6}},
-	},
-	208: { // R8
-		{5, fxTone, 0, -60.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{15, fxTone, 0, -60.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{20, fxTone, 0, -22.7, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{25, fxTone, 0, -18.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{40, fxTone, 0, -12.6, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{45, fxTone, 0, -12.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{75, fxTone, 0, -11.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{80, fxTone, 0, -11.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{85, fxTone, 0, -12.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{90, fxTone, 0, -12.6, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{95, fxTone, 0, -13.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{100, fxTone, 0, -15.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{105, fxTone, 0, -18.8, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{110, fxTone, 0, -23.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{115, fxTone, 0, -26.9, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{120, fxTone, 0, -60.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{125, fxTone, 0, -60.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-		{130, fxTone, 0, -60.0, [3]int{643, 3097, 321}, [3]float64{0, 10.7, -16.6}},
-	},
-	209: { // R9
-		{5, fxTone, 0, -60.0, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{15, fxTone, 0, -60.0, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{20, fxTone, 0, -24.8, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{25, fxTone, 0, -19.3, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{40, fxTone, 0, -11.9, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{45, fxTone, 0, -11.3, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{50, fxTone, 0, -11.5, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{85, fxTone, 0, -11.5, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{90, fxTone, 0, -12.1, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{95, fxTone, 0, -13.2, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{100, fxTone, 0, -14.9, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{110, fxTone, 0, -21.7, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{115, fxTone, 0, -25.6, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{120, fxTone, 0, -60.0, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{125, fxTone, 0, -60.0, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-		{130, fxTone, 0, -60.0, [3]int{640, 3397, 1592}, [3]float64{0, 10.1, -14.2}},
-	},
-	210: { // A0
-		{5, fxTone, 0, -60.0, [3]int{239, 1009, 472}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 1009, 472}, [3]float64{0, -60.0, -60.0}},
-		{25, fxTone, 0, -8.0, [3]int{239, 1009, 472}, [3]float64{0, -60.0, -60.0}},
-		{30, fxTone, 0, -7.0, [3]int{175, 1009, 472}, [3]float64{0, -0.1, -60.0}},
-		{35, fxTone, 0, -6.8, [3]int{175, 1627, 472}, [3]float64{0, -9.7, -60.0}},
-		{40, fxTone, 0, -3.1, [3]int{175, 1644, 472}, [3]float64{0, -3.0, -60.0}},
-		{45, fxTone, 0, -4.0, [3]int{233, 1726, 472}, [3]float64{0, -7.2, -60.0}},
-		{55, fxTone, 0, -1.6, [3]int{233, 1779, 472}, [3]float64{0, -3.5, -60.0}},
-		{60, fxTone, 0, -3.7, [3]int{163, 1779, 472}, [3]float64{0, -10.0, -60.0}},
-		{75, fxTone, 0, -2.9, [3]int{163, 1808, 472}, [3]float64{0, -11.2, -60.0}},
-		{80, fxTone, 0, -1.2, [3]int{175, 1837, 472}, [3]float64{0, 1.9, -60.0}},
-		{85, fxTone, 0, -2.5, [3]int{181, 1895, 472}, [3]float64{0, -10.8, -60.0}},
-		{95, fxTone, 0, -2.1, [3]int{181, 1948, 472}, [3]float64{0, -11.0, -60.0}},
-		{110, fxTone, 0, -1.0, [3]int{198, 1977, 472}, [3]float64{0, -12.0, -60.0}},
-		{115, fxTone, 0, -0.8, [3]int{204, 1977, 472}, [3]float64{0, -60.0, -60.0}},
-		{165, fxTone, 0, -0.8, [3]int{245, 1977, 472}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, 0.6, [3]int{251, 157, 472}, [3]float64{0, -60.0, -60.0}},
-		{220, fxTone, 0, 0.8, [3]int{297, 157, 472}, [3]float64{0, -60.0, -60.0}},
-		{225, fxTone, 0, 0.8, [3]int{297, 157, 472}, [3]float64{0, 0.0, -60.0}},
-		{230, fxTone, 0, 1.0, [3]int{309, 449, 472}, [3]float64{0, -11.9, -60.0}},
-		{235, fxTone, 0, 1.0, [3]int{315, 157, 472}, [3]float64{0, -9.2, -60.0}},
-		{240, fxTone, 0, 0.9, [3]int{315, 163, 472}, [3]float64{0, -11.8, -0.0}},
-		{245, fxTone, 0, 0.9, [3]int{321, 163, 478}, [3]float64{0, -10.1, -11.7}},
-		{315, fxTone, 0, 1.2, [3]int{373, 192, 560}, [3]float64{0, -13.5, -14.4}},
-		{320, fxTone, 0, 0.5, [3]int{373, 496, 187}, [3]float64{0, -12.5, -13.6}},
-		{330, fxTone, 0, -1.5, [3]int{356, 496, 157}, [3]float64{0, -4.9, -10.6}},
-		{335, fxTone, 0, -2.5, [3]int{356, 157, 157}, [3]float64{0, -10.0, -60.0}},
-		{340, fxTone, 0, -4.0, [3]int{391, 157, 157}, [3]float64{0, -60.0, -60.0}},
-		{345, fxTone, 0, -5.1, [3]int{391, 157, 157}, [3]float64{0, -60.0, -60.0}},
-		{350, fxTone, 0, -7.7, [3]int{391, 192, 157}, [3]float64{0, -60.0, -60.0}},
-		{355, fxTone, 0, -9.6, [3]int{373, 192, 157}, [3]float64{0, -60.0, -60.0}},
-		{360, fxTone, 0, -10.8, [3]int{362, 192, 157}, [3]float64{0, 0.0, -60.0}},
-		{365, fxTone, 0, -15.7, [3]int{362, 566, 157}, [3]float64{0, -10.2, -60.0}},
-		{370, fxTone, 0, -17.3, [3]int{367, 589, 157}, [3]float64{0, -11.3, -60.0}},
-		{375, fxTone, 0, -60.0, [3]int{367, 636, 157}, [3]float64{0, -12.5, -60.0}},
-		{380, fxTone, 0, -60.0, [3]int{362, 991, 157}, [3]float64{0, -13.3, -60.0}},
-		{385, fxTone, 0, -60.0, [3]int{245, 991, 157}, [3]float64{0, -13.7, -60.0}},
-		{395, fxTone, 0, -60.0, [3]int{239, 991, 157}, [3]float64{0, -13.0, -60.0}},
-	},
+// each traced point as ms, kind, pitch, its level in tenths of a dB, the three
+// frequencies in freqStepHz steps and the second and third's levels against the
+// first in tenths of a dB (see fxPoint)
+var fxRows = map[int][][9]float64{
 	211: { // A1
-		{15, fxBuzz, 87, -60.0, [3]int{175, 720, 120}, [3]float64{0, 15.0, -3.0}},
-		{35, fxBuzz, 87, -16.1, [3]int{175, 720, 120}, [3]float64{0, 15.0, -3.0}},
-		{60, fxBuzz, 87, 4.7, [3]int{175, 750, 172}, [3]float64{0, -5.3, -3.0}},
-		{85, fxBuzz, 87, 18.2, [3]int{175, 780, 224}, [3]float64{0, -16.7, -3.0}},
-		{110, fxBuzz, 87, 13.5, [3]int{175, 809, 293}, [3]float64{0, -9.0, 0.7}},
-		{135, fxBuzz, 87, 7.9, [3]int{175, 838, 362}, [3]float64{0, -9.1, 0.4}},
-		{160, fxBuzz, 87, 7.9, [3]int{175, 868, 428}, [3]float64{0, -4.3, 3.6}},
-		{185, fxBuzz, 87, 5.7, [3]int{175, 898, 495}, [3]float64{0, -2.9, -1.0}},
-		{210, fxBuzz, 87, 7.6, [3]int{175, 929, 567}, [3]float64{0, -10.8, -6.4}},
-		{235, fxBuzz, 87, 6.7, [3]int{175, 960, 640}, [3]float64{0, -1.2, -6.9}},
-		{260, fxBuzz, 87, 8.4, [3]int{175, 992, 709}, [3]float64{0, -11.9, -3.9}},
-		{285, fxBuzz, 87, 8.5, [3]int{175, 1024, 778}, [3]float64{0, -3.0, -3.0}},
-		{310, fxBuzz, 87, 7.4, [3]int{175, 1048, 861}, [3]float64{0, -3.0, -3.0}},
-		{335, fxBuzz, 87, 7.7, [3]int{175, 1072, 945}, [3]float64{0, -3.0, -3.0}},
-		{360, fxBuzz, 87, 7.3, [3]int{175, 1096, 1028}, [3]float64{0, -3.0, -3.0}},
-		{385, fxBuzz, 87, 6.6, [3]int{175, 1120, 1111}, [3]float64{0, -3.0, -3.0}},
-		{410, fxBuzz, 87, 7.6, [3]int{175, 1144, 1194}, [3]float64{0, -3.0, -3.0}},
-		{435, fxBuzz, 87, 6.9, [3]int{175, 1168, 1278}, [3]float64{0, -3.0, -3.0}},
-		{460, fxBuzz, 87, 7.1, [3]int{175, 1191, 1361}, [3]float64{0, -3.0, -3.0}},
-		{485, fxBuzz, 87, 2.9, [3]int{175, 1215, 1445}, [3]float64{0, -3.0, -3.0}},
-		{510, fxBuzz, 87, 2.3, [3]int{175, 1239, 1525}, [3]float64{0, -3.4, -7.7}},
-		{535, fxBuzz, 87, 1.5, [3]int{175, 1263, 1605}, [3]float64{0, -2.6, -1.4}},
-		{560, fxBuzz, 87, 2.7, [3]int{175, 1295, 1689}, [3]float64{0, -7.5, -6.1}},
-		{585, fxBuzz, 87, 3.9, [3]int{175, 1327, 1773}, [3]float64{0, -3.5, -7.6}},
-		{610, fxBuzz, 87, 2.0, [3]int{175, 1357, 1858}, [3]float64{0, -3.6, -0.3}},
-		{635, fxBuzz, 87, 4.8, [3]int{175, 1388, 1943}, [3]float64{0, -9.4, -11.3}},
-		{660, fxBuzz, 87, 2.6, [3]int{175, 1418, 2027}, [3]float64{0, -1.1, -1.2}},
-		{685, fxBuzz, 87, 1.7, [3]int{175, 1449, 2112}, [3]float64{0, -5.7, -4.7}},
-		{710, fxBuzz, 87, 3.3, [3]int{175, 1473, 2192}, [3]float64{0, -5.5, -8.1}},
-		{735, fxBuzz, 87, 2.6, [3]int{175, 1498, 2272}, [3]float64{0, -5.5, -1.1}},
-		{760, fxBuzz, 87, 5.4, [3]int{175, 1516, 2347}, [3]float64{0, -7.2, -12.6}},
-		{785, fxBuzz, 87, 2.8, [3]int{175, 1535, 2422}, [3]float64{0, -3.9, 2.8}},
-		{810, fxBuzz, 87, 3.5, [3]int{175, 1554, 2497}, [3]float64{0, -6.5, -9.0}},
-		{835, fxBuzz, 87, 2.8, [3]int{175, 1573, 2573}, [3]float64{0, -4.2, -2.2}},
-		{860, fxBuzz, 87, 2.1, [3]int{175, 1591, 2648}, [3]float64{0, -5.8, -2.7}},
-		{885, fxBuzz, 87, 5.2, [3]int{175, 1610, 2723}, [3]float64{0, -6.8, -12.4}},
-		{910, fxBuzz, 87, 7.9, [3]int{175, 1627, 2797}, [3]float64{0, -10.4, -7.8}},
-		{975, fxBuzz, 87, 6.0, [3]int{175, 1668, 2984}, [3]float64{0, -3.0, -3.0}},
+		{15, 2, 87, -600, 40, 164, 27, 150, -30},
+		{35, 2, 87, -161, 40, 164, 27, 150, -30},
+		{60, 2, 87, 47, 40, 171, 39, -53, -30},
+		{85, 2, 87, 182, 40, 178, 51, -167, -30},
+		{160, 2, 87, 79, 40, 198, 98, -43, 36},
+		{185, 2, 87, 57, 40, 205, 113, -29, -10},
+		{210, 2, 87, 76, 40, 212, 129, -108, -64},
+		{235, 2, 87, 67, 40, 219, 146, -12, -69},
+		{260, 2, 87, 84, 40, 226, 162, -119, -39},
+		{285, 2, 87, 85, 40, 234, 177, -30, -30},
+		{485, 2, 87, 29, 40, 277, 330, -30, -30},
+		{510, 2, 87, 23, 40, 283, 348, -34, -77},
+		{535, 2, 87, 15, 40, 288, 366, -26, -14},
+		{560, 2, 87, 27, 40, 295, 385, -75, -61},
+		{585, 2, 87, 39, 40, 303, 404, -35, -76},
+		{610, 2, 87, 20, 40, 309, 424, -36, -3},
+		{635, 2, 87, 48, 40, 317, 443, -94, -113},
+		{660, 2, 87, 26, 40, 323, 462, -11, -12},
+		{710, 2, 87, 33, 40, 336, 500, -55, -81},
+		{735, 2, 87, 26, 40, 342, 518, -55, -11},
+		{760, 2, 87, 54, 40, 346, 535, -72, -126},
+		{785, 2, 87, 28, 40, 350, 552, -39, 28},
+		{810, 2, 87, 35, 40, 354, 570, -65, -90},
+		{860, 2, 87, 21, 40, 363, 604, -58, -27},
+		{885, 2, 87, 52, 40, 367, 621, -68, -124},
+		{910, 2, 87, 79, 40, 371, 638, -104, -78},
+		{975, 2, 87, 60, 40, 380, 681, -30, -30},
 	},
-	212: { // A2
-		{5, fxBuzz, 128, -60.0, [3]int{165, 1996, 1996}, [3]float64{0, -0.0, -35.8}},
-		{10, fxBuzz, 127, -60.0, [3]int{165, 1996, 1996}, [3]float64{0, -0.1, -36.0}},
-		{15, fxBuzz, 153, -60.0, [3]int{165, 1996, 1996}, [3]float64{0, 0.3, -35.9}},
-		{20, fxBuzz, 183, -60.0, [3]int{165, 1698, 1455}, [3]float64{0, 36.6, 28.5}},
-		{25, fxBuzz, 92, -14.1, [3]int{165, 1693, 1455}, [3]float64{0, 40.4, 29.7}},
-		{30, fxBuzz, 87, -11.1, [3]int{184, 1689, 1455}, [3]float64{0, 15.7, 3.9}},
-		{35, fxBuzz, 87, -9.8, [3]int{186, 1685, 1476}, [3]float64{0, 15.4, 3.1}},
-		{45, fxBuzz, 87, -9.2, [3]int{186, 1673, 1497}, [3]float64{0, 15.1, 4.0}},
-		{55, fxBuzz, 87, -9.0, [3]int{170, 1658, 1504}, [3]float64{0, 15.7, 5.0}},
-		{70, fxBuzz, 87, -9.5, [3]int{162, 1641, 1515}, [3]float64{0, 15.4, 6.5}},
-		{75, fxBuzz, 87, -7.9, [3]int{162, 1639, 1497}, [3]float64{0, 42.4, 31.7}},
-		{80, fxBuzz, 87, -9.4, [3]int{162, 1635, 1497}, [3]float64{0, 42.7, 32.0}},
-		{85, fxBuzz, 87, -7.9, [3]int{162, 1631, 1497}, [3]float64{0, 42.6, 0.5}},
-		{490, fxBuzz, 87, -8.2, [3]int{162, 1584, 1497}, [3]float64{0, 43.2, 0.5}},
-		{495, fxBuzz, 87, -7.3, [3]int{162, 1374, 1239}, [3]float64{0, 39.9, 36.9}},
-		{510, fxBuzz, 87, -6.7, [3]int{162, 1334, 1254}, [3]float64{0, 39.3, 40.2}},
-		{530, fxBuzz, 87, -6.3, [3]int{162, 1334, 1254}, [3]float64{0, 39.3, 40.2}},
-		{535, fxBuzz, 87, -6.9, [3]int{162, 1212, 1531}, [3]float64{0, 42.7, 29.1}},
-		{580, fxBuzz, 87, -5.4, [3]int{162, 1130, 1491}, [3]float64{0, 45.9, 27.4}},
-		{585, fxBuzz, 87, -6.4, [3]int{162, 1124, 1491}, [3]float64{0, 46.2, 0.5}},
-		{620, fxBuzz, 87, -6.2, [3]int{162, 1048, 1491}, [3]float64{0, 44.3, 0.5}},
-		{625, fxBuzz, 87, -5.5, [3]int{162, 1030, 1304}, [3]float64{0, 43.0, 29.8}},
-		{690, fxBuzz, 87, -6.2, [3]int{162, 938, 1172}, [3]float64{0, 38.2, 31.4}},
-		{695, fxBuzz, 87, -6.6, [3]int{162, 919, 1040}, [3]float64{0, 37.9, 37.7}},
-		{750, fxBuzz, 87, -5.7, [3]int{162, 525, 963}, [3]float64{0, 33.8, 39.1}},
-		{770, fxBuzz, 87, -6.0, [3]int{162, 525, 963}, [3]float64{0, 33.8, 39.1}},
-		{775, fxBuzz, 87, -6.5, [3]int{162, 467, 944}, [3]float64{0, 34.3, 39.5}},
-		{815, fxBuzz, 87, -6.1, [3]int{162, 389, 897}, [3]float64{0, 38.1, 45.2}},
-		{850, fxBuzz, 87, -5.1, [3]int{162, 317, 865}, [3]float64{0, 33.5, 42.8}},
-		{860, fxBuzz, 87, -5.6, [3]int{162, 250, 857}, [3]float64{0, 32.0, 41.0}},
-		{865, fxBuzz, 87, -4.7, [3]int{162, 250, 853}, [3]float64{0, -0.0, 39.4}},
-		{895, fxBuzz, 87, -5.1, [3]int{162, 250, 845}, [3]float64{0, -0.0, 34.4}},
-		{955, fxBuzz, 87, -7.1, [3]int{162, 250, 757}, [3]float64{0, -0.0, 42.8}},
-		{980, fxBuzz, 82, -15.8, [3]int{162, 250, 731}, [3]float64{0, -0.0, 50.7}},
-		{985, fxBuzz, 183, -25.5, [3]int{162, 250, 731}, [3]float64{0, -0.0, 50.7}},
-		{990, fxBuzz, 181, -60.0, [3]int{162, 250, 731}, [3]float64{0, -0.0, 50.7}},
-		{995, fxBuzz, 71, -60.0, [3]int{160, 250, 731}, [3]float64{0, -39.9, -12.7}},
-		{1000, fxBuzz, 127, -60.0, [3]int{149, 250, 731}, [3]float64{0, -39.7, -10.4}},
-	},
-	// A3. its buzz was traced at 470 to 490Hz, but on both units of the fourth
-	// VoxProbe recording it repeats at the voicing frequency (60.2, 87.1 and
-	// 150Hz at pitch 60, 88 and 150), so its buzz is at the default voicing pitch
-	// here and follows Pitch: its items match both units better (79 to 80%, 80 to
-	// 82%)
 	213: { // A3
-		{5, fxBuzz, 88, -60.0, [3]int{576, 977, 1996}, [3]float64{0, 27.2, 36.5}},
-		{10, fxBuzz, 88, -60.0, [3]int{576, 980, 2002}, [3]float64{0, 27.3, 37.5}},
-		{15, fxBuzz, 88, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
-		{20, fxBuzz, 88, -60.0, [3]int{576, 990, 2010}, [3]float64{0, 26.3, 38.0}},
-		{25, fxBuzz, 88, -6.5, [3]int{577, 990, 2386}, [3]float64{0, -35.0, -12.1}},
-		{30, fxBuzz, 88, -5.5, [3]int{577, 978, 2386}, [3]float64{0, -1.6, -13.1}},
-		{35, fxBuzz, 88, -3.9, [3]int{577, 978, 2386}, [3]float64{0, -1.0, -13.9}},
-		{80, fxBuzz, 88, -4.6, [3]int{578, 1065, 2476}, [3]float64{0, 1.0, -14.0}},
-		{120, fxBuzz, 88, -3.5, [3]int{626, 1164, 2491}, [3]float64{0, 0.2, -15.2}},
-		{125, fxBuzz, 88, -5.5, [3]int{632, 1177, 1852}, [3]float64{0, 0.1, 3.6}},
-		{135, fxBuzz, 88, -4.9, [3]int{645, 1199, 1852}, [3]float64{0, -0.1, 2.7}},
-		{365, fxBuzz, 88, -9.1, [3]int{1121, 1915, 2760}, [3]float64{0, 3.0, 6.1}},
-		{520, fxBuzz, 88, -8.7, [3]int{1452, 2357, 3417}, [3]float64{0, 4.1, 6.0}},
-		{525, fxBuzz, 88, -10.9, [3]int{1462, 2370, 3440}, [3]float64{0, 4.3, 6.1}},
-		{545, fxBuzz, 88, -14.2, [3]int{1465, 2382, 3447}, [3]float64{0, 5.2, 6.6}},
-		{550, fxBuzz, 88, -26.0, [3]int{1459, 2382, 3431}, [3]float64{0, 4.0, 6.5}},
-		{555, fxBuzz, 88, -60.0, [3]int{1304, 2379, 3423}, [3]float64{0, -21.7, 6.5}},
-		{560, fxBuzz, 88, -60.0, [3]int{1283, 2184, 3423}, [3]float64{0, 1.5, -11.8}},
-		{565, fxBuzz, 88, -60.0, [3]int{1067, 1987, 2980}, [3]float64{0, 7.8, 15.7}},
-		{570, fxBuzz, 88, -60.0, [3]int{1011, 1986, 2975}, [3]float64{0, 9.0, 16.6}},
+		{5, 2, 88, -600, 131, 223, 455, 272, 365},
+		{20, 2, 88, -600, 131, 226, 458, 263, 380},
+		{25, 2, 88, -65, 132, 226, 544, -350, -121},
+		{30, 2, 88, -55, 132, 223, 544, -16, -131},
+		{35, 2, 88, -39, 132, 223, 544, -10, -139},
+		{80, 2, 88, -46, 132, 243, 565, 10, -140},
+		{120, 2, 88, -35, 143, 265, 568, 2, -152},
+		{125, 2, 88, -55, 144, 268, 422, 1, 36},
+		{135, 2, 88, -49, 147, 273, 422, -1, 27},
+		{520, 2, 88, -87, 331, 538, 779, 41, 60},
+		{545, 2, 88, -142, 334, 543, 786, 52, 66},
+		{550, 2, 88, -260, 333, 543, 783, 40, 65},
+		{555, 2, 88, -600, 297, 543, 781, -217, 65},
+		{570, 2, 88, -600, 231, 453, 679, 90, 166},
 	},
-	214: { // A4
-		{5, fxTone, 0, -60.0, [3]int{239, 467, 420}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 467, 420}, [3]float64{0, -13.9, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 991, 420}, [3]float64{0, -0.1, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 467, 420}, [3]float64{0, -15.0, -60.0}},
-		{25, fxTone, 0, -60.0, [3]int{239, 467, 420}, [3]float64{0, -13.9, -60.0}},
-		{30, fxTone, 0, 5.2, [3]int{239, 624, 420}, [3]float64{0, -2.1, -60.0}},
-		{35, fxTone, 0, 9.6, [3]int{222, 624, 420}, [3]float64{0, -8.7, -60.0}},
-		{40, fxTone, 0, 11.6, [3]int{222, 461, 420}, [3]float64{0, -12.1, -60.0}},
-		{45, fxTone, 0, 13.1, [3]int{222, 461, 420}, [3]float64{0, -60.0, -60.0}},
-		{75, fxTone, 0, 13.9, [3]int{338, 461, 420}, [3]float64{0, -60.0, -60.0}},
-		{115, fxTone, 0, 14.3, [3]int{496, 461, 420}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, 14.2, [3]int{536, 461, 420}, [3]float64{0, -60.0, -60.0}},
-		{125, fxTone, 0, 13.9, [3]int{601, 210, 420}, [3]float64{0, -60.0, -60.0}},
-		{145, fxTone, 0, 12.6, [3]int{846, 210, 420}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, 9.7, [3]int{1166, 210, 420}, [3]float64{0, -60.0, -60.0}},
-		{175, fxTone, 0, 9.8, [3]int{1411, 210, 420}, [3]float64{0, -60.0, -60.0}},
-		{195, fxTone, 0, 9.6, [3]int{2169, 210, 420}, [3]float64{0, -60.0, -60.0}},
-		{200, fxTone, 0, 10.3, [3]int{2362, 210, 420}, [3]float64{0, -5.6, -60.0}},
-		{205, fxTone, 0, 11.0, [3]int{2461, 210, 420}, [3]float64{0, -9.2, -60.0}},
-		{210, fxTone, 0, 9.8, [3]int{2840, 472, 420}, [3]float64{0, -14.1, -60.0}},
-		{215, fxTone, 0, 11.4, [3]int{3254, 472, 420}, [3]float64{0, -24.3, -60.0}},
-		{220, fxTone, 0, 15.4, [3]int{3860, 472, 420}, [3]float64{0, -19.3, -60.0}},
-		{225, fxTone, 0, 11.8, [3]int{3895, 472, 420}, [3]float64{0, -60.0, -60.0}},
-		{230, fxTone, 0, 10.5, [3]int{3901, 472, 420}, [3]float64{0, -60.0, -60.0}},
-		{255, fxTone, 0, 5.0, [3]int{3901, 496, 420}, [3]float64{0, -60.0, -60.0}},
-		{260, fxTone, 0, 3.5, [3]int{3901, 496, 420}, [3]float64{0, -31.3, -60.0}},
-		{265, fxTone, 0, 2.0, [3]int{3901, 606, 420}, [3]float64{0, -30.3, -31.8}},
-		{270, fxTone, 0, 2.0, [3]int{3901, 624, 706}, [3]float64{0, -28.5, -30.1}},
-		{275, fxTone, 0, -60.0, [3]int{490, 3901, 706}, [3]float64{0, 16.0, -1.9}},
-		{280, fxTone, 0, -60.0, [3]int{379, 3901, 647}, [3]float64{0, 11.0, -8.3}},
-		{285, fxTone, 0, -60.0, [3]int{239, 3901, 420}, [3]float64{0, 7.8, -11.7}},
-		{290, fxTone, 0, -60.0, [3]int{239, 997, 420}, [3]float64{0, -14.8, -60.0}},
-		{295, fxTone, 0, -60.0, [3]int{239, 991, 420}, [3]float64{0, -14.5, -60.0}},
-	},
-	215: { // A5
-		{5, fxTone, 0, -60.0, [3]int{239, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -8.3, [3]int{636, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{35, fxTone, 0, 0.5, [3]int{630, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{130, fxTone, 0, 3.1, [3]int{507, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{135, fxTone, 0, 3.1, [3]int{169, 484, 0}, [3]float64{0, -60.0, 0.0}},
-		{140, fxTone, 0, 3.0, [3]int{169, 484, 0}, [3]float64{0, -0.0, 0.0}},
-		{190, fxTone, 0, 3.0, [3]int{222, 432, 0}, [3]float64{0, -0.0, 0.0}},
-		{215, fxTone, 0, 3.5, [3]int{257, 408, 0}, [3]float64{0, -0.5, 0.0}},
-		{220, fxTone, 0, 3.1, [3]int{262, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{245, fxTone, 0, 3.4, [3]int{292, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{250, fxTone, 0, 3.9, [3]int{327, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{260, fxTone, 0, 4.4, [3]int{332, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{280, fxTone, 0, 1.8, [3]int{327, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{285, fxTone, 0, 3.0, [3]int{303, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{325, fxTone, 0, 3.3, [3]int{262, 408, 0}, [3]float64{0, -60.0, 0.0}},
-		{330, fxTone, 0, 3.4, [3]int{251, 408, 0}, [3]float64{0, -0.5, 0.0}},
-		{400, fxTone, 0, 3.0, [3]int{169, 490, 0}, [3]float64{0, -0.7, 0.0}},
-		{405, fxTone, 0, 2.9, [3]int{169, 490, 0}, [3]float64{0, -15.0, 0.0}},
-		{410, fxTone, 0, 2.9, [3]int{169, 490, 0}, [3]float64{0, -1.0, 0.0}},
-		{415, fxTone, 0, 3.0, [3]int{507, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{510, fxTone, 0, 0.7, [3]int{624, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{545, fxTone, 0, -4.0, [3]int{624, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{570, fxTone, 0, -16.9, [3]int{618, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{575, fxTone, 0, -60.0, [3]int{577, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{580, fxTone, 0, -60.0, [3]int{245, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{585, fxTone, 0, -60.0, [3]int{239, 490, 0}, [3]float64{0, -60.0, 0.0}},
-	},
-	216: { // A6
-		{5, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -60.0, 0.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -13.1, 0.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -14.7, 0.0}},
-		{25, fxTone, 0, -60.0, [3]int{239, 700, 0}, [3]float64{0, -11.5, 0.0}},
-		{30, fxTone, 0, -2.5, [3]int{257, 501, 0}, [3]float64{0, -12.8, 0.0}},
-		{35, fxTone, 0, 1.1, [3]int{262, 501, 0}, [3]float64{0, -1.8, 0.0}},
-		{40, fxTone, 0, 2.7, [3]int{303, 665, 0}, [3]float64{0, -5.4, 0.0}},
-		{45, fxTone, 0, 3.8, [3]int{303, 665, 0}, [3]float64{0, -5.9, 0.0}},
-		{65, fxTone, 0, 2.9, [3]int{513, 1230, 0}, [3]float64{0, -9.8, 0.0}},
-		{85, fxTone, 0, 1.3, [3]int{729, 1796, 0}, [3]float64{0, -11.8, 0.0}},
-		{95, fxTone, 0, 0.8, [3]int{799, 1994, 0}, [3]float64{0, -9.2, 0.0}},
-		{110, fxTone, 0, 0.5, [3]int{799, 2000, 0}, [3]float64{0, -11.6, 0.0}},
-		{115, fxTone, 0, 0.5, [3]int{799, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-		{180, fxTone, 0, -3.9, [3]int{799, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-		{200, fxTone, 0, -11.2, [3]int{799, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-		{215, fxTone, 0, -60.0, [3]int{799, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-		{220, fxTone, 0, -60.0, [3]int{245, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-		{230, fxTone, 0, -60.0, [3]int{227, 2000, 0}, [3]float64{0, -60.0, 0.0}},
-	},
-	217: { // A7
-		{5, fxTone, 0, -60.0, [3]int{239, 373, 770}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 373, 770}, [3]float64{0, -60.0, -60.0}},
-		{25, fxTone, 0, -9.7, [3]int{1131, 373, 770}, [3]float64{0, -60.0, -60.0}},
-		{40, fxTone, 0, -3.8, [3]int{1160, 373, 770}, [3]float64{0, -60.0, -60.0}},
-		{55, fxTone, 0, -4.2, [3]int{1195, 373, 770}, [3]float64{0, -60.0, -60.0}},
-		{60, fxTone, 0, -4.4, [3]int{1207, 373, 770}, [3]float64{0, -13.3, -14.9}},
-		{115, fxTone, 0, -3.7, [3]int{1306, 408, 886}, [3]float64{0, -0.4, -3.1}},
-		{120, fxTone, 0, -3.7, [3]int{420, 1335, 898}, [3]float64{0, -0.3, -2.6}},
-		{130, fxTone, 0, -3.3, [3]int{420, 1335, 921}, [3]float64{0, -2.1, -2.6}},
-		{135, fxTone, 0, -3.1, [3]int{426, 951, 1370}, [3]float64{0, -2.8, -2.6}},
-		{215, fxTone, 0, 0.4, [3]int{484, 1108, 1528}, [3]float64{0, -3.5, -13.8}},
-		{220, fxTone, 0, 0.5, [3]int{484, 1120, 1528}, [3]float64{0, -3.7, -60.0}},
-		{460, fxTone, 0, 0.3, [3]int{805, 1644, 1528}, [3]float64{0, -4.2, -60.0}},
-		{465, fxTone, 0, 0.2, [3]int{811, 1644, 1528}, [3]float64{0, 1.1, -60.0}},
-		{470, fxTone, 0, 0.2, [3]int{822, 1644, 1528}, [3]float64{0, -4.4, -60.0}},
-		{475, fxTone, 0, 0.1, [3]int{828, 1644, 1528}, [3]float64{0, -60.0, -60.0}},
-		{550, fxTone, 0, -6.5, [3]int{927, 1825, 1528}, [3]float64{0, -60.0, -60.0}},
-		{555, fxTone, 0, -7.5, [3]int{933, 1825, 1528}, [3]float64{0, -2.3, -60.0}},
-		{580, fxTone, 0, -14.7, [3]int{962, 1849, 1528}, [3]float64{0, 0.5, -60.0}},
-		{585, fxTone, 0, -14.7, [3]int{1860, 968, 1528}, [3]float64{0, -2.5, -60.0}},
-		{595, fxTone, 0, -20.2, [3]int{1860, 927, 1528}, [3]float64{0, -13.9, -60.0}},
-		{600, fxTone, 0, -60.0, [3]int{1860, 927, 1528}, [3]float64{0, -60.0, -60.0}},
-		{605, fxTone, 0, -60.0, [3]int{1249, 927, 1528}, [3]float64{0, -60.0, -60.0}},
-		{610, fxTone, 0, -60.0, [3]int{1090, 927, 1528}, [3]float64{0, -60.0, -60.0}},
-		{615, fxTone, 0, -60.0, [3]int{245, 927, 1528}, [3]float64{0, -60.0, -60.0}},
-		{625, fxTone, 0, -60.0, [3]int{239, 927, 1528}, [3]float64{0, -60.0, -60.0}},
-	},
-	218: { // A8
-		{5, fxTone, 0, -60.0, [3]int{239, 997, 0}, [3]float64{0, -13.8, 0.0}},
-		{20, fxTone, 0, -60.0, [3]int{245, 997, 0}, [3]float64{0, -13.6, 0.0}},
-		{25, fxTone, 0, -60.0, [3]int{245, 455, 0}, [3]float64{0, -5.4, 0.0}},
-		{30, fxTone, 0, -14.3, [3]int{245, 426, 0}, [3]float64{0, -10.5, 0.0}},
-		{35, fxTone, 0, -11.9, [3]int{227, 426, 0}, [3]float64{0, -60.0, 0.0}},
-		{50, fxTone, 0, -3.0, [3]int{233, 426, 0}, [3]float64{0, -60.0, 0.0}},
-		{65, fxTone, 0, 0.6, [3]int{344, 426, 0}, [3]float64{0, -60.0, 0.0}},
-		{80, fxTone, 0, 2.7, [3]int{449, 426, 0}, [3]float64{0, -60.0, 0.0}},
-		{85, fxTone, 0, 3.0, [3]int{484, 665, 0}, [3]float64{0, -60.0, 0.0}},
-		{95, fxTone, 0, 2.1, [3]int{501, 665, 0}, [3]float64{0, -60.0, 0.0}},
-		{125, fxTone, 0, -5.6, [3]int{490, 665, 0}, [3]float64{0, -60.0, 0.0}},
-		{130, fxTone, 0, -7.0, [3]int{449, 665, 0}, [3]float64{0, -4.8, 0.0}},
-		{140, fxTone, 0, -10.9, [3]int{303, 665, 0}, [3]float64{0, -2.9, 0.0}},
-		{145, fxTone, 0, -13.6, [3]int{303, 542, 0}, [3]float64{0, -5.1, 0.0}},
-		{150, fxTone, 0, -17.3, [3]int{303, 542, 0}, [3]float64{0, -1.2, 0.0}},
-		{155, fxTone, 0, -23.0, [3]int{239, 542, 0}, [3]float64{0, -6.7, 0.0}},
-		{160, fxTone, 0, -27.0, [3]int{239, 443, 0}, [3]float64{0, -2.9, 0.0}},
-		{165, fxTone, 0, -27.0, [3]int{338, 548, 0}, [3]float64{0, -13.7, 0.0}},
-		{170, fxTone, 0, -25.3, [3]int{338, 548, 0}, [3]float64{0, -7.5, 0.0}},
-		{175, fxTone, 0, -18.5, [3]int{338, 391, 0}, [3]float64{0, -11.3, 0.0}},
-		{180, fxTone, 0, -13.3, [3]int{338, 391, 0}, [3]float64{0, -4.8, 0.0}},
-		{185, fxTone, 0, -9.5, [3]int{338, 548, 0}, [3]float64{0, -11.8, 0.0}},
-		{190, fxTone, 0, -6.8, [3]int{251, 700, 0}, [3]float64{0, -6.2, 0.0}},
-		{195, fxTone, 0, -4.7, [3]int{251, 863, 0}, [3]float64{0, -7.0, 0.0}},
-		{200, fxTone, 0, -3.1, [3]int{251, 863, 0}, [3]float64{0, -8.2, 0.0}},
-		{205, fxTone, 0, -1.8, [3]int{286, 863, 0}, [3]float64{0, -8.8, 0.0}},
-		{210, fxTone, 0, -0.6, [3]int{327, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{225, fxTone, 0, 1.5, [3]int{443, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{235, fxTone, 0, 1.5, [3]int{496, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{280, fxTone, 0, -10.3, [3]int{496, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{295, fxTone, 0, -60.0, [3]int{490, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{300, fxTone, 0, -60.0, [3]int{251, 863, 0}, [3]float64{0, -60.0, 0.0}},
-		{310, fxTone, 0, -60.0, [3]int{239, 863, 0}, [3]float64{0, -60.0, 0.0}},
-	},
-	219: { // A9
-		{5, fxTone, 0, -60.0, [3]int{233, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -17.3, [3]int{245, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{25, fxTone, 0, -10.2, [3]int{1295, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{40, fxTone, 0, -5.1, [3]int{1295, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{85, fxTone, 0, -4.8, [3]int{1248, 2443, 828}, [3]float64{0, -60.0, -60.0}},
-		{90, fxTone, 0, -4.7, [3]int{1219, 2443, 828}, [3]float64{0, -1.5, -60.0}},
-		{140, fxTone, 0, -2.4, [3]int{904, 2169, 828}, [3]float64{0, -3.6, -60.0}},
-		{180, fxTone, 0, -0.5, [3]int{653, 1901, 828}, [3]float64{0, -5.3, -60.0}},
-		{185, fxTone, 0, -0.3, [3]int{618, 1831, 828}, [3]float64{0, 2.0, -60.0}},
-		{195, fxTone, 0, 0.1, [3]int{560, 1761, 828}, [3]float64{0, -5.9, -60.0}},
-		{220, fxTone, 0, 1.2, [3]int{402, 1627, 828}, [3]float64{0, -6.2, -60.0}},
-		{245, fxTone, 0, 1.7, [3]int{245, 1458, 828}, [3]float64{0, -6.1, -60.0}},
-		{255, fxTone, 0, 1.6, [3]int{245, 1388, 828}, [3]float64{0, -5.8, -60.0}},
-		{260, fxTone, 0, 1.6, [3]int{1306, 216, 828}, [3]float64{0, -0.1, -60.0}},
-		{265, fxTone, 0, 1.1, [3]int{1306, 216, 828}, [3]float64{0, -0.1, -60.0}},
-		{270, fxTone, 0, 0.8, [3]int{1306, 216, 828}, [3]float64{0, -11.3, -60.0}},
-		{275, fxTone, 0, 0.3, [3]int{1265, 216, 828}, [3]float64{0, -3.1, -7.2}},
-		{280, fxTone, 0, -0.3, [3]int{216, 478, 828}, [3]float64{0, -11.0, -13.2}},
-		{285, fxTone, 0, -1.0, [3]int{216, 513, 921}, [3]float64{0, -6.6, -13.1}},
-		{290, fxTone, 0, -1.9, [3]int{216, 531, 921}, [3]float64{0, -9.3, -0.1}},
-		{295, fxTone, 0, -3.0, [3]int{216, 513, 764}, [3]float64{0, -7.1, -11.8}},
-		{300, fxTone, 0, -4.1, [3]int{216, 624, 764}, [3]float64{0, -4.6, -6.4}},
-		{310, fxTone, 0, -7.0, [3]int{222, 630, 764}, [3]float64{0, -7.7, -8.9}},
-		{315, fxTone, 0, -8.8, [3]int{222, 601, 770}, [3]float64{0, -1.4, -1.5}},
-		{320, fxTone, 0, -11.1, [3]int{356, 630, 863}, [3]float64{0, -2.8, -5.8}},
-		{325, fxTone, 0, -14.2, [3]int{356, 601, 770}, [3]float64{0, -1.7, -10.7}},
-		{330, fxTone, 0, -18.1, [3]int{257, 490, 863}, [3]float64{0, -1.0, -9.0}},
-		{335, fxTone, 0, -60.0, [3]int{257, 490, 863}, [3]float64{0, -3.3, -5.5}},
-		{340, fxTone, 0, -60.0, [3]int{239, 490, 863}, [3]float64{0, -10.0, -11.6}},
-		{345, fxTone, 0, -60.0, [3]int{239, 478, 682}, [3]float64{0, -13.2, -0.1}},
-		{350, fxTone, 0, -60.0, [3]int{233, 478, 682}, [3]float64{0, -14.8, -60.0}},
-	},
-	220: { // B0
-		{5, fxTone, 0, -60.0, [3]int{239, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -20.1, [3]int{245, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{25, fxTone, 0, -7.3, [3]int{2583, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{40, fxTone, 0, -2.7, [3]int{2595, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{135, fxTone, 0, -2.9, [3]int{2595, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{185, fxTone, 0, -15.6, [3]int{2595, 227, 0}, [3]float64{0, -60.0, 0.0}},
-		{190, fxTone, 0, -18.3, [3]int{2595, 227, 0}, [3]float64{0, -13.9, 0.0}},
-		{195, fxTone, 0, -20.8, [3]int{2595, 455, 0}, [3]float64{0, -11.8, 0.0}},
-		{200, fxTone, 0, -60.0, [3]int{245, 461, 0}, [3]float64{0, -11.9, 0.0}},
-		{210, fxTone, 0, -60.0, [3]int{233, 455, 0}, [3]float64{0, -12.9, 0.0}},
-	},
-	221: { // B1
-		{5, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{25, fxTone, 0, -6.0, [3]int{1376, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{40, fxTone, 0, 0.7, [3]int{1516, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{95, fxTone, 0, -1.1, [3]int{2473, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{170, fxTone, 0, -2.5, [3]int{3767, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{185, fxTone, 0, -2.4, [3]int{3709, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{230, fxTone, 0, -1.4, [3]int{2752, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{260, fxTone, 0, -0.8, [3]int{2111, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{295, fxTone, 0, 1.5, [3]int{1411, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{375, fxTone, 0, -7.6, [3]int{1400, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{410, fxTone, 0, -60.0, [3]int{1400, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{415, fxTone, 0, -60.0, [3]int{257, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{430, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-	},
-	222: { // B2
-		{5, fxTone, 0, -60.0, [3]int{239, 198, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 198, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -5.8, [3]int{1376, 198, 0}, [3]float64{0, -60.0, 0.0}},
-		{40, fxTone, 0, 3.4, [3]int{1405, 198, 0}, [3]float64{0, -60.0, 0.0}},
-		{140, fxTone, 0, 3.3, [3]int{1405, 198, 0}, [3]float64{0, -60.0, 0.0}},
-		{145, fxTone, 0, 2.8, [3]int{1429, 198, 0}, [3]float64{0, -10.4, 0.0}},
-		{150, fxTone, 0, 1.9, [3]int{1429, 198, 0}, [3]float64{0, -3.8, 0.0}},
-		{160, fxTone, 0, 1.7, [3]int{1977, 198, 0}, [3]float64{0, -2.8, 0.0}},
-		{165, fxTone, 0, 4.7, [3]int{2484, 198, 0}, [3]float64{0, -11.6, 0.0}},
-		{175, fxTone, 0, 4.3, [3]int{2484, 198, 0}, [3]float64{0, -13.1, 0.0}},
-		{180, fxTone, 0, 0.3, [3]int{1709, 198, 0}, [3]float64{0, -1.3, 0.0}},
-		{190, fxTone, 0, 2.3, [3]int{1697, 198, 0}, [3]float64{0, -10.5, 0.0}},
-		{230, fxTone, 0, 2.9, [3]int{1697, 204, 0}, [3]float64{0, -11.6, 0.0}},
-		{255, fxTone, 0, 2.9, [3]int{1697, 397, 0}, [3]float64{0, -12.3, 0.0}},
-		{280, fxTone, 0, 2.9, [3]int{1697, 595, 0}, [3]float64{0, -12.8, 0.0}},
-		{355, fxTone, 0, -2.4, [3]int{1703, 601, 0}, [3]float64{0, -13.2, 0.0}},
-		{400, fxTone, 0, -13.2, [3]int{1703, 601, 0}, [3]float64{0, -16.1, 0.0}},
-		{405, fxTone, 0, -15.7, [3]int{1703, 472, 0}, [3]float64{0, -1.3, 0.0}},
-		{410, fxTone, 0, -18.7, [3]int{1703, 472, 0}, [3]float64{0, -15.8, 0.0}},
-		{415, fxTone, 0, -60.0, [3]int{1703, 472, 0}, [3]float64{0, -14.9, 0.0}},
-		{420, fxTone, 0, -60.0, [3]int{1703, 478, 0}, [3]float64{0, -3.3, 0.0}},
-		{425, fxTone, 0, -60.0, [3]int{356, 478, 0}, [3]float64{0, -10.6, 0.0}},
-		{430, fxTone, 0, -60.0, [3]int{239, 478, 0}, [3]float64{0, -4.3, 0.0}},
-		{435, fxTone, 0, -60.0, [3]int{233, 478, 0}, [3]float64{0, -60.0, 0.0}},
-	},
-	223: { // B3
-		{5, fxTone, 0, -60.0, [3]int{239, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -20.8, [3]int{239, 490, 0}, [3]float64{0, -60.0, 0.0}},
-		{25, fxTone, 0, -13.8, [3]int{595, 490, 0}, [3]float64{0, 0.0, 0.0}},
-		{30, fxTone, 0, -11.3, [3]int{595, 3096, 0}, [3]float64{0, 9.4, 0.0}},
-		{130, fxTone, 0, -7.1, [3]int{595, 3096, 0}, [3]float64{0, 8.2, 0.0}},
-		{135, fxTone, 0, -4.4, [3]int{595, 1423, 0}, [3]float64{0, -5.2, 0.0}},
-		{140, fxTone, 0, -2.4, [3]int{1394, 601, 0}, [3]float64{0, -5.9, 0.0}},
-		{255, fxTone, 0, -0.9, [3]int{1394, 601, 0}, [3]float64{0, -9.9, 0.0}},
-		{310, fxTone, 0, -12.2, [3]int{1400, 601, 0}, [3]float64{0, -11.6, 0.0}},
-		{325, fxTone, 0, -21.2, [3]int{1394, 589, 0}, [3]float64{0, -15.1, 0.0}},
-		{330, fxTone, 0, -60.0, [3]int{1394, 589, 0}, [3]float64{0, -6.9, 0.0}},
-		{335, fxTone, 0, -60.0, [3]int{478, 991, 0}, [3]float64{0, -4.5, 0.0}},
-		{340, fxTone, 0, -60.0, [3]int{245, 991, 0}, [3]float64{0, -12.9, 0.0}},
-		{345, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -13.8, 0.0}},
-	},
-	224: { // B4
-		{5, fxTone, 0, -60.0, [3]int{239, 1551, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 1551, 0}, [3]float64{0, -60.0, 0.0}},
-		{25, fxTone, 0, -9.4, [3]int{1819, 1551, 0}, [3]float64{0, -60.0, 0.0}},
-		{35, fxTone, 0, -4.1, [3]int{1831, 1551, 0}, [3]float64{0, -60.0, 0.0}},
-		{55, fxTone, 0, -3.2, [3]int{1825, 1551, 0}, [3]float64{0, -60.0, 0.0}},
-		{60, fxTone, 0, -2.5, [3]int{1825, 1551, 0}, [3]float64{0, -6.6, 0.0}},
-		{70, fxTone, 0, -2.2, [3]int{1825, 1551, 0}, [3]float64{0, -5.6, 0.0}},
-		{120, fxTone, 0, -1.0, [3]int{1825, 962, 0}, [3]float64{0, -2.8, 0.0}},
-		{130, fxTone, 0, -0.5, [3]int{1825, 962, 0}, [3]float64{0, -2.1, 0.0}},
-		{135, fxTone, 0, -2.3, [3]int{781, 1825, 0}, [3]float64{0, 1.7, 0.0}},
-		{155, fxTone, 0, -1.4, [3]int{548, 1825, 0}, [3]float64{0, 0.4, 0.0}},
-		{170, fxTone, 0, -1.0, [3]int{373, 1825, 0}, [3]float64{0, -0.4, 0.0}},
-		{180, fxTone, 0, -0.9, [3]int{373, 1825, 0}, [3]float64{0, -0.8, 0.0}},
-		{185, fxTone, 0, -1.0, [3]int{402, 1825, 0}, [3]float64{0, -0.4, 0.0}},
-		{200, fxTone, 0, -1.5, [3]int{577, 1825, 0}, [3]float64{0, 0.5, 0.0}},
-		{220, fxTone, 0, -2.3, [3]int{811, 1825, 0}, [3]float64{0, 1.8, 0.0}},
-		{225, fxTone, 0, -0.6, [3]int{1825, 986, 0}, [3]float64{0, -2.2, 0.0}},
-		{235, fxTone, 0, -1.0, [3]int{1825, 986, 0}, [3]float64{0, -2.9, 0.0}},
-		{280, fxTone, 0, -2.4, [3]int{1825, 1510, 0}, [3]float64{0, -5.4, 0.0}},
-		{290, fxTone, 0, -2.4, [3]int{1825, 1510, 0}, [3]float64{0, -6.2, 0.0}},
-		{295, fxTone, 0, -3.0, [3]int{1825, 1510, 0}, [3]float64{0, -60.0, 0.0}},
-		{305, fxTone, 0, -4.9, [3]int{1819, 1510, 0}, [3]float64{0, -60.0, 0.0}},
-		{310, fxTone, 0, -5.4, [3]int{1825, 1994, 0}, [3]float64{0, -60.0, 0.0}},
-		{320, fxTone, 0, -3.3, [3]int{1825, 1994, 0}, [3]float64{0, -60.0, 0.0}},
-		{325, fxTone, 0, -3.2, [3]int{1825, 1994, 0}, [3]float64{0, -4.9, 0.0}},
-		{360, fxTone, 0, -8.6, [3]int{1825, 1994, 0}, [3]float64{0, -5.2, 0.0}},
-		{390, fxTone, 0, -19.7, [3]int{1825, 1994, 0}, [3]float64{0, -6.8, 0.0}},
-		{395, fxTone, 0, -23.7, [3]int{1825, 991, 0}, [3]float64{0, -2.0, 0.0}},
-		{400, fxTone, 0, -60.0, [3]int{1825, 991, 0}, [3]float64{0, -2.9, 0.0}},
-		{405, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -14.2, 0.0}},
-		{415, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -13.8, 0.0}},
-	},
-	225: { // B5
-		{5, fxTone, 0, -60.0, [3]int{233, 490, 204}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 490, 204}, [3]float64{0, -60.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 490, 204}, [3]float64{0, -0.0, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 490, 204}, [3]float64{0, -0.0, -60.0}},
-		{25, fxTone, 0, -3.3, [3]int{951, 501, 204}, [3]float64{0, -8.9, -60.0}},
-		{30, fxTone, 0, -0.2, [3]int{951, 781, 204}, [3]float64{0, -12.9, -60.0}},
-		{35, fxTone, 0, 1.7, [3]int{951, 3493, 204}, [3]float64{0, -0.2, -60.0}},
-		{50, fxTone, 0, 3.7, [3]int{811, 3493, 204}, [3]float64{0, -0.4, -60.0}},
-		{55, fxTone, 0, 4.0, [3]int{764, 3493, 204}, [3]float64{0, -60.0, -60.0}},
-		{85, fxTone, 0, 5.4, [3]int{472, 3493, 204}, [3]float64{0, -60.0, -60.0}},
-		{95, fxTone, 0, 5.8, [3]int{379, 3493, 204}, [3]float64{0, -60.0, -60.0}},
-		{105, fxTone, 0, 6.0, [3]int{280, 3493, 204}, [3]float64{0, -60.0, -60.0}},
-		{110, fxTone, 0, 5.9, [3]int{280, 175, 204}, [3]float64{0, -60.0, -60.0}},
-		{115, fxTone, 0, 5.5, [3]int{280, 175, 204}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, 19.8, [3]int{3493, 175, 204}, [3]float64{0, -60.0, -60.0}},
-		{130, fxTone, 0, 17.9, [3]int{3499, 175, 204}, [3]float64{0, -60.0, -60.0}},
-		{155, fxTone, 0, 13.3, [3]int{3499, 175, 204}, [3]float64{0, -60.0, -60.0}},
-		{160, fxTone, 0, 12.6, [3]int{3499, 175, 204}, [3]float64{0, -14.5, -60.0}},
-		{165, fxTone, 0, 11.0, [3]int{3499, 175, 204}, [3]float64{0, -29.1, -60.0}},
-		{170, fxTone, 0, 8.7, [3]int{3499, 181, 204}, [3]float64{0, -26.1, -29.0}},
-		{175, fxTone, 0, 7.3, [3]int{3499, 233, 472}, [3]float64{0, -22.0, -24.8}},
-		{180, fxTone, 0, 3.2, [3]int{3499, 461, 472}, [3]float64{0, -20.1, -20.5}},
-		{185, fxTone, 0, -13.9, [3]int{338, 461, 472}, [3]float64{0, -4.7, -5.0}},
-		{190, fxTone, 0, -17.4, [3]int{239, 531, 204}, [3]float64{0, -1.6, -4.1}},
-		{195, fxTone, 0, -60.0, [3]int{239, 986, 204}, [3]float64{0, -0.1, -60.0}},
-		{200, fxTone, 0, -60.0, [3]int{239, 531, 204}, [3]float64{0, -13.0, -60.0}},
-		{205, fxTone, 0, -60.0, [3]int{233, 531, 204}, [3]float64{0, -60.0, -60.0}},
-	},
-	226: { // B6
-		{5, fxTone, 0, -60.0, [3]int{239, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -22.5, [3]int{239, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{25, fxTone, 0, -3.7, [3]int{3481, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{30, fxTone, 0, -1.5, [3]int{3493, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{40, fxTone, 0, 0.9, [3]int{3493, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{45, fxTone, 0, -8.1, [3]int{1802, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{70, fxTone, 0, -5.5, [3]int{1796, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{75, fxTone, 0, 5.3, [3]int{3493, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{85, fxTone, 0, 5.2, [3]int{3493, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{90, fxTone, 0, -5.6, [3]int{1796, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{140, fxTone, 0, -5.0, [3]int{1796, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{180, fxTone, 0, -18.6, [3]int{1796, 367, 0}, [3]float64{0, -60.0, 0.0}},
-		{185, fxTone, 0, -22.4, [3]int{1796, 367, 0}, [3]float64{0, -13.0, 0.0}},
-		{190, fxTone, 0, -60.0, [3]int{251, 467, 0}, [3]float64{0, -2.1, 0.0}},
-		{195, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -13.9, 0.0}},
-		{200, fxTone, 0, -60.0, [3]int{239, 991, 0}, [3]float64{0, -14.1, 0.0}},
-		{205, fxTone, 0, -60.0, [3]int{239, 467, 0}, [3]float64{0, -14.9, 0.0}},
-	},
-	227: { // B7
-		{5, fxTone, 0, -60.0, [3]int{239, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{20, fxTone, 0, -23.5, [3]int{239, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{25, fxTone, 0, -4.6, [3]int{2892, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{40, fxTone, 0, 0.7, [3]int{2898, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{60, fxTone, 0, 0.4, [3]int{2898, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{70, fxTone, 0, -2.9, [3]int{2898, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{80, fxTone, 0, -12.4, [3]int{2898, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{85, fxTone, 0, -1.3, [3]int{3895, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{125, fxTone, 0, 2.6, [3]int{3895, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{160, fxTone, 0, -3.4, [3]int{3895, 268, 0}, [3]float64{0, -60.0, 0.0}},
-		{165, fxTone, 0, -4.9, [3]int{3895, 268, 0}, [3]float64{0, -31.7, 0.0}},
-		{170, fxTone, 0, -6.7, [3]int{3895, 379, 0}, [3]float64{0, -17.6, 0.0}},
-		{175, fxTone, 0, -26.2, [3]int{422, 414, 0}, [3]float64{0, -4.2, 0.0}},
-		{180, fxTone, 0, -60.0, [3]int{391, 997, 0}, [3]float64{0, -0.4, 0.0}},
-		{185, fxTone, 0, -60.0, [3]int{373, 997, 0}, [3]float64{0, -4.3, 0.0}},
-		{190, fxTone, 0, -60.0, [3]int{274, 1003, 0}, [3]float64{0, -10.1, 0.0}},
-		{195, fxTone, 0, -60.0, [3]int{239, 997, 0}, [3]float64{0, -0.1, 0.0}},
-		{200, fxTone, 0, -60.0, [3]int{239, 997, 0}, [3]float64{0, -60.0, 0.0}},
-	},
-	228: { // B8
-		{5, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{20, fxTone, 0, -17.3, [3]int{245, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{25, fxTone, 0, -9.5, [3]int{2053, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{35, fxTone, 0, -5.9, [3]int{2053, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{150, fxTone, 0, -4.2, [3]int{1481, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{220, fxTone, 0, -3.7, [3]int{1324, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{290, fxTone, 0, -5.5, [3]int{1300, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{320, fxTone, 0, -13.1, [3]int{1300, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{340, fxTone, 0, -60.0, [3]int{1271, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{345, fxTone, 0, -60.0, [3]int{239, 0, 0}, [3]float64{0, 0.0, 0.0}},
-		{355, fxTone, 0, -60.0, [3]int{227, 0, 0}, [3]float64{0, 0.0, 0.0}},
-	},
-	229: { // B9: traced again every 2ms (see speakjet.c's fx_points)
-		{2, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{4, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{6, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{8, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{12, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{14, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{16, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{18, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -24.7, [3]int{1943, 266, 0}, [3]float64{0, -25.8, -60.0}},
-		{22, fxTone, 0, -10.1, [3]int{2690, 1822, 883}, [3]float64{0, -0.6, -12.3}},
-		{24, fxTone, 0, -3.1, [3]int{2703, 1807, 889}, [3]float64{0, -0.3, -12.0}},
-		{26, fxTone, 0, -0.8, [3]int{2707, 1805, 893}, [3]float64{0, 0.2, -12.1}},
-		{28, fxTone, 0, -0.4, [3]int{2708, 1806, 901}, [3]float64{0, 0.2, -12.3}},
-		{30, fxTone, 0, -0.3, [3]int{2707, 1806, 904}, [3]float64{0, 0.1, -12.4}},
-		{32, fxTone, 0, -0.5, [3]int{2708, 1806, 906}, [3]float64{0, 0.3, -12.2}},
-		{34, fxTone, 0, -0.6, [3]int{2709, 1805, 904}, [3]float64{0, 0.5, -12.1}},
-		{36, fxTone, 0, -0.6, [3]int{2710, 1806, 903}, [3]float64{0, 0.5, -12.3}},
-		{38, fxTone, 0, -0.5, [3]int{2711, 1808, 902}, [3]float64{0, 0.4, -12.3}},
-		{40, fxTone, 0, -0.4, [3]int{2709, 1807, 903}, [3]float64{0, 0.4, -12.2}},
-		{42, fxTone, 0, -0.5, [3]int{2708, 1805, 903}, [3]float64{0, 0.4, -12.1}},
-		{44, fxTone, 0, -0.5, [3]int{2708, 1804, 901}, [3]float64{0, 0.4, -12.3}},
-		{46, fxTone, 0, -0.5, [3]int{2708, 1805, 902}, [3]float64{0, 0.4, -12.4}},
-		{48, fxTone, 0, -0.4, [3]int{2709, 1808, 903}, [3]float64{0, 0.4, -12.4}},
-		{50, fxTone, 0, -0.4, [3]int{2711, 1806, 904}, [3]float64{0, 0.4, -12.3}},
-		{52, fxTone, 0, -0.6, [3]int{2713, 1807, 902}, [3]float64{0, 0.5, -12.1}},
-		{54, fxTone, 0, -0.5, [3]int{2711, 1809, 905}, [3]float64{0, 0.5, -12.1}},
-		{56, fxTone, 0, -0.4, [3]int{2710, 1806, 905}, [3]float64{0, 0.3, -12.4}},
-		{58, fxTone, 0, -0.3, [3]int{2708, 1805, 904}, [3]float64{0, 0.2, -12.6}},
-		{60, fxTone, 0, -0.4, [3]int{2709, 1806, 904}, [3]float64{0, 0.2, -12.4}},
-		{62, fxTone, 0, -0.5, [3]int{2709, 1807, 900}, [3]float64{0, 0.3, -12.3}},
-		{64, fxTone, 0, -0.5, [3]int{2710, 1807, 903}, [3]float64{0, 0.4, -12.3}},
-		{66, fxTone, 0, -0.4, [3]int{2708, 1806, 904}, [3]float64{0, 0.4, -12.2}},
-		{68, fxTone, 0, -0.4, [3]int{2708, 1806, 901}, [3]float64{0, 0.3, -12.2}},
-		{70, fxTone, 0, -0.5, [3]int{2710, 1805, 903}, [3]float64{0, 0.3, -12.1}},
-		{72, fxTone, 0, -0.6, [3]int{2709, 1804, 905}, [3]float64{0, 0.4, -12.1}},
-		{74, fxTone, 0, -0.5, [3]int{2708, 1806, 903}, [3]float64{0, 0.4, -12.1}},
-		{76, fxTone, 0, -0.9, [3]int{2701, 1806, 898}, [3]float64{0, 0.4, -12.1}},
-		{78, fxTone, 0, -5.1, [3]int{2669, 1795, 840}, [3]float64{0, 0.5, -12.3}},
-		{80, fxTone, 0, -60.0, [3]int{2669, 761, 1033}, [3]float64{0, -60.0, -60.0}},
-		{82, fxTone, 0, -60.0, [3]int{2669, 856, 1033}, [3]float64{0, -60.0, -60.0}},
-		{84, fxTone, 0, -60.0, [3]int{2669, 858, 1033}, [3]float64{0, -60.0, -60.0}},
-		{86, fxTone, 0, -60.0, [3]int{2669, 845, 301}, [3]float64{0, -60.0, -60.0}},
-		{88, fxTone, 0, -60.0, [3]int{2669, 737, 260}, [3]float64{0, -60.0, -60.0}},
-		{90, fxTone, 0, -60.0, [3]int{2669, 704, 260}, [3]float64{0, -60.0, -60.0}},
-		{92, fxTone, 0, -60.0, [3]int{2669, 765, 260}, [3]float64{0, -60.0, -60.0}},
-		{94, fxTone, 0, -60.0, [3]int{2669, 773, 260}, [3]float64{0, -60.0, -60.0}},
-		{96, fxTone, 0, -60.0, [3]int{2669, 760, 260}, [3]float64{0, -60.0, -60.0}},
-		{98, fxTone, 0, -60.0, [3]int{2669, 753, 242}, [3]float64{0, -60.0, -60.0}},
-		{100, fxTone, 0, -39.5, [3]int{628, 995, 809}, [3]float64{0, 5.8, 4.9}},
-		{102, fxTone, 0, -20.6, [3]int{627, 995, 809}, [3]float64{0, -60.0, -60.0}},
-		{104, fxTone, 0, -11.9, [3]int{666, 995, 809}, [3]float64{0, -60.0, -60.0}},
-		{106, fxTone, 0, -11.6, [3]int{672, 995, 809}, [3]float64{0, -60.0, -60.0}},
-		{108, fxTone, 0, -17.3, [3]int{657, 995, 809}, [3]float64{0, -60.0, -60.0}},
-		{110, fxTone, 0, -27.8, [3]int{624, 995, 134}, [3]float64{0, -60.0, -26.4}},
-		{112, fxTone, 0, -32.9, [3]int{551, 995, 134}, [3]float64{0, -60.0, -60.0}},
-		{114, fxTone, 0, -16.8, [3]int{549, 995, 134}, [3]float64{0, -60.0, -60.0}},
-		{116, fxTone, 0, -10.8, [3]int{569, 995, 134}, [3]float64{0, -60.0, -60.0}},
-		{118, fxTone, 0, -12.3, [3]int{569, 995, 134}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, -19.4, [3]int{548, 995, 134}, [3]float64{0, -60.0, -60.0}},
-		{122, fxTone, 0, -13.9, [3]int{3756, 2499, 454}, [3]float64{0, 2.4, -17.5}},
-		{124, fxTone, 0, -5.4, [3]int{3781, 2502, 1220}, [3]float64{0, 2.7, -18.0}},
-		{126, fxTone, 0, -60.0, [3]int{3781, 2510, 507}, [3]float64{0, -60.0, -60.0}},
-		{128, fxTone, 0, -60.0, [3]int{3781, 2513, 520}, [3]float64{0, -60.0, -60.0}},
-		{130, fxTone, 0, -60.0, [3]int{3781, 2514, 527}, [3]float64{0, -60.0, -60.0}},
-		{132, fxTone, 0, -2.8, [3]int{3813, 2512, 517}, [3]float64{0, 2.6, -19.0}},
-		{134, fxTone, 0, -2.8, [3]int{3815, 2512, 406}, [3]float64{0, 2.6, -35.6}},
-		{136, fxTone, 0, -2.8, [3]int{3813, 2514, 344}, [3]float64{0, 2.6, -24.4}},
-		{138, fxTone, 0, -60.0, [3]int{3813, 2511, 505}, [3]float64{0, -60.0, -60.0}},
-		{140, fxTone, 0, -60.0, [3]int{3813, 2510, 521}, [3]float64{0, -60.0, -60.0}},
-		{142, fxTone, 0, -2.6, [3]int{3810, 2511, 525}, [3]float64{0, 2.3, -12.8}},
-		{144, fxTone, 0, -2.6, [3]int{3810, 2512, 521}, [3]float64{0, 2.4, -22.8}},
-		{146, fxTone, 0, -2.7, [3]int{3810, 2512, 713}, [3]float64{0, 2.5, -29.6}},
-		{148, fxTone, 0, -2.7, [3]int{3812, 2514, 478}, [3]float64{0, 2.5, -16.7}},
-		{150, fxTone, 0, -60.0, [3]int{3812, 2513, 511}, [3]float64{0, -60.0, -60.0}},
-		{152, fxTone, 0, -60.0, [3]int{3812, 2513, 523}, [3]float64{0, -60.0, -60.0}},
-		{154, fxTone, 0, -2.8, [3]int{3814, 2513, 523}, [3]float64{0, 2.6, -14.9}},
-		{156, fxTone, 0, -2.7, [3]int{3811, 2513, 506}, [3]float64{0, 2.5, -26.6}},
-		{158, fxTone, 0, -2.8, [3]int{3812, 2513, 176}, [3]float64{0, 2.7, -36.5}},
-		{160, fxTone, 0, -3.4, [3]int{3816, 2502, 506}, [3]float64{0, 2.1, -12.8}},
-		{162, fxTone, 0, -60.0, [3]int{3816, 2502, 516}, [3]float64{0, -60.0, -60.0}},
-		{164, fxTone, 0, -60.0, [3]int{3816, 2502, 527}, [3]float64{0, -60.0, -60.0}},
-		{166, fxTone, 0, -60.0, [3]int{3816, 2502, 541}, [3]float64{0, -60.0, -60.0}},
-		{168, fxTone, 0, -60.0, [3]int{3816, 184, 539}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, -60.0, [3]int{3816, 184, 527}, [3]float64{0, -60.0, -60.0}},
-		{172, fxTone, 0, -60.0, [3]int{3816, 184, 586}, [3]float64{0, -60.0, -60.0}},
-		{174, fxTone, 0, -60.0, [3]int{3816, 184, 611}, [3]float64{0, -60.0, -60.0}},
-		{176, fxTone, 0, -60.0, [3]int{3816, 184, 628}, [3]float64{0, -60.0, -60.0}},
-		{178, fxTone, 0, -60.0, [3]int{3816, 184, 639}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, -60.0, [3]int{3816, 272, 620}, [3]float64{0, -60.0, -60.0}},
-		{182, fxTone, 0, -60.0, [3]int{3816, 272, 620}, [3]float64{0, -60.0, -60.0}},
-		{184, fxTone, 0, -60.0, [3]int{3816, 272, 689}, [3]float64{0, -60.0, -60.0}},
-		{186, fxTone, 0, -60.0, [3]int{3816, 272, 710}, [3]float64{0, -60.0, -60.0}},
-		{188, fxTone, 0, -60.0, [3]int{3816, 272, 722}, [3]float64{0, -60.0, -60.0}},
-		{190, fxTone, 0, -60.0, [3]int{3816, 272, 718}, [3]float64{0, -60.0, -60.0}},
-		{192, fxTone, 0, -36.4, [3]int{511, 695, 872}, [3]float64{0, 4.9, 6.7}},
-		{194, fxTone, 0, -60.0, [3]int{511, 750, 872}, [3]float64{0, -60.0, -60.0}},
-		{196, fxTone, 0, -60.0, [3]int{511, 790, 872}, [3]float64{0, -60.0, -60.0}},
-		{198, fxTone, 0, -60.0, [3]int{511, 809, 872}, [3]float64{0, -60.0, -60.0}},
-		{200, fxTone, 0, -60.0, [3]int{511, 823, 872}, [3]float64{0, -60.0, -60.0}},
-		{202, fxTone, 0, -60.0, [3]int{511, 823, 853}, [3]float64{0, -60.0, -60.0}},
-		{204, fxTone, 0, -60.0, [3]int{511, 823, 870}, [3]float64{0, -60.0, -60.0}},
-		{206, fxTone, 0, -60.0, [3]int{511, 823, 877}, [3]float64{0, -60.0, -60.0}},
-		{208, fxTone, 0, -11.4, [3]int{892, 3494, 1794}, [3]float64{0, 7.6, 10.1}},
-		{210, fxTone, 0, -12.8, [3]int{905, 3504, 1806}, [3]float64{0, 10.4, 12.7}},
-		{212, fxTone, 0, -12.6, [3]int{908, 3505, 1807}, [3]float64{0, 10.3, 12.5}},
-		{214, fxTone, 0, -12.6, [3]int{900, 3504, 1806}, [3]float64{0, 10.3, 12.5}},
-		{216, fxTone, 0, -12.5, [3]int{902, 3502, 1806}, [3]float64{0, 10.2, 12.5}},
-		{218, fxTone, 0, -12.5, [3]int{904, 3501, 1805}, [3]float64{0, 10.2, 12.5}},
-		{220, fxTone, 0, -12.8, [3]int{904, 3503, 1805}, [3]float64{0, 10.4, 12.7}},
-		{222, fxTone, 0, -12.8, [3]int{902, 3504, 1807}, [3]float64{0, 10.6, 12.8}},
-		{224, fxTone, 0, -12.9, [3]int{904, 3503, 1806}, [3]float64{0, 10.6, 12.9}},
-		{226, fxTone, 0, -12.9, [3]int{902, 3505, 1807}, [3]float64{0, 10.5, 12.9}},
-		{228, fxTone, 0, -12.8, [3]int{902, 3506, 1808}, [3]float64{0, 10.5, 12.8}},
-		{230, fxTone, 0, -12.9, [3]int{906, 3505, 1807}, [3]float64{0, 10.6, 12.8}},
-		{232, fxTone, 0, -12.9, [3]int{903, 3503, 1806}, [3]float64{0, 10.6, 12.8}},
-		{234, fxTone, 0, -13.0, [3]int{901, 3504, 1807}, [3]float64{0, 10.6, 12.9}},
-		{236, fxTone, 0, -12.9, [3]int{905, 3505, 1808}, [3]float64{0, 10.5, 12.8}},
-		{238, fxTone, 0, -12.6, [3]int{903, 3507, 1808}, [3]float64{0, 10.3, 12.6}},
-		{240, fxTone, 0, -12.6, [3]int{905, 3508, 1808}, [3]float64{0, 10.3, 12.5}},
-		{242, fxTone, 0, -12.8, [3]int{906, 3508, 1809}, [3]float64{0, 10.5, 12.7}},
-		{244, fxTone, 0, -12.9, [3]int{902, 3506, 1808}, [3]float64{0, 10.5, 12.8}},
-		{246, fxTone, 0, -12.8, [3]int{902, 3507, 1808}, [3]float64{0, 10.4, 12.8}},
-		{248, fxTone, 0, -12.6, [3]int{906, 3507, 1809}, [3]float64{0, 10.4, 12.6}},
-		{250, fxTone, 0, -12.6, [3]int{905, 3505, 1807}, [3]float64{0, 10.4, 12.6}},
-		{252, fxTone, 0, -12.7, [3]int{902, 3503, 1807}, [3]float64{0, 10.5, 12.7}},
-		{254, fxTone, 0, -12.9, [3]int{903, 3502, 1806}, [3]float64{0, 10.6, 12.9}},
-		{256, fxTone, 0, -13.0, [3]int{905, 3503, 1805}, [3]float64{0, 10.8, 12.9}},
-		{258, fxTone, 0, -13.3, [3]int{901, 3505, 1807}, [3]float64{0, 11.0, 13.1}},
-		{260, fxTone, 0, -13.2, [3]int{904, 3509, 1809}, [3]float64{0, 10.9, 13.1}},
-		{262, fxTone, 0, -12.9, [3]int{904, 3504, 1808}, [3]float64{0, 10.6, 12.8}},
-		{264, fxTone, 0, -13.0, [3]int{900, 3503, 1806}, [3]float64{0, 10.7, 12.9}},
-		{266, fxTone, 0, -15.1, [3]int{900, 3507, 1807}, [3]float64{0, 12.8, 15.0}},
-		{268, fxTone, 0, -21.2, [3]int{896, 3506, 1807}, [3]float64{0, 18.9, 21.0}},
-		{270, fxTone, 0, -60.0, [3]int{896, 3504, 1807}, [3]float64{0, -60.0, -60.0}},
-		{272, fxTone, 0, -60.0, [3]int{896, 3503, 1806}, [3]float64{0, -60.0, -60.0}},
-		{274, fxTone, 0, -60.0, [3]int{896, 3506, 1807}, [3]float64{0, -60.0, -60.0}},
-		{276, fxTone, 0, -20.0, [3]int{886, 3504, 1808}, [3]float64{0, 16.2, 18.2}},
-		{278, fxTone, 0, -19.9, [3]int{891, 3503, 1808}, [3]float64{0, 15.5, 17.5}},
-		{280, fxTone, 0, -26.8, [3]int{868, 3505, 1807}, [3]float64{0, 21.7, 23.8}},
-		{282, fxTone, 0, -60.0, [3]int{868, 3507, 1808}, [3]float64{0, -60.0, -60.0}},
-		{284, fxTone, 0, -60.0, [3]int{868, 3508, 1808}, [3]float64{0, -60.0, -60.0}},
-		{286, fxTone, 0, -60.0, [3]int{868, 3510, 1808}, [3]float64{0, -60.0, -60.0}},
-		{288, fxTone, 0, -26.7, [3]int{897, 3506, 1807}, [3]float64{0, 18.0, 20.7}},
-		{290, fxTone, 0, -26.1, [3]int{910, 3503, 1807}, [3]float64{0, 16.5, 19.2}},
-		{292, fxTone, 0, -32.3, [3]int{936, 3503, 1808}, [3]float64{0, 21.4, 24.2}},
-		{294, fxTone, 0, -60.0, [3]int{936, 3504, 1807}, [3]float64{0, -60.0, -60.0}},
-		{296, fxTone, 0, -60.0, [3]int{936, 3507, 1809}, [3]float64{0, -60.0, -60.0}},
-		{298, fxTone, 0, -60.0, [3]int{936, 3510, 1807}, [3]float64{0, -60.0, -60.0}},
-		{300, fxTone, 0, -42.2, [3]int{754, 3505, 1809}, [3]float64{0, 24.2, 26.5}},
-		{302, fxTone, 0, -46.2, [3]int{655, 3498, 1806}, [3]float64{0, 25.0, 27.1}},
-		{304, fxTone, 0, -42.0, [3]int{815, 454, 1815}, [3]float64{0, -8.3, 17.6}},
-		{306, fxTone, 0, -60.0, [3]int{815, 359, 1815}, [3]float64{0, -60.0, -60.0}},
-		{308, fxTone, 0, -60.0, [3]int{815, 330, 1815}, [3]float64{0, -60.0, -60.0}},
-		{310, fxTone, 0, -60.0, [3]int{815, 330, 1815}, [3]float64{0, -60.0, -60.0}},
-		{312, fxTone, 0, -60.0, [3]int{815, 330, 1815}, [3]float64{0, -60.0, -60.0}},
-		{314, fxTone, 0, -60.0, [3]int{815, 330, 1815}, [3]float64{0, -60.0, -60.0}},
-		{316, fxTone, 0, -60.0, [3]int{815, 204, 1815}, [3]float64{0, -60.0, -60.0}},
-		{319, fxTone, 0, -60.0, [3]int{815, 204, 1815}, [3]float64{0, -60.0, -60.0}},
+	229: { // B9
+		{2, 0, 0, -600, 0, 0, 0, -600, -600},
+		{18, 0, 0, -600, 0, 0, 0, -600, -600},
+		{20, 0, 0, -247, 443, 61, 0, -258, -600},
+		{22, 0, 0, -101, 614, 416, 201, -6, -123},
+		{26, 0, 0, -8, 617, 412, 204, 2, -121},
+		{78, 0, 0, -51, 609, 409, 192, 5, -123},
+		{80, 0, 0, -600, 609, 174, 236, -600, -600},
+		{98, 0, 0, -600, 609, 172, 55, -600, -600},
+		{100, 0, 0, -395, 143, 227, 185, 58, 49},
+		{104, 0, 0, -119, 152, 227, 185, -600, -600},
+		{110, 0, 0, -278, 142, 227, 31, -600, -264},
+		{112, 0, 0, -329, 126, 227, 31, -600, -600},
+		{116, 0, 0, -108, 130, 227, 31, -600, -600},
+		{120, 0, 0, -194, 125, 227, 31, -600, -600},
+		{122, 0, 0, -139, 857, 570, 104, 24, -175},
+		{124, 0, 0, -54, 862, 571, 278, 27, -180},
+		{126, 0, 0, -600, 862, 572, 116, -600, -600},
+		{130, 0, 0, -600, 862, 573, 120, -600, -600},
+		{132, 0, 0, -28, 870, 573, 118, 26, -190},
+		{134, 0, 0, -28, 870, 573, 93, 26, -356},
+		{136, 0, 0, -28, 870, 573, 78, 26, -244},
+		{138, 0, 0, -600, 870, 573, 115, -600, -600},
+		{140, 0, 0, -600, 870, 572, 119, -600, -600},
+		{142, 0, 0, -26, 869, 573, 120, 23, -128},
+		{144, 0, 0, -26, 869, 573, 119, 24, -228},
+		{146, 0, 0, -27, 869, 573, 163, 25, -296},
+		{148, 0, 0, -27, 869, 573, 109, 25, -167},
+		{150, 0, 0, -600, 869, 573, 117, -600, -600},
+		{152, 0, 0, -600, 869, 573, 119, -600, -600},
+		{154, 0, 0, -28, 870, 573, 119, 26, -149},
+		{156, 0, 0, -27, 869, 573, 115, 25, -266},
+		{158, 0, 0, -28, 869, 573, 40, 27, -365},
+		{160, 0, 0, -34, 870, 571, 115, 21, -128},
+		{162, 0, 0, -600, 870, 571, 118, -600, -600},
+		{190, 0, 0, -600, 870, 62, 164, -600, -600},
+		{192, 0, 0, -364, 117, 159, 199, 49, 67},
+		{194, 0, 0, -600, 117, 171, 199, -600, -600},
+		{206, 0, 0, -600, 117, 188, 200, -600, -600},
+		{208, 0, 0, -114, 203, 797, 409, 76, 101},
+		{264, 0, 0, -130, 205, 799, 412, 107, 129},
+		{268, 0, 0, -212, 204, 800, 412, 189, 210},
+		{270, 0, 0, -600, 204, 799, 412, -600, -600},
+		{274, 0, 0, -600, 204, 800, 412, -600, -600},
+		{276, 0, 0, -200, 202, 799, 412, 162, 182},
+		{280, 0, 0, -268, 198, 799, 412, 217, 238},
+		{282, 0, 0, -600, 198, 800, 412, -600, -600},
+		{286, 0, 0, -600, 198, 801, 412, -600, -600},
+		{288, 0, 0, -267, 205, 800, 412, 180, 207},
+		{292, 0, 0, -323, 213, 799, 412, 214, 242},
+		{294, 0, 0, -600, 213, 799, 412, -600, -600},
+		{298, 0, 0, -600, 213, 801, 412, -600, -600},
+		{300, 0, 0, -422, 172, 799, 413, 242, 265},
+		{302, 0, 0, -462, 149, 798, 412, 250, 271},
+		{304, 0, 0, -420, 186, 104, 414, -83, 176},
+		{306, 0, 0, -600, 186, 82, 414, -600, -600},
+		{319, 0, 0, -600, 186, 47, 414, -600, -600},
 	},
 	230: { // C0
-		{5, fxTone, 0, -60.0, [3]int{239, 991, 1545}, [3]float64{0, -14.9, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 991, 1545}, [3]float64{0, -14.9, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 991, 1545}, [3]float64{0, -0.1, -60.0}},
-		{25, fxTone, 0, -4.2, [3]int{2315, 991, 1545}, [3]float64{0, -5.4, -60.0}},
-		{30, fxTone, 0, -3.9, [3]int{2315, 2058, 1545}, [3]float64{0, -14.2, -60.0}},
-		{35, fxTone, 0, -0.8, [3]int{2315, 2058, 1545}, [3]float64{0, -16.1, -60.0}},
-		{40, fxTone, 0, -2.1, [3]int{2058, 2058, 1545}, [3]float64{0, -2.2, -60.0}},
-		{45, fxTone, 0, -2.7, [3]int{2053, 2058, 1545}, [3]float64{0, 0.0, -2.6}},
-		{55, fxTone, 0, -4.0, [3]int{1790, 1767, 2327}, [3]float64{0, -13.5, -10.6}},
-		{70, fxTone, 0, -1.1, [3]int{1528, 1767, 2327}, [3]float64{0, -11.8, -9.0}},
-		{75, fxTone, 0, -1.0, [3]int{1265, 1767, 2327}, [3]float64{0, -3.5, -4.9}},
-		{80, fxTone, 0, -1.4, [3]int{1265, 2298, 1277}, [3]float64{0, -6.9, -14.6}},
-		{85, fxTone, 0, 0.5, [3]int{1260, 1516, 2327}, [3]float64{0, -0.6, -2.9}},
-		{90, fxTone, 0, -1.4, [3]int{1009, 1015, 2239}, [3]float64{0, -11.7, -9.3}},
-		{95, fxTone, 0, 1.4, [3]int{991, 1003, 2239}, [3]float64{0, -8.1, -5.9}},
-		{100, fxTone, 0, 0.7, [3]int{781, 764, 2239}, [3]float64{0, -10.2, -8.0}},
-		{105, fxTone, 0, 1.7, [3]int{764, 577, 2239}, [3]float64{0, -13.7, 4.8}},
-		{110, fxTone, 0, 2.3, [3]int{723, 402, 245}, [3]float64{0, -12.3, -13.3}},
-		{115, fxTone, 0, 0.2, [3]int{647, 309, 245}, [3]float64{0, 0.1, -60.0}},
-		{120, fxTone, 0, 2.8, [3]int{630, 309, 245}, [3]float64{0, -60.0, -60.0}},
-		{125, fxTone, 0, 0.9, [3]int{519, 309, 245}, [3]float64{0, -60.0, -60.0}},
-		{130, fxTone, 0, 2.5, [3]int{501, 309, 245}, [3]float64{0, -60.0, -60.0}},
-		{135, fxTone, 0, 3.1, [3]int{362, 309, 245}, [3]float64{0, -60.0, -60.0}},
-		{140, fxTone, 0, 0.6, [3]int{344, 309, 245}, [3]float64{0, -60.0, -60.0}},
-		{145, fxTone, 0, 3.6, [3]int{338, 455, 245}, [3]float64{0, -60.0, -60.0}},
-		{150, fxTone, 0, 2.0, [3]int{198, 455, 583}, [3]float64{0, -60.0, -60.0}},
-		{165, fxTone, 0, -5.1, [3]int{198, 455, 583}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, -6.2, [3]int{297, 455, 583}, [3]float64{0, -6.3, -60.0}},
-		{175, fxTone, 0, -5.8, [3]int{327, 595, 583}, [3]float64{0, -0.1, -60.0}},
-		{180, fxTone, 0, -7.0, [3]int{297, 455, 583}, [3]float64{0, -6.0, -14.7}},
-		{185, fxTone, 0, -9.9, [3]int{327, 595, 787}, [3]float64{0, -2.7, -6.1}},
-		{190, fxTone, 0, -9.0, [3]int{327, 595, 898}, [3]float64{0, -6.4, -9.9}},
-		{200, fxTone, 0, -13.4, [3]int{251, 484, 787}, [3]float64{0, -8.2, -13.8}},
-		{205, fxTone, 0, -12.7, [3]int{251, 566, 881}, [3]float64{0, -9.3, -12.0}},
-		{210, fxTone, 0, -14.5, [3]int{251, 484, 881}, [3]float64{0, -0.0, -0.1}},
-		{215, fxTone, 0, -17.3, [3]int{216, 490, 881}, [3]float64{0, -8.8, -60.0}},
-		{220, fxTone, 0, -17.1, [3]int{216, 490, 881}, [3]float64{0, -0.0, -60.0}},
-		{225, fxTone, 0, -60.0, [3]int{268, 490, 881}, [3]float64{0, -10.7, -60.0}},
-		{240, fxTone, 0, -60.0, [3]int{239, 461, 881}, [3]float64{0, -0.0, -60.0}},
-		{245, fxTone, 0, -60.0, [3]int{239, 461, 881}, [3]float64{0, -60.0, -60.0}},
-	},
-	231: { // C1
-		{5, fxTone, 0, -60.0, [3]int{239, 449, 426}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 449, 426}, [3]float64{0, -13.5, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{245, 449, 426}, [3]float64{0, -14.1, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{653, 478, 426}, [3]float64{0, -1.8, -14.5}},
-		{25, fxTone, 0, -17.8, [3]int{671, 676, 426}, [3]float64{0, -0.0, 0.1}},
-		{30, fxTone, 0, -9.4, [3]int{1096, 676, 682}, [3]float64{0, -1.5, -8.1}},
-		{40, fxTone, 0, -4.5, [3]int{1155, 834, 682}, [3]float64{0, -1.1, -7.9}},
-		{45, fxTone, 0, -3.2, [3]int{1155, 1388, 933}, [3]float64{0, -3.6, -6.0}},
-		{55, fxTone, 0, -1.4, [3]int{1423, 1400, 933}, [3]float64{0, -4.9, -8.5}},
-		{65, fxTone, 0, -0.7, [3]int{986, 332, 1609}, [3]float64{0, -3.9, -3.6}},
-		{70, fxTone, 0, 0.2, [3]int{741, 332, 1609}, [3]float64{0, -2.9, -4.0}},
-		{80, fxTone, 0, 1.2, [3]int{741, 350, 1522}, [3]float64{0, -9.0, -13.9}},
-		{95, fxTone, 0, -1.6, [3]int{834, 420, 869}, [3]float64{0, -0.5, -2.4}},
-		{100, fxTone, 0, -2.4, [3]int{1283, 1347, 869}, [3]float64{0, -0.1, -13.0}},
-		{105, fxTone, 0, -2.5, [3]int{1341, 1347, 846}, [3]float64{0, 0.0, -0.3}},
-		{110, fxTone, 0, 0.5, [3]int{2029, 1265, 840}, [3]float64{0, -4.4, -10.4}},
-		{120, fxTone, 0, -0.1, [3]int{1989, 1598, 840}, [3]float64{0, -4.2, -8.0}},
-		{125, fxTone, 0, -0.4, [3]int{1989, 1598, 408}, [3]float64{0, -4.5, -9.8}},
-		{140, fxTone, 0, -3.5, [3]int{1528, 1895, 385}, [3]float64{0, -2.8, -5.9}},
-		{145, fxTone, 0, -4.2, [3]int{1528, 1895, 1353}, [3]float64{0, 0.4, -2.3}},
-		{185, fxTone, 0, -6.4, [3]int{1446, 1994, 1219}, [3]float64{0, 1.5, -6.9}},
-		{190, fxTone, 0, -7.3, [3]int{1405, 1994, 1954}, [3]float64{0, 1.2, -4.9}},
-		{195, fxTone, 0, -8.7, [3]int{1359, 1994, 1160}, [3]float64{0, -2.2, -5.9}},
-		{225, fxTone, 0, -12.2, [3]int{1114, 1749, 1353}, [3]float64{0, -0.0, -2.4}},
-		{235, fxTone, 0, -13.5, [3]int{1079, 986, 1674}, [3]float64{0, -0.6, -2.1}},
-		{245, fxTone, 0, -15.0, [3]int{1073, 986, 1662}, [3]float64{0, -3.1, -2.0}},
-		{265, fxTone, 0, -18.3, [3]int{834, 2507, 1662}, [3]float64{0, 2.5, -4.3}},
-		{270, fxTone, 0, -18.7, [3]int{787, 2682, 1528}, [3]float64{0, 4.0, -3.7}},
-		{280, fxTone, 0, -22.3, [3]int{741, 2688, 239}, [3]float64{0, 3.0, -6.2}},
-		{285, fxTone, 0, -23.0, [3]int{741, 2688, 227}, [3]float64{0, 7.4, -4.0}},
-		{290, fxTone, 0, -16.5, [3]int{2805, 630, 227}, [3]float64{0, -10.1, -13.6}},
-		{295, fxTone, 0, -16.6, [3]int{2805, 222, 192}, [3]float64{0, -9.2, -9.2}},
-		{300, fxTone, 0, -18.2, [3]int{2805, 222, 192}, [3]float64{0, -14.5, -17.8}},
-		{305, fxTone, 0, -60.0, [3]int{519, 222, 490}, [3]float64{0, 0.0, 0.0}},
-		{310, fxTone, 0, -60.0, [3]int{490, 280, 799}, [3]float64{0, -3.2, -4.5}},
-		{315, fxTone, 0, -60.0, [3]int{245, 472, 886}, [3]float64{0, -2.0, -4.9}},
-		{325, fxTone, 0, -60.0, [3]int{239, 472, 799}, [3]float64{0, -11.2, -12.6}},
-		{330, fxTone, 0, -60.0, [3]int{227, 472, 799}, [3]float64{0, -14.7, -60.0}},
+		{5, 0, 0, -600, 55, 226, 352, -149, -600},
+		{20, 0, 0, -600, 55, 226, 352, -1, -600},
+		{25, 0, 0, -42, 528, 226, 352, -54, -600},
+		{30, 0, 0, -39, 528, 469, 352, -142, -600},
+		{35, 0, 0, -8, 528, 469, 352, -161, -600},
+		{40, 0, 0, -21, 469, 469, 352, -22, -600},
+		{45, 0, 0, -27, 468, 469, 352, 0, -26},
+		{55, 0, 0, -40, 408, 403, 531, -135, -106},
+		{70, 0, 0, -11, 349, 403, 531, -118, -90},
+		{75, 0, 0, -10, 289, 403, 531, -35, -49},
+		{80, 0, 0, -14, 289, 524, 291, -69, -146},
+		{85, 0, 0, 5, 287, 346, 531, -6, -29},
+		{90, 0, 0, -14, 230, 231, 511, -117, -93},
+		{95, 0, 0, 14, 226, 229, 511, -81, -59},
+		{100, 0, 0, 7, 178, 174, 511, -102, -80},
+		{105, 0, 0, 17, 174, 132, 511, -137, 48},
+		{110, 0, 0, 23, 165, 92, 56, -123, -133},
+		{115, 0, 0, 2, 148, 70, 56, 1, -600},
+		{130, 0, 0, 25, 114, 70, 56, -600, -600},
+		{135, 0, 0, 31, 83, 70, 56, -600, -600},
+		{145, 0, 0, 36, 77, 104, 56, -600, -600},
+		{150, 0, 0, 20, 45, 104, 133, -600, -600},
+		{165, 0, 0, -51, 45, 104, 133, -600, -600},
+		{170, 0, 0, -62, 68, 104, 133, -63, -600},
+		{175, 0, 0, -58, 75, 136, 133, -1, -600},
+		{180, 0, 0, -70, 68, 104, 133, -60, -147},
+		{185, 0, 0, -99, 75, 136, 179, -27, -61},
+		{190, 0, 0, -90, 75, 136, 205, -64, -99},
+		{200, 0, 0, -134, 57, 110, 179, -82, -138},
+		{205, 0, 0, -127, 57, 129, 201, -93, -120},
+		{210, 0, 0, -145, 57, 110, 201, 0, -1},
+		{215, 0, 0, -173, 49, 112, 201, -88, -600},
+		{220, 0, 0, -171, 49, 112, 201, 0, -600},
+		{225, 0, 0, -600, 61, 112, 201, -107, -600},
+		{245, 0, 0, -600, 55, 105, 201, -600, -600},
 	},
 	232: { // C2
-		{5, fxTone, 0, -60.0, [3]int{233, 216, 974}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 216, 974}, [3]float64{0, -60.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 216, 974}, [3]float64{0, 0.0, -60.0}},
-		{25, fxTone, 0, -60.0, [3]int{455, 216, 974}, [3]float64{0, -2.1, -60.0}},
-		{30, fxTone, 0, -60.0, [3]int{478, 910, 974}, [3]float64{0, -5.1, -0.1}},
-		{35, fxTone, 0, -6.8, [3]int{499, 904, 974}, [3]float64{0, -0.1, -0.1}},
-		{40, fxTone, 0, -6.4, [3]int{501, 904, 974}, [3]float64{0, -2.9, -60.0}},
-		{45, fxTone, 0, -6.4, [3]int{507, 904, 169}, [3]float64{0, -2.8, -11.0}},
-		{50, fxTone, 0, -0.8, [3]int{507, 910, 2210}, [3]float64{0, -0.1, 4.5}},
-		{55, fxTone, 0, -1.4, [3]int{507, 916, 2198}, [3]float64{0, -2.7, -2.8}},
-		{60, fxTone, 0, -1.5, [3]int{507, 921, 175}, [3]float64{0, -2.6, -10.3}},
-		{65, fxTone, 0, 0.9, [3]int{519, 933, 2012}, [3]float64{0, -2.9, -7.5}},
-		{75, fxTone, 0, -1.6, [3]int{525, 986, 2006}, [3]float64{0, -3.2, -6.4}},
-		{80, fxTone, 0, 0.7, [3]int{531, 1009, 239}, [3]float64{0, -4.3, -9.4}},
-		{85, fxTone, 0, -1.0, [3]int{543, 1020, 1814}, [3]float64{0, -0.0, 1.9}},
-		{90, fxTone, 0, -1.9, [3]int{548, 986, 239}, [3]float64{0, -8.3, -10.9}},
-		{95, fxTone, 0, 0.1, [3]int{549, 986, 239}, [3]float64{0, -60.0, -60.0}},
-		{100, fxTone, 0, -1.6, [3]int{566, 1114, 239}, [3]float64{0, -0.0, 0.1}},
-		{105, fxTone, 0, -2.9, [3]int{566, 1114, 239}, [3]float64{0, -60.0, -60.0}},
-		{110, fxTone, 0, -1.6, [3]int{566, 1155, 245}, [3]float64{0, -60.0, -60.0}},
-		{115, fxTone, 0, -3.9, [3]int{566, 1155, 245}, [3]float64{0, 0.0, 0.1}},
-		{135, fxTone, 0, -9.7, [3]int{560, 1172, 245}, [3]float64{0, -3.5, -9.9}},
-		{140, fxTone, 0, -9.5, [3]int{554, 1172, 344}, [3]float64{0, -7.0, -12.4}},
-		{165, fxTone, 0, -25.7, [3]int{449, 1155, 251}, [3]float64{0, -14.3, 0.0}},
-		{170, fxTone, 0, -25.2, [3]int{449, 1155, 251}, [3]float64{0, -9.1, -60.0}},
-		{175, fxTone, 0, -22.7, [3]int{449, 175, 251}, [3]float64{0, 0.0, -60.0}},
-		{180, fxTone, 0, -9.3, [3]int{3312, 175, 251}, [3]float64{0, -60.0, -60.0}},
-		{185, fxTone, 0, -8.0, [3]int{3336, 175, 251}, [3]float64{0, -60.0, -60.0}},
-		{190, fxTone, 0, -3.9, [3]int{3336, 175, 251}, [3]float64{0, -13.1, -60.0}},
-		{195, fxTone, 0, -4.4, [3]int{3336, 175, 618}, [3]float64{0, -26.6, -60.0}},
-		{200, fxTone, 0, -4.2, [3]int{3336, 175, 618}, [3]float64{0, -60.0, -60.0}},
-		{205, fxTone, 0, 0.3, [3]int{3341, 192, 618}, [3]float64{0, -13.2, -60.0}},
-		{215, fxTone, 0, -1.0, [3]int{3341, 216, 618}, [3]float64{0, -26.5, -60.0}},
-		{220, fxTone, 0, -0.8, [3]int{3341, 297, 618}, [3]float64{0, -17.5, -22.8}},
-		{225, fxTone, 0, -20.7, [3]int{1674, 315, 618}, [3]float64{0, -6.6, -10.5}},
-		{230, fxTone, 0, -21.3, [3]int{1668, 315, 618}, [3]float64{0, -7.2, -10.7}},
-		{235, fxTone, 0, -22.4, [3]int{262, 472, 618}, [3]float64{0, -2.9, -9.2}},
-		{240, fxTone, 0, -60.0, [3]int{245, 472, 484}, [3]float64{0, -14.6, -0.0}},
-		{245, fxTone, 0, -60.0, [3]int{239, 472, 484}, [3]float64{0, -12.0, -60.0}},
-		{250, fxTone, 0, -60.0, [3]int{233, 472, 484}, [3]float64{0, -60.0, -60.0}},
+		{5, 0, 0, -600, 53, 49, 222, -600, -600},
+		{30, 0, 0, -600, 109, 208, 222, -51, -1},
+		{35, 0, 0, -68, 114, 206, 222, -1, -1},
+		{45, 0, 0, -64, 116, 206, 39, -28, -110},
+		{50, 0, 0, -8, 116, 208, 504, -1, 45},
+		{55, 0, 0, -14, 116, 209, 501, -27, -28},
+		{60, 0, 0, -15, 116, 210, 40, -26, -103},
+		{65, 0, 0, 9, 118, 213, 459, -29, -75},
+		{75, 0, 0, -16, 120, 225, 458, -32, -64},
+		{80, 0, 0, 7, 121, 230, 55, -43, -94},
+		{85, 0, 0, -10, 124, 233, 414, 0, 19},
+		{90, 0, 0, -19, 125, 225, 55, -83, -109},
+		{100, 0, 0, -16, 129, 254, 55, 0, 1},
+		{135, 0, 0, -97, 128, 267, 56, -35, -99},
+		{140, 0, 0, -95, 126, 267, 78, -70, -124},
+		{165, 0, 0, -257, 102, 263, 57, -143, 0},
+		{170, 0, 0, -252, 102, 263, 57, -91, -600},
+		{175, 0, 0, -227, 102, 40, 57, 0, -600},
+		{180, 0, 0, -93, 755, 40, 57, -600, -600},
+		{190, 0, 0, -39, 761, 40, 57, -131, -600},
+		{195, 0, 0, -44, 761, 40, 141, -266, -600},
+		{205, 0, 0, 3, 762, 44, 141, -132, -600},
+		{215, 0, 0, -10, 762, 49, 141, -265, -600},
+		{220, 0, 0, -8, 762, 68, 141, -175, -228},
+		{225, 0, 0, -207, 382, 72, 141, -66, -105},
+		{230, 0, 0, -213, 380, 72, 141, -72, -107},
+		{235, 0, 0, -224, 60, 108, 141, -29, -92},
+		{240, 0, 0, -600, 56, 108, 110, -146, 0},
+		{250, 0, 0, -600, 53, 108, 110, -600, -600},
 	},
 	233: { // C3
-		{5, fxTone, 0, -60.0, [3]int{222, 490, 414}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 490, 414}, [3]float64{0, -12.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 490, 414}, [3]float64{0, -13.2, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{268, 490, 414}, [3]float64{0, -7.4, -60.0}},
-		{25, fxTone, 0, -9.4, [3]int{3143, 216, 414}, [3]float64{0, -11.7, -60.0}},
-		{30, fxTone, 0, -8.3, [3]int{3161, 175, 414}, [3]float64{0, -19.1, -60.0}},
-		{40, fxTone, 0, -3.0, [3]int{3166, 187, 414}, [3]float64{0, -11.8, -60.0}},
-		{45, fxTone, 0, -3.2, [3]int{3172, 175, 414}, [3]float64{0, -25.7, -60.0}},
-		{50, fxTone, 0, -0.9, [3]int{3166, 175, 414}, [3]float64{0, -60.0, -60.0}},
-		{115, fxTone, 0, 3.8, [3]int{3376, 175, 414}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, 3.9, [3]int{3470, 204, 414}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, 4.3, [3]int{3785, 204, 414}, [3]float64{0, -60.0, -60.0}},
-		{185, fxTone, 0, 4.4, [3]int{3785, 204, 414}, [3]float64{0, -16.8, -60.0}},
-		{190, fxTone, 0, 4.4, [3]int{3785, 204, 414}, [3]float64{0, -16.8, -60.0}},
-		{195, fxTone, 0, 4.4, [3]int{3785, 204, 414}, [3]float64{0, -26.4, -60.0}},
-		{200, fxTone, 0, 0.5, [3]int{3785, 338, 414}, [3]float64{0, -18.9, -60.0}},
-		{205, fxTone, 0, 0.7, [3]int{3773, 338, 414}, [3]float64{0, -30.2, -60.0}},
-		{210, fxTone, 0, 0.6, [3]int{3773, 356, 414}, [3]float64{0, -31.1, -16.8}},
-		{215, fxTone, 0, 0.6, [3]int{3773, 356, 414}, [3]float64{0, -27.2, -31.4}},
-		{220, fxTone, 0, -18.9, [3]int{233, 3779, 571}, [3]float64{0, 10.3, -8.6}},
-		{225, fxTone, 0, -20.3, [3]int{233, 3779, 741}, [3]float64{0, 16.5, -10.4}},
-		{230, fxTone, 0, -20.5, [3]int{233, 3779, 571}, [3]float64{0, 16.7, -8.9}},
-		{235, fxTone, 0, -20.3, [3]int{239, 3755, 571}, [3]float64{0, 10.1, -8.0}},
-		{240, fxTone, 0, -60.0, [3]int{239, 997, 571}, [3]float64{0, -13.4, -60.0}},
-		{250, fxTone, 0, -60.0, [3]int{239, 991, 571}, [3]float64{0, -13.5, -60.0}},
+		{5, 0, 0, -600, 51, 112, 94, -600, -600},
+		{20, 0, 0, -600, 61, 112, 94, -74, -600},
+		{25, 0, 0, -94, 717, 49, 94, -117, -600},
+		{30, 0, 0, -83, 721, 40, 94, -191, -600},
+		{40, 0, 0, -30, 722, 43, 94, -118, -600},
+		{45, 0, 0, -32, 723, 40, 94, -257, -600},
+		{50, 0, 0, -9, 722, 40, 94, -600, -600},
+		{115, 0, 0, 38, 770, 40, 94, -600, -600},
+		{120, 0, 0, 39, 791, 47, 94, -600, -600},
+		{180, 0, 0, 43, 863, 47, 94, -600, -600},
+		{185, 0, 0, 44, 863, 47, 94, -168, -600},
+		{190, 0, 0, 44, 863, 47, 94, -168, -600},
+		{195, 0, 0, 44, 863, 47, 94, -264, -600},
+		{200, 0, 0, 5, 863, 77, 94, -189, -600},
+		{205, 0, 0, 7, 861, 77, 94, -302, -600},
+		{210, 0, 0, 6, 861, 81, 94, -311, -168},
+		{215, 0, 0, 6, 861, 81, 94, -272, -314},
+		{220, 0, 0, -189, 53, 862, 130, 103, -86},
+		{225, 0, 0, -203, 53, 862, 169, 165, -104},
+		{230, 0, 0, -205, 53, 862, 130, 167, -89},
+		{235, 0, 0, -203, 55, 856, 130, 101, -80},
+		{240, 0, 0, -600, 55, 227, 130, -134, -600},
+		{250, 0, 0, -600, 55, 226, 130, -135, -600},
 	},
-	234: { // C4: traced again every 2ms (see speakjet.c's fx_points)
-		{2, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{4, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{6, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{8, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{12, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{14, fxTone, 0, -58.8, [3]int{182, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{16, fxTone, 0, -57.4, [3]int{210, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{18, fxTone, 0, -36.1, [3]int{959, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -39.3, [3]int{941, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{22, fxTone, 0, -60.0, [3]int{941, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{24, fxTone, 0, -60.0, [3]int{941, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{26, fxTone, 0, -24.6, [3]int{910, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{28, fxTone, 0, -14.7, [3]int{953, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{30, fxTone, 0, -13.1, [3]int{965, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{32, fxTone, 0, -17.6, [3]int{966, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{34, fxTone, 0, -27.7, [3]int{956, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{36, fxTone, 0, -54.5, [3]int{195, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{38, fxTone, 0, -49.4, [3]int{182, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{40, fxTone, 0, -14.0, [3]int{932, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{42, fxTone, 0, -7.3, [3]int{957, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{44, fxTone, 0, -8.0, [3]int{965, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{46, fxTone, 0, -14.1, [3]int{966, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{48, fxTone, 0, -25.5, [3]int{969, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{50, fxTone, 0, -36.1, [3]int{1295, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{52, fxTone, 0, -13.8, [3]int{916, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{54, fxTone, 0, -4.7, [3]int{954, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{56, fxTone, 0, -4.0, [3]int{964, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{58, fxTone, 0, -9.2, [3]int{965, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{60, fxTone, 0, -19.7, [3]int{960, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{62, fxTone, 0, -27.9, [3]int{1093, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{64, fxTone, 0, -10.1, [3]int{928, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{66, fxTone, 0, -2.7, [3]int{956, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{68, fxTone, 0, -3.1, [3]int{966, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{70, fxTone, 0, -9.3, [3]int{964, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{72, fxTone, 0, -20.8, [3]int{956, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{74, fxTone, 0, -25.3, [3]int{776, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{76, fxTone, 0, -7.3, [3]int{935, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{78, fxTone, 0, -2.2, [3]int{958, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{80, fxTone, 0, -4.3, [3]int{966, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{82, fxTone, 0, -11.8, [3]int{960, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{84, fxTone, 0, -25.1, [3]int{946, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{86, fxTone, 0, -19.8, [3]int{791, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{88, fxTone, 0, -5.0, [3]int{941, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{90, fxTone, 0, -2.0, [3]int{960, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{92, fxTone, 0, -5.7, [3]int{966, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{94, fxTone, 0, -14.3, [3]int{965, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{96, fxTone, 0, -27.8, [3]int{971, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{98, fxTone, 0, -12.8, [3]int{1965, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{100, fxTone, 0, -3.6, [3]int{943, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{102, fxTone, 0, -2.5, [3]int{1937, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{104, fxTone, 0, -6.9, [3]int{1933, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{106, fxTone, 0, -16.7, [3]int{1938, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{108, fxTone, 0, -24.0, [3]int{2078, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{110, fxTone, 0, -7.1, [3]int{1936, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{112, fxTone, 0, -0.7, [3]int{1936, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{114, fxTone, 0, -1.8, [3]int{1935, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{116, fxTone, 0, -8.2, [3]int{1934, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{118, fxTone, 0, -19.9, [3]int{1940, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, -19.2, [3]int{1893, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{122, fxTone, 0, -4.6, [3]int{1921, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{124, fxTone, 0, -0.3, [3]int{1930, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{126, fxTone, 0, -3.0, [3]int{1932, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{128, fxTone, 0, -10.7, [3]int{1934, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{130, fxTone, 0, -24.1, [3]int{1933, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{132, fxTone, 0, -14.6, [3]int{1892, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{134, fxTone, 0, -2.8, [3]int{1936, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{136, fxTone, 0, 0.0, [3]int{1915, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{138, fxTone, 0, -4.1, [3]int{1900, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{140, fxTone, 0, -15.2, [3]int{1918, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{142, fxTone, 0, -27.1, [3]int{1927, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{144, fxTone, 0, -9.3, [3]int{1865, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{146, fxTone, 0, -1.1, [3]int{1908, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{148, fxTone, 0, -0.8, [3]int{1930, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{150, fxTone, 0, -6.4, [3]int{1934, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{152, fxTone, 0, -17.2, [3]int{1928, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{154, fxTone, 0, -23.9, [3]int{3103, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{156, fxTone, 0, -7.2, [3]int{3015, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{158, fxTone, 0, -1.5, [3]int{3001, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{160, fxTone, 0, -2.9, [3]int{2994, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{162, fxTone, 0, -9.6, [3]int{2990, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{164, fxTone, 0, -21.6, [3]int{2974, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{166, fxTone, 0, -18.9, [3]int{2934, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{168, fxTone, 0, -5.1, [3]int{2992, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, -1.3, [3]int{2994, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{172, fxTone, 0, -4.3, [3]int{2993, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{174, fxTone, 0, -12.4, [3]int{2994, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{176, fxTone, 0, -26.8, [3]int{3080, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{178, fxTone, 0, -14.2, [3]int{2973, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, -3.3, [3]int{2986, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{182, fxTone, 0, -1.5, [3]int{2988, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{184, fxTone, 0, -5.9, [3]int{2990, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{186, fxTone, 0, -15.3, [3]int{2987, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{188, fxTone, 0, -60.0, [3]int{2987, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{190, fxTone, 0, -10.2, [3]int{2972, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{192, fxTone, 0, -2.2, [3]int{2988, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{194, fxTone, 0, -2.1, [3]int{2991, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{196, fxTone, 0, -7.9, [3]int{2993, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{198, fxTone, 0, -18.7, [3]int{3006, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{200, fxTone, 0, -23.7, [3]int{3106, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{202, fxTone, 0, -7.5, [3]int{2987, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{204, fxTone, 0, -2.0, [3]int{2990, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{206, fxTone, 0, -4.0, [3]int{2991, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{208, fxTone, 0, -11.5, [3]int{2987, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{210, fxTone, 0, -24.7, [3]int{2962, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{212, fxTone, 0, -54.1, [3]int{255, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{214, fxTone, 0, -11.0, [3]int{2982, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{216, fxTone, 0, -5.2, [3]int{2988, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{218, fxTone, 0, -7.0, [3]int{2992, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{220, fxTone, 0, -14.1, [3]int{2993, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{222, fxTone, 0, -25.5, [3]int{2995, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{224, fxTone, 0, -55.5, [3]int{237, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{226, fxTone, 0, -56.1, [3]int{229, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{228, fxTone, 0, -16.6, [3]int{2982, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{230, fxTone, 0, -13.3, [3]int{2989, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{232, fxTone, 0, -17.5, [3]int{2992, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{234, fxTone, 0, -26.1, [3]int{2998, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{236, fxTone, 0, -60.0, [3]int{2998, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{238, fxTone, 0, -59.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{240, fxTone, 0, -60.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{242, fxTone, 0, -60.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{244, fxTone, 0, -60.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{246, fxTone, 0, -60.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{249, fxTone, 0, -60.0, [3]int{226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-	},
-	235: { // C5
-		{5, fxTone, 0, -60.0, [3]int{239, 467, 297}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{239, 467, 297}, [3]float64{0, -0.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 665, 297}, [3]float64{0, -14.5, -60.0}},
-		{20, fxTone, 0, -60.0, [3]int{239, 665, 297}, [3]float64{0, -2.1, -60.0}},
-		{25, fxTone, 0, -60.0, [3]int{309, 764, 297}, [3]float64{0, -10.9, -60.0}},
-		{30, fxTone, 0, -12.4, [3]int{2694, 764, 297}, [3]float64{0, -11.0, -60.0}},
-		{40, fxTone, 0, -9.1, [3]int{2700, 764, 297}, [3]float64{0, -10.6, -60.0}},
-		{70, fxTone, 0, -8.6, [3]int{2694, 764, 297}, [3]float64{0, -10.2, -60.0}},
-		{75, fxTone, 0, -15.1, [3]int{770, 764, 297}, [3]float64{0, 0.0, -60.0}},
-		{80, fxTone, 0, -12.5, [3]int{746, 892, 297}, [3]float64{0, -10.8, -60.0}},
-		{110, fxTone, 0, -1.8, [3]int{618, 898, 297}, [3]float64{0, -3.3, -60.0}},
-		{115, fxTone, 0, -1.2, [3]int{606, 898, 297}, [3]float64{0, -3.3, -13.8}},
-		{125, fxTone, 0, -0.8, [3]int{595, 898, 297}, [3]float64{0, -4.0, -5.3}},
-		{130, fxTone, 0, -0.4, [3]int{595, 297, 898}, [3]float64{0, -2.8, -4.9}},
-		{145, fxTone, 0, -0.1, [3]int{595, 297, 892}, [3]float64{0, -0.1, -14.9}},
-		{150, fxTone, 0, 0.0, [3]int{297, 297, 892}, [3]float64{0, 0.0, -60.0}},
-		{160, fxTone, 0, -0.1, [3]int{297, 297, 892}, [3]float64{0, -0.3, -60.0}},
-		{165, fxTone, 0, -0.1, [3]int{496, 297, 892}, [3]float64{0, -0.5, -60.0}},
-		{175, fxTone, 0, -0.1, [3]int{496, 297, 892}, [3]float64{0, -0.7, -60.0}},
-		{185, fxTone, 0, -0.2, [3]int{432, 297, 892}, [3]float64{0, -0.0, -60.0}},
-		{190, fxTone, 0, -0.1, [3]int{338, 192, 892}, [3]float64{0, -14.9, -60.0}},
-		{195, fxTone, 0, -0.3, [3]int{379, 181, 892}, [3]float64{0, 0.0, -60.0}},
-		{200, fxTone, 0, -0.8, [3]int{338, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{205, fxTone, 0, -0.3, [3]int{309, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{215, fxTone, 0, 0.2, [3]int{297, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{240, fxTone, 0, -3.0, [3]int{297, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{245, fxTone, 0, -3.1, [3]int{268, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{250, fxTone, 0, -3.2, [3]int{181, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{270, fxTone, 0, -5.6, [3]int{175, 181, 892}, [3]float64{0, -60.0, -60.0}},
-		{275, fxTone, 0, -6.0, [3]int{175, 362, 892}, [3]float64{0, -60.0, -60.0}},
-		{345, fxTone, 0, -7.4, [3]int{175, 362, 892}, [3]float64{0, -60.0, -60.0}},
-		{350, fxTone, 0, -9.8, [3]int{175, 362, 892}, [3]float64{0, -0.0, -60.0}},
-		{355, fxTone, 0, -10.9, [3]int{175, 373, 892}, [3]float64{0, -13.6, -60.0}},
-		{360, fxTone, 0, -60.0, [3]int{187, 612, 892}, [3]float64{0, -11.8, -60.0}},
-		{365, fxTone, 0, -60.0, [3]int{198, 612, 892}, [3]float64{0, -9.6, -60.0}},
-		{370, fxTone, 0, -60.0, [3]int{239, 991, 892}, [3]float64{0, -5.0, -60.0}},
-		{375, fxTone, 0, -60.0, [3]int{239, 991, 892}, [3]float64{0, -14.5, -60.0}},
-		{380, fxTone, 0, -60.0, [3]int{239, 991, 892}, [3]float64{0, -13.8, -60.0}},
+	234: { // C4
+		{2, 0, 0, -600, 0, 0, 0, -600, -600},
+		{16, 0, 0, -574, 48, 0, 0, -600, -600},
+		{18, 0, 0, -361, 219, 0, 0, -600, -600},
+		{24, 0, 0, -600, 215, 0, 0, -600, -600},
+		{26, 0, 0, -246, 208, 0, 0, -600, -600},
+		{28, 0, 0, -147, 217, 0, 0, -600, -600},
+		{34, 0, 0, -277, 218, 0, 0, -600, -600},
+		{36, 0, 0, -545, 44, 0, 0, -600, -600},
+		{38, 0, 0, -494, 42, 0, 0, -600, -600},
+		{40, 0, 0, -140, 213, 0, 0, -600, -600},
+		{42, 0, 0, -73, 218, 0, 0, -600, -600},
+		{48, 0, 0, -255, 221, 0, 0, -600, -600},
+		{50, 0, 0, -361, 295, 0, 0, -600, -600},
+		{52, 0, 0, -138, 209, 0, 0, -600, -600},
+		{54, 0, 0, -47, 218, 0, 0, -600, -600},
+		{58, 0, 0, -92, 220, 0, 0, -600, -600},
+		{62, 0, 0, -279, 249, 0, 0, -600, -600},
+		{66, 0, 0, -27, 218, 0, 0, -600, -600},
+		{72, 0, 0, -208, 218, 0, 0, -600, -600},
+		{74, 0, 0, -253, 177, 0, 0, -600, -600},
+		{76, 0, 0, -73, 213, 0, 0, -600, -600},
+		{78, 0, 0, -22, 218, 0, 0, -600, -600},
+		{84, 0, 0, -251, 216, 0, 0, -600, -600},
+		{86, 0, 0, -198, 180, 0, 0, -600, -600},
+		{90, 0, 0, -20, 219, 0, 0, -600, -600},
+		{96, 0, 0, -278, 221, 0, 0, -600, -600},
+		{98, 0, 0, -128, 448, 0, 0, -600, -600},
+		{100, 0, 0, -36, 215, 0, 0, -600, -600},
+		{102, 0, 0, -25, 442, 0, 0, -600, -600},
+		{108, 0, 0, -240, 474, 0, 0, -600, -600},
+		{112, 0, 0, -7, 442, 0, 0, -600, -600},
+		{118, 0, 0, -199, 442, 0, 0, -600, -600},
+		{124, 0, 0, -3, 440, 0, 0, -600, -600},
+		{130, 0, 0, -241, 441, 0, 0, -600, -600},
+		{136, 0, 0, 0, 437, 0, 0, -600, -600},
+		{142, 0, 0, -271, 440, 0, 0, -600, -600},
+		{146, 0, 0, -11, 435, 0, 0, -600, -600},
+		{152, 0, 0, -172, 440, 0, 0, -600, -600},
+		{154, 0, 0, -239, 708, 0, 0, -600, -600},
+		{158, 0, 0, -15, 684, 0, 0, -600, -600},
+		{164, 0, 0, -216, 678, 0, 0, -600, -600},
+		{170, 0, 0, -13, 683, 0, 0, -600, -600},
+		{176, 0, 0, -268, 702, 0, 0, -600, -600},
+		{180, 0, 0, -33, 681, 0, 0, -600, -600},
+		{182, 0, 0, -15, 681, 0, 0, -600, -600},
+		{186, 0, 0, -153, 681, 0, 0, -600, -600},
+		{188, 0, 0, -600, 681, 0, 0, -600, -600},
+		{190, 0, 0, -102, 678, 0, 0, -600, -600},
+		{192, 0, 0, -22, 681, 0, 0, -600, -600},
+		{200, 0, 0, -237, 708, 0, 0, -600, -600},
+		{204, 0, 0, -20, 682, 0, 0, -600, -600},
+		{210, 0, 0, -247, 676, 0, 0, -600, -600},
+		{212, 0, 0, -541, 58, 0, 0, -600, -600},
+		{214, 0, 0, -110, 680, 0, 0, -600, -600},
+		{216, 0, 0, -52, 681, 0, 0, -600, -600},
+		{222, 0, 0, -255, 683, 0, 0, -600, -600},
+		{224, 0, 0, -555, 54, 0, 0, -600, -600},
+		{226, 0, 0, -561, 52, 0, 0, -600, -600},
+		{228, 0, 0, -166, 680, 0, 0, -600, -600},
+		{230, 0, 0, -133, 682, 0, 0, -600, -600},
+		{234, 0, 0, -261, 684, 0, 0, -600, -600},
+		{236, 0, 0, -600, 684, 0, 0, -600, -600},
+		{238, 0, 0, -590, 52, 0, 0, -600, -600},
+		{249, 0, 0, -600, 52, 0, 0, -600, -600},
 	},
 	236: { // C6
-		{5, fxTone, 0, -60.0, [3]int{233, 478, 583}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{233, 478, 583}, [3]float64{0, -0.0, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 980, 583}, [3]float64{0, -13.4, -0.1}},
-		{20, fxTone, 0, -60.0, [3]int{239, 980, 583}, [3]float64{0, -11.9, -12.9}},
-		{25, fxTone, 0, -60.0, [3]int{2012, 991, 595}, [3]float64{0, -14.7, -15.1}},
-		{30, fxTone, 0, -22.1, [3]int{2029, 980, 997}, [3]float64{0, -10.5, -15.7}},
-		{35, fxTone, 0, -13.4, [3]int{2041, 227, 595}, [3]float64{0, -7.5, -9.8}},
-		{40, fxTone, 0, -13.0, [3]int{2029, 227, 1569}, [3]float64{0, -14.8, -17.3}},
-		{55, fxTone, 0, -8.2, [3]int{2023, 227, 1569}, [3]float64{0, -3.1, -60.0}},
-		{65, fxTone, 0, -4.2, [3]int{2023, 227, 1569}, [3]float64{0, -60.0, -60.0}},
-		{70, fxTone, 0, -4.9, [3]int{2023, 1475, 1125}, [3]float64{0, -60.0, -60.0}},
-		{75, fxTone, 0, -5.2, [3]int{2023, 1475, 1125}, [3]float64{0, -2.6, -60.0}},
-		{80, fxTone, 0, -1.4, [3]int{2023, 1475, 1125}, [3]float64{0, -60.0, -60.0}},
-		{90, fxTone, 0, -1.9, [3]int{1738, 1475, 1125}, [3]float64{0, -0.9, -1.5}},
-		{100, fxTone, 0, -0.6, [3]int{1376, 1143, 1125}, [3]float64{0, -14.2, -14.8}},
-		{110, fxTone, 0, 1.1, [3]int{1067, 1143, 2799}, [3]float64{0, -9.8, -2.4}},
-		{130, fxTone, 0, -1.4, [3]int{904, 647, 641}, [3]float64{0, 0.0, 0.0}},
-		{135, fxTone, 0, -2.3, [3]int{904, 1942, 641}, [3]float64{0, 2.7, 0.0}},
-		{140, fxTone, 0, -2.8, [3]int{904, 1942, 910}, [3]float64{0, 1.8, -7.0}},
-		{145, fxTone, 0, -1.9, [3]int{1930, 1942, 910}, [3]float64{0, -1.8, -6.2}},
-		{150, fxTone, 0, -1.8, [3]int{1936, 1942, 1679}, [3]float64{0, -9.1, -13.1}},
-		{160, fxTone, 0, -2.0, [3]int{1930, 898, 910}, [3]float64{0, -5.1, -8.5}},
-		{165, fxTone, 0, -3.0, [3]int{906, 898, 647}, [3]float64{0, -1.4, -10.3}},
-		{175, fxTone, 0, -1.8, [3]int{898, 898, 647}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, 0.7, [3]int{904, 641, 2782}, [3]float64{0, -60.0, -60.0}},
-		{185, fxTone, 0, 1.2, [3]int{904, 641, 2782}, [3]float64{0, -13.7, -5.0}},
-		{200, fxTone, 0, -0.0, [3]int{1225, 1096, 2898}, [3]float64{0, -0.5, 7.4}},
-		{205, fxTone, 0, -0.4, [3]int{1330, 1073, 1382}, [3]float64{0, -10.7, -12.7}},
-		{240, fxTone, 0, -6.0, [3]int{2029, 1096, 1195}, [3]float64{0, -60.0, -60.0}},
-		{245, fxTone, 0, -5.1, [3]int{2035, 338, 338}, [3]float64{0, -60.0, -60.0}},
-		{265, fxTone, 0, -9.7, [3]int{2035, 338, 338}, [3]float64{0, -60.0, -60.0}},
-		{280, fxTone, 0, -16.1, [3]int{2035, 571, 531}, [3]float64{0, -7.5, -11.0}},
-		{285, fxTone, 0, -60.0, [3]int{239, 571, 531}, [3]float64{0, -8.0, -10.3}},
-		{295, fxTone, 0, -60.0, [3]int{239, 764, 566}, [3]float64{0, -14.6, -0.1}},
-		{300, fxTone, 0, -60.0, [3]int{239, 764, 566}, [3]float64{0, -10.4, -60.0}},
-		{305, fxTone, 0, -60.0, [3]int{239, 478, 566}, [3]float64{0, -13.0, -60.0}},
+		{5, 0, 0, -600, 53, 109, 133, -600, -600},
+		{25, 0, 0, -600, 459, 226, 136, -147, -151},
+		{30, 0, 0, -221, 463, 224, 227, -105, -157},
+		{35, 0, 0, -134, 466, 52, 136, -75, -98},
+		{40, 0, 0, -130, 463, 52, 358, -148, -173},
+		{55, 0, 0, -82, 461, 52, 358, -31, -600},
+		{75, 0, 0, -52, 461, 336, 257, -26, -600},
+		{90, 0, 0, -19, 396, 336, 257, -9, -15},
+		{100, 0, 0, -6, 314, 261, 257, -142, -148},
+		{110, 0, 0, 11, 243, 261, 638, -98, -24},
+		{130, 0, 0, -14, 206, 148, 146, 0, 0},
+		{135, 0, 0, -23, 206, 443, 146, 27, 0},
+		{140, 0, 0, -28, 206, 443, 208, 18, -70},
+		{145, 0, 0, -19, 440, 443, 208, -18, -62},
+		{150, 0, 0, -18, 442, 443, 383, -91, -131},
+		{160, 0, 0, -20, 440, 205, 208, -51, -85},
+		{165, 0, 0, -30, 207, 205, 148, -14, -103},
+		{185, 0, 0, 12, 206, 146, 635, -137, -50},
+		{200, 0, 0, 0, 279, 250, 661, -5, 74},
+		{205, 0, 0, -4, 303, 245, 315, -107, -127},
+		{240, 0, 0, -60, 463, 250, 273, -600, -600},
+		{280, 0, 0, -161, 464, 130, 121, -75, -110},
+		{285, 0, 0, -600, 55, 130, 121, -80, -103},
+		{305, 0, 0, -600, 55, 109, 129, -130, -600},
 	},
-	237: { // C7: traced again every 2ms, one tone sweeping in five arches (see speakjet.c's fx_points)
-		{2, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{4, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{6, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{8, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{10, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{12, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{14, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{16, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{18, fxTone, 0, -60.0, [3]int{0, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{20, fxTone, 0, -55.4, [3]int{263, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{22, fxTone, 0, -32.2, [3]int{501, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{24, fxTone, 0, -25.4, [3]int{516, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{26, fxTone, 0, -26.0, [3]int{524, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{28, fxTone, 0, -32.0, [3]int{522, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{30, fxTone, 0, -42.8, [3]int{519, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{32, fxTone, 0, -57.0, [3]int{182, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{34, fxTone, 0, -46.2, [3]int{202, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{36, fxTone, 0, -23.9, [3]int{488, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{38, fxTone, 0, -17.8, [3]int{514, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{40, fxTone, 0, -19.1, [3]int{525, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{42, fxTone, 0, -25.8, [3]int{523, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{44, fxTone, 0, -37.8, [3]int{520, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{46, fxTone, 0, -49.7, [3]int{160, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{48, fxTone, 0, -27.0, [3]int{461, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{50, fxTone, 0, -15.8, [3]int{507, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{52, fxTone, 0, -13.9, [3]int{522, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{54, fxTone, 0, -18.4, [3]int{528, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{56, fxTone, 0, -27.5, [3]int{525, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{58, fxTone, 0, -49.4, [3]int{124, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{60, fxTone, 0, -26.2, [3]int{459, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{62, fxTone, 0, -13.9, [3]int{504, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{64, fxTone, 0, -11.2, [3]int{526, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{66, fxTone, 0, -14.8, [3]int{559, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{68, fxTone, 0, -22.8, [3]int{609, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{70, fxTone, 0, -33.7, [3]int{850, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{72, fxTone, 0, -13.5, [3]int{957, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{74, fxTone, 0, -4.5, [3]int{1029, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{76, fxTone, 0, -3.9, [3]int{1086, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{78, fxTone, 0, -8.8, [3]int{1159, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{80, fxTone, 0, -19.2, [3]int{1219, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{82, fxTone, 0, -24.6, [3]int{1368, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{84, fxTone, 0, -6.3, [3]int{1578, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{86, fxTone, 0, -0.6, [3]int{1639, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{88, fxTone, 0, -2.1, [3]int{1700, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{90, fxTone, 0, -8.8, [3]int{1770, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{92, fxTone, 0, -21.4, [3]int{1841, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{94, fxTone, 0, -17.2, [3]int{2012, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{96, fxTone, 0, -3.3, [3]int{2186, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{98, fxTone, 0, -0.0, [3]int{2242, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{100, fxTone, 0, -3.4, [3]int{2311, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{102, fxTone, 0, -11.3, [3]int{2379, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{104, fxTone, 0, -25.5, [3]int{2433, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{106, fxTone, 0, -12.6, [3]int{2721, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{108, fxTone, 0, -2.8, [3]int{2733, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{110, fxTone, 0, -3.9, [3]int{2643, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{112, fxTone, 0, -9.2, [3]int{2198, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{114, fxTone, 0, -17.1, [3]int{1875, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{116, fxTone, 0, -32.7, [3]int{1529, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{118, fxTone, 0, -19.8, [3]int{542, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{120, fxTone, 0, -10.0, [3]int{618, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{122, fxTone, 0, -8.8, [3]int{678, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{124, fxTone, 0, -13.2, [3]int{753, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{126, fxTone, 0, -22.9, [3]int{825, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{128, fxTone, 0, -16.1, [3]int{1064, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{130, fxTone, 0, -4.9, [3]int{1134, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{132, fxTone, 0, -2.5, [3]int{1191, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{134, fxTone, 0, -6.3, [3]int{1261, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{136, fxTone, 0, -14.1, [3]int{1345, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{138, fxTone, 0, -8.8, [3]int{1607, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{140, fxTone, 0, -1.3, [3]int{1630, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{142, fxTone, 0, -1.2, [3]int{1684, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{144, fxTone, 0, -6.6, [3]int{1756, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{146, fxTone, 0, -9.8, [3]int{1864, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{148, fxTone, 0, -2.3, [3]int{2040, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{150, fxTone, 0, -0.1, [3]int{2095, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{152, fxTone, 0, -4.3, [3]int{2163, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{154, fxTone, 0, -7.7, [3]int{2207, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{156, fxTone, 0, -3.0, [3]int{2139, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{158, fxTone, 0, -3.4, [3]int{1974, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{160, fxTone, 0, -8.9, [3]int{1656, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{162, fxTone, 0, -15.1, [3]int{1571, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{164, fxTone, 0, -11.2, [3]int{588, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{166, fxTone, 0, -10.1, [3]int{576, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{168, fxTone, 0, -14.3, [3]int{627, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{170, fxTone, 0, -11.3, [3]int{754, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{172, fxTone, 0, -5.9, [3]int{826, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{174, fxTone, 0, -6.2, [3]int{881, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{176, fxTone, 0, -10.3, [3]int{895, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{178, fxTone, 0, -5.3, [3]int{1166, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, -2.7, [3]int{1154, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{182, fxTone, 0, -5.1, [3]int{1229, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{184, fxTone, 0, -4.8, [3]int{1294, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{186, fxTone, 0, -1.3, [3]int{1414, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{188, fxTone, 0, -2.5, [3]int{1469, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{190, fxTone, 0, -5.4, [3]int{1463, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{192, fxTone, 0, -1.2, [3]int{1717, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{194, fxTone, 0, -1.4, [3]int{1733, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{196, fxTone, 0, -3.5, [3]int{1919, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{198, fxTone, 0, -0.0, [3]int{1968, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{200, fxTone, 0, -1.0, [3]int{2000, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{202, fxTone, 0, -3.4, [3]int{2081, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{204, fxTone, 0, -2.1, [3]int{1677, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{206, fxTone, 0, -4.7, [3]int{1594, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{208, fxTone, 0, -12.9, [3]int{763, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{210, fxTone, 0, -8.9, [3]int{700, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{212, fxTone, 0, -10.6, [3]int{627, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{214, fxTone, 0, -9.7, [3]int{648, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{216, fxTone, 0, -7.7, [3]int{665, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{218, fxTone, 0, -8.8, [3]int{747, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{220, fxTone, 0, -6.3, [3]int{823, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{222, fxTone, 0, -5.5, [3]int{818, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{224, fxTone, 0, -8.7, [3]int{771, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{226, fxTone, 0, -8.9, [3]int{818, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{228, fxTone, 0, -4.0, [3]int{973, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{230, fxTone, 0, -4.1, [3]int{999, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{232, fxTone, 0, -2.9, [3]int{1068, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{234, fxTone, 0, -6.4, [3]int{1030, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{236, fxTone, 0, -2.6, [3]int{1296, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{238, fxTone, 0, -1.5, [3]int{1254, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{240, fxTone, 0, -1.4, [3]int{1286, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{242, fxTone, 0, -1.0, [3]int{1340, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{244, fxTone, 0, -4.5, [3]int{1286, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{246, fxTone, 0, -1.4, [3]int{1557, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{248, fxTone, 0, -0.3, [3]int{1504, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{250, fxTone, 0, -2.8, [3]int{1415, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{252, fxTone, 0, -3.6, [3]int{1209, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{254, fxTone, 0, -9.5, [3]int{764, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{256, fxTone, 0, -8.7, [3]int{644, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{258, fxTone, 0, -10.6, [3]int{542, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{260, fxTone, 0, -10.4, [3]int{503, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{262, fxTone, 0, -12.1, [3]int{464, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{264, fxTone, 0, -12.7, [3]int{466, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{266, fxTone, 0, -10.6, [3]int{610, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{268, fxTone, 0, -7.4, [3]int{731, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{270, fxTone, 0, -7.0, [3]int{699, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{272, fxTone, 0, -6.8, [3]int{700, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{274, fxTone, 0, -6.2, [3]int{736, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{276, fxTone, 0, -8.0, [3]int{706, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{278, fxTone, 0, -8.2, [3]int{753, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{280, fxTone, 0, -4.3, [3]int{939, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{282, fxTone, 0, -3.1, [3]int{977, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{284, fxTone, 0, -3.5, [3]int{944, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{286, fxTone, 0, -3.7, [3]int{957, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{288, fxTone, 0, -4.2, [3]int{979, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{290, fxTone, 0, -4.7, [3]int{1246, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{292, fxTone, 0, -2.7, [3]int{1172, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{294, fxTone, 0, -1.2, [3]int{1226, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{296, fxTone, 0, -1.8, [3]int{1174, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{298, fxTone, 0, -3.4, [3]int{1074, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{300, fxTone, 0, -5.4, [3]int{894, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{302, fxTone, 0, -7.3, [3]int{856, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{304, fxTone, 0, -11.6, [3]int{485, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{306, fxTone, 0, -12.9, [3]int{428, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{308, fxTone, 0, -12.9, [3]int{421, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{310, fxTone, 0, -11.4, [3]int{470, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{312, fxTone, 0, -11.5, [3]int{469, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{314, fxTone, 0, -12.1, [3]int{464, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{316, fxTone, 0, -12.7, [3]int{453, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{318, fxTone, 0, -13.3, [3]int{454, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{320, fxTone, 0, -14.7, [3]int{420, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{322, fxTone, 0, -13.9, [3]int{446, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{324, fxTone, 0, -15.9, [3]int{415, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{326, fxTone, 0, -15.6, [3]int{420, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{328, fxTone, 0, -17.0, [3]int{423, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{330, fxTone, 0, -18.8, [3]int{370, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{332, fxTone, 0, -15.8, [3]int{453, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{334, fxTone, 0, -22.1, [3]int{360, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{336, fxTone, 0, -20.4, [3]int{379, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{338, fxTone, 0, -16.3, [3]int{489, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{340, fxTone, 0, -16.4, [3]int{561, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{342, fxTone, 0, -16.3, [3]int{509, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{344, fxTone, 0, -17.5, [3]int{487, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{346, fxTone, 0, -18.9, [3]int{497, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{348, fxTone, 0, -17.6, [3]int{481, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{350, fxTone, 0, -19.0, [3]int{480, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{352, fxTone, 0, -23.2, [3]int{447, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{354, fxTone, 0, -21.1, [3]int{437, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{356, fxTone, 0, -19.6, [3]int{476, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{358, fxTone, 0, -25.0, [3]int{469, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{360, fxTone, 0, -24.1, [3]int{614, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{362, fxTone, 0, -22.6, [3]int{459, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{364, fxTone, 0, -23.0, [3]int{478, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{366, fxTone, 0, -29.0, [3]int{493, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{368, fxTone, 0, -30.1, [3]int{492, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{370, fxTone, 0, -25.5, [3]int{460, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{372, fxTone, 0, -25.6, [3]int{476, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{374, fxTone, 0, -31.8, [3]int{491, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{376, fxTone, 0, -39.6, [3]int{556, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{378, fxTone, 0, -35.3, [3]int{528, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{380, fxTone, 0, -31.1, [3]int{468, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{382, fxTone, 0, -32.7, [3]int{483, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{384, fxTone, 0, -39.1, [3]int{501, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{386, fxTone, 0, -46.2, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{388, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{390, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{392, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{394, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{396, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{398, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{400, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{402, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-		{405, fxTone, 0, -60.0, [3]int{558, 0, 0}, [3]float64{0, -60.0, -60.0}},
-	},
-	252: { // M0
-		{5, fxTone, 0, -60.0, [3]int{239, 986, 1627}, [3]float64{0, -13.9, -60.0}},
-		{15, fxTone, 0, -60.0, [3]int{239, 991, 1627}, [3]float64{0, -14.8, -60.0}},
-		{25, fxTone, 0, -2.4, [3]int{1755, 1609, 1627}, [3]float64{0, -11.4, -60.0}},
-		{35, fxTone, 0, 1.1, [3]int{1790, 1609, 1627}, [3]float64{0, -12.9, -60.0}},
-		{60, fxTone, 0, 0.8, [3]int{1814, 1574, 1627}, [3]float64{0, -60.0, -60.0}},
-		{180, fxTone, 0, -2.1, [3]int{1819, 1598, 1627}, [3]float64{0, -60.0, -60.0}},
-		{185, fxTone, 0, -2.1, [3]int{1819, 1598, 1627}, [3]float64{0, -1.0, -60.0}},
-		{210, fxTone, 0, -2.9, [3]int{1784, 1574, 1627}, [3]float64{0, -0.9, -60.0}},
-		{215, fxTone, 0, -3.1, [3]int{1784, 1574, 1627}, [3]float64{0, -60.0, -60.0}},
-		{930, fxTone, 0, -24.3, [3]int{1796, 1580, 1627}, [3]float64{0, -14.7, -60.0}},
-		{935, fxTone, 0, -60.0, [3]int{1796, 251, 1627}, [3]float64{0, -16.4, -60.0}},
-		{950, fxTone, 0, -60.0, [3]int{1819, 222, 1627}, [3]float64{0, -15.6, -60.0}},
-		{980, fxTone, 0, -60.0, [3]int{1773, 251, 1627}, [3]float64{0, -60.0, -60.0}},
-		{985, fxTone, 0, -60.0, [3]int{1796, 251, 1627}, [3]float64{0, -11.5, -60.0}},
-		{990, fxTone, 0, -60.0, [3]int{1825, 251, 1627}, [3]float64{0, -12.3, -0.9}},
-		{995, fxTone, 0, -60.0, [3]int{1825, 1475, 1627}, [3]float64{0, -13.8, -13.4}},
-		{1000, fxTone, 0, -60.0, [3]int{1825, 1475, 1627}, [3]float64{0, -11.2, -15.2}},
-		{1005, fxTone, 0, -60.0, [3]int{1814, 251, 1627}, [3]float64{0, -14.1, -13.7}},
-		{1010, fxTone, 0, -60.0, [3]int{1805, 245, 478}, [3]float64{0, -12.5, -14.4}},
-		{1030, fxTone, 0, -60.0, [3]int{1800, 245, 478}, [3]float64{0, -60.0, -60.0}},
-		{1035, fxTone, 0, -60.0, [3]int{1795, 245, 478}, [3]float64{0, -1.7, -60.0}},
-		{1060, fxTone, 0, -60.0, [3]int{1808, 233, 583}, [3]float64{0, -10.6, -14.1}},
-		{1075, fxTone, 0, -60.0, [3]int{1831, 227, 1679}, [3]float64{0, -11.5, -12.2}},
-		{1085, fxTone, 0, -60.0, [3]int{1819, 513, 1679}, [3]float64{0, -13.5, -15.3}},
-		{1110, fxTone, 0, -60.0, [3]int{1796, 292, 443}, [3]float64{0, -14.4, -16.5}},
-		{1130, fxTone, 0, -60.0, [3]int{1779, 612, 840}, [3]float64{0, -8.9, -12.9}},
-		{1135, fxBuzz, 128, -60.0, [3]int{957, 1781, 2639}, [3]float64{0, 26.7, 11.7}},
-		{1160, fxBuzz, 128, -60.0, [3]int{1014, 1784, 2636}, [3]float64{0, 24.6, 10.0}},
-		{1165, fxTone, 0, -60.0, [3]int{1790, 239, 1586}, [3]float64{0, -9.2, -13.0}},
-		{1210, fxTone, 0, -60.0, [3]int{1802, 251, 461}, [3]float64{0, -4.6, -9.0}},
-		{1215, fxTone, 0, -60.0, [3]int{239, 496, 443}, [3]float64{0, -5.8, -7.1}},
-		{1220, fxTone, 0, -60.0, [3]int{239, 991, 443}, [3]float64{0, -12.5, -14.5}},
-		{1230, fxTone, 0, -60.0, [3]int{233, 496, 397}, [3]float64{0, -2.2, -60.0}},
+	237: { // C7
+		{2, 0, 0, -600, 0, 0, 0, -600, -600},
+		{20, 0, 0, -554, 60, 0, 0, -600, -600},
+		{22, 0, 0, -322, 114, 0, 0, -600, -600},
+		{26, 0, 0, -260, 120, 0, 0, -600, -600},
+		{30, 0, 0, -428, 118, 0, 0, -600, -600},
+		{32, 0, 0, -570, 42, 0, 0, -600, -600},
+		{34, 0, 0, -462, 46, 0, 0, -600, -600},
+		{36, 0, 0, -239, 111, 0, 0, -600, -600},
+		{38, 0, 0, -178, 117, 0, 0, -600, -600},
+		{44, 0, 0, -378, 119, 0, 0, -600, -600},
+		{46, 0, 0, -497, 36, 0, 0, -600, -600},
+		{48, 0, 0, -270, 105, 0, 0, -600, -600},
+		{50, 0, 0, -158, 116, 0, 0, -600, -600},
+		{56, 0, 0, -275, 120, 0, 0, -600, -600},
+		{58, 0, 0, -494, 28, 0, 0, -600, -600},
+		{60, 0, 0, -262, 105, 0, 0, -600, -600},
+		{64, 0, 0, -112, 120, 0, 0, -600, -600},
+		{68, 0, 0, -228, 139, 0, 0, -600, -600},
+		{70, 0, 0, -337, 194, 0, 0, -600, -600},
+		{74, 0, 0, -45, 235, 0, 0, -600, -600},
+		{82, 0, 0, -246, 312, 0, 0, -600, -600},
+		{84, 0, 0, -63, 360, 0, 0, -600, -600},
+		{86, 0, 0, -6, 374, 0, 0, -600, -600},
+		{92, 0, 0, -214, 420, 0, 0, -600, -600},
+		{98, 0, 0, 0, 511, 0, 0, -600, -600},
+		{104, 0, 0, -255, 555, 0, 0, -600, -600},
+		{108, 0, 0, -28, 623, 0, 0, -600, -600},
+		{110, 0, 0, -39, 603, 0, 0, -600, -600},
+		{116, 0, 0, -327, 349, 0, 0, -600, -600},
+		{118, 0, 0, -198, 124, 0, 0, -600, -600},
+		{122, 0, 0, -88, 155, 0, 0, -600, -600},
+		{126, 0, 0, -229, 188, 0, 0, -600, -600},
+		{132, 0, 0, -25, 272, 0, 0, -600, -600},
+		{136, 0, 0, -141, 307, 0, 0, -600, -600},
+		{140, 0, 0, -13, 372, 0, 0, -600, -600},
+		{154, 0, 0, -77, 503, 0, 0, -600, -600},
+		{158, 0, 0, -34, 450, 0, 0, -600, -600},
+		{162, 0, 0, -151, 358, 0, 0, -600, -600},
+		{164, 0, 0, -112, 134, 0, 0, -600, -600},
+		{166, 0, 0, -101, 131, 0, 0, -600, -600},
+		{202, 0, 0, -34, 475, 0, 0, -600, -600},
+		{206, 0, 0, -47, 364, 0, 0, -600, -600},
+		{208, 0, 0, -129, 174, 0, 0, -600, -600},
+		{212, 0, 0, -106, 143, 0, 0, -600, -600},
+		{220, 0, 0, -63, 188, 0, 0, -600, -600},
+		{224, 0, 0, -87, 176, 0, 0, -600, -600},
+		{234, 0, 0, -64, 235, 0, 0, -600, -600},
+		{236, 0, 0, -26, 296, 0, 0, -600, -600},
+		{244, 0, 0, -45, 293, 0, 0, -600, -600},
+		{246, 0, 0, -14, 355, 0, 0, -600, -600},
+		{252, 0, 0, -36, 276, 0, 0, -600, -600},
+		{254, 0, 0, -95, 174, 0, 0, -600, -600},
+		{258, 0, 0, -106, 124, 0, 0, -600, -600},
+		{264, 0, 0, -127, 106, 0, 0, -600, -600},
+		{268, 0, 0, -74, 167, 0, 0, -600, -600},
+		{276, 0, 0, -80, 161, 0, 0, -600, -600},
+		{280, 0, 0, -43, 214, 0, 0, -600, -600},
+		{288, 0, 0, -42, 223, 0, 0, -600, -600},
+		{290, 0, 0, -47, 284, 0, 0, -600, -600},
+		{294, 0, 0, -12, 280, 0, 0, -600, -600},
+		{302, 0, 0, -73, 195, 0, 0, -600, -600},
+		{304, 0, 0, -116, 111, 0, 0, -600, -600},
+		{306, 0, 0, -129, 98, 0, 0, -600, -600},
+		{322, 0, 0, -139, 102, 0, 0, -600, -600},
+		{330, 0, 0, -188, 84, 0, 0, -600, -600},
+		{332, 0, 0, -158, 103, 0, 0, -600, -600},
+		{334, 0, 0, -221, 82, 0, 0, -600, -600},
+		{336, 0, 0, -204, 86, 0, 0, -600, -600},
+		{340, 0, 0, -164, 128, 0, 0, -600, -600},
+		{354, 0, 0, -211, 100, 0, 0, -600, -600},
+		{358, 0, 0, -250, 107, 0, 0, -600, -600},
+		{360, 0, 0, -241, 140, 0, 0, -600, -600},
+		{362, 0, 0, -226, 105, 0, 0, -600, -600},
+		{372, 0, 0, -256, 109, 0, 0, -600, -600},
+		{376, 0, 0, -396, 127, 0, 0, -600, -600},
+		{382, 0, 0, -327, 110, 0, 0, -600, -600},
+		{388, 0, 0, -600, 127, 0, 0, -600, -600},
+		{405, 0, 0, -600, 127, 0, 0, -600, -600},
 	},
 	254: { // M2
-		{5, fxBuzz, 128, -60.0, [3]int{540, 1687, 2856}, [3]float64{0, 37.6, 43.5}},
-		{10, fxBuzz, 177, -60.0, [3]int{540, 1707, 2858}, [3]float64{0, 38.1, 44.6}},
-		{15, fxBuzz, 498, -60.0, [3]int{540, 1707, 2866}, [3]float64{0, 4.2, 8.3}},
-		{20, fxBuzz, 498, -11.0, [3]int{539, 1703, 2866}, [3]float64{0, 2.2, 6.6}},
-		{25, fxBuzz, 85, -9.1, [3]int{530, 1703, 2866}, [3]float64{0, 2.2, 6.6}},
-		{45, fxBuzz, 87, -4.3, [3]int{502, 1724, 2919}, [3]float64{0, 2.9, 7.1}},
-		{155, fxBuzz, 87, -7.1, [3]int{735, 1954, 3166}, [3]float64{0, 3.2, 7.2}},
-		{285, fxBuzz, 87, -6.6, [3]int{987, 2198, 3417}, [3]float64{0, 5.9, 9.2}},
-		{410, fxBuzz, 87, -5.4, [3]int{714, 1934, 3145}, [3]float64{0, 2.8, 6.9}},
-		{525, fxBuzz, 87, -6.4, [3]int{488, 1710, 2903}, [3]float64{0, 2.8, 7.5}},
-		{530, fxBuzz, 103, -6.7, [3]int{488, 1710, 2903}, [3]float64{0, 2.5, 7.2}},
-		{535, fxBuzz, 492, -13.6, [3]int{489, 1710, 2902}, [3]float64{0, 2.4, 7.2}},
-		{540, fxBuzz, 83, -13.8, [3]int{489, 1710, 2902}, [3]float64{0, 2.7, 7.2}},
-		{545, fxBuzz, 492, -22.2, [3]int{491, 1712, 2903}, [3]float64{0, 4.7, 9.4}},
-		{550, fxBuzz, 492, -60.0, [3]int{491, 1710, 2901}, [3]float64{0, 5.4, 9.9}},
-		{555, fxBuzz, 492, -60.0, [3]int{491, 1707, 2899}, [3]float64{0, 38.2, 43.8}},
+		{5, 2, 128, -600, 123, 385, 651, 376, 435},
+		{10, 2, 177, -600, 123, 389, 652, 381, 446},
+		{15, 2, 498, -600, 123, 389, 654, 42, 83},
+		{20, 2, 498, -110, 123, 388, 654, 22, 66},
+		{25, 2, 85, -91, 121, 388, 654, 22, 66},
+		{45, 2, 87, -43, 114, 393, 666, 29, 71},
+		{155, 2, 87, -71, 168, 446, 722, 32, 72},
+		{285, 2, 87, -66, 225, 501, 779, 59, 92},
+		{410, 2, 87, -54, 163, 441, 717, 28, 69},
+		{525, 2, 87, -64, 111, 390, 662, 28, 75},
+		{530, 2, 103, -67, 111, 390, 662, 25, 72},
+		{535, 2, 492, -136, 112, 390, 662, 24, 72},
+		{540, 2, 83, -138, 112, 390, 662, 27, 72},
+		{545, 2, 492, -222, 112, 390, 662, 47, 94},
+		{550, 2, 492, -600, 112, 390, 662, 54, 99},
+		{555, 2, 492, -600, 112, 389, 661, 382, 438},
 	},
 }
 
-// the effects the chip gates: their tones pulse on and off at a steady rate,
-// which the chip's envelope oscillator does. on the VoxRecord recording's third
-// take, measured from each effect's envelope a millisecond at a time: C0 and C4
-// pulse at the default speech pitch (85 and 87Hz), C2 at 66Hz, C3 at 59Hz, C6
-// at 125Hz, on for a quarter to two fifths of each cycle (B9 pulses at 87Hz
-// too, but plays closer to the recording ungated). C8 and C9 are gated noise
-// (see cNoise). the
-// envelope shape for each is the one that brought it closest to the recording.
-// effects not listed aren't gated. C0, C2, C3, C4 and C6 have since been found
-// to pulse with the voicing instead (see fxPulses), which takes the place of
-// their gates here
+// the traced effects, by code (from fxRows)
+var fxPoints = func() map[int][]fxPoint {
+	m := map[int][]fxPoint{}
+	for code, rows := range fxRows {
+		for _, r := range rows {
+			m[code] = append(m[code], fxPoint{ms: int(r[0]), kind: int(r[1]), pitch: int(r[2]), db: r[3] / 10,
+				freq: [3]float64{r[4] * freqStepHz, r[5] * freqStepHz, r[6] * freqStepHz}, rel: [3]float64{0, r[7] / 10, r[8] / 10}})
+		}
+	}
+	return m
+}()
+
+// the effects the chip gates: their tones pulse on and off at a steady rate
+// (the envelope oscillator). 0 is not gated. for codes 200 to 254. C8 and C9
+// are gated noise (see cNoise()), and C0, C2, C3, C4 and C6 pulse with the
+// voicing instead (see fxPulses)
 type fxGate struct {
 	hz   int
 	wave envelopeWave
@@ -2833,63 +1306,13 @@ var fxGates = map[int]fxGate{
 	236: {125, envSaw},
 }
 
-// the fourth VoxProbe recording plays the gated effects at pitch 60 and 150 and
-// at bend 0 and 15, on both units. their gates follow the Pitch control, a
-// steady distance from the voicing frequency at all three pitches: C0 4.7Hz
-// under it, C2 20.5Hz under, C3 27.9Hz under, C4 on it and C6 42.7Hz over. and
-// each pulse has the same length whatever the rate: folded at the gate's
-// period, the envelope starts each pulse at full level and fades to nothing in
-// a fixed time, as the voicing does (see voiceFade): C4 as the voicing, C0
-// about 1.3 times as long, C3 and C6 about 1.6 times, and C2 as long but in two
-// humps (its tones beating, restarted together each pulse). at low pitch the
-// rest of each period is silent; at high pitch the next pulse cuts the fade
-// short.
-//
-// C2, C4 and C6 play that way here: voiced at the voicing frequency plus their
-// distance, along voiceFade stretched as measured, with their noise (see
-// fxNoiseFloors) refitted to it. fitted on both recordings at the default
-// pitch, at pitch 60 and at bend 0, and checked at pitch 150, at speeds 90 and
-// 127 and at bend 15, which were left out: C2 73 to 77% and 2.5 to 2.2dB on
-// those, C4 65 to 71% and 4.0 to 3.6dB, C6 65 to 67% and 3.0 to 2.1dB. C0 and
-// C3 came out worse played this way (on the 4kHz comparison of the time); C3
-// pulses at a moving distance, and C0, measured full band, closer and with a
-// shorter fade (below).
-//
-// R8 and R9 pulse too. their low tone, near 650Hz, is restarted at half its
-// frequency: on both units of the fourth VoxProbe recording its lines are 306,
-// 333 and 380Hz apart at pitch 60, 88 and 150, the rate falls with the tone (R9
-// 333 to 296Hz over its first 40ms as the tone falls 667 to 609Hz), and the
-// rate doesn't move with Bend while the tone does, which is what put the
-// strongest line near 330Hz at bend 0 and near 1kHz at bend 15 (the low tone
-// read 126Hz lower there than on the VoxRecord recording). their high tone (3.1
-// and 3.4kHz) is steady, so it moves to oscillator 4, and their noise goes.
-// here the restart rate is half the loudest tone of oscillators 1 to 3, moved
-// with the Pitch control as the others are; 10Hz either side of half fitted 3
-// to 5 points worse. the fade, 0.7 of the voicing's, and the tones' levels were
-// fitted at pitch 60, at bend 0 and on the VoxRecord recording: on pitch 150,
-// bend 15 and the speeds, left out, R8 61 to 77% and 4.9 to 2.8dB, R9 34 to 67%
-// and 7.1 to 3.2dB. a rate rising 0.86Hz to each hertz of the voicing, which
-// pitch 150 suggests, made R8 worse.
-//
-// C3 pulses too, but its pulses slow down as it plays: on every C3 of both
-// units of the fourth VoxProbe recording and of the VoxRecord recording they
-// come 15, 15, 16, 16, 17, 19, 19, 22 and 22ms apart at the default pitch, 5 to
-// 6ms long each at every pitch. at speed 90 the slowing is drawn out and at
-// speed 127 squeezed, so it follows the trace, not the clock, and at pitch 60
-// and 150 the gaps (24 to 50ms and 8 to 12ms) are the voicing less a distance
-// growing from about 20 to 42Hz along it, as at the default pitch. so its
-// distance falls by drift hertz for each millisecond of the trace. fitted on
-// every C3: 66.9 to 77.2% and 4.06 to 2.67dB, pitch 60 50 to 72%, speed 127 65
-// to 79%, its old steady 59Hz gate at pitch 60 having pulsed nearly twice as
-// fast as the chip.
-//
-// C0 pulses as well. its gate is the voicing less 4 to 6Hz at all three pitches
-// (every 18.1, 12.3 and 7.0ms at pitch 60, 88 and 150, on both units), where it
-// had a steady 85Hz gate. a steady distance on that gate made it worse, its
-// square pulses too long at low pitch; pulses fading at 0.66 of the voicing's
-// fade, with its noise (see fxNoiseFloors) 6dB quieter, fitted on every C0 of both
-// recordings: 76.2 to 79.8% and 2.15 to 2.43dB, pitch 60 73 to 80%, bend 0 76
-// to 83%, bend 15 72 to 78%, pitch 150 82 to 79%
+// the effects that pulse with the voicing: each pulse restarts the tones at
+// full level and fades along voiceFade stretched by fade, the pulses a steady
+// distance (offset_hz) from the voicing frequency, so they follow the Pitch
+// control: C0 4Hz under it, C2 20.5Hz under, C4 on it, C6 42.7Hz over. C3's
+// distance grows along the sound (drift, in Hz a millisecond), so its pulses
+// slow as it plays. R8 and R9 restart at half the frequency of their loudest
+// tone
 type fxPulse struct {
 	offsetHz, fade, drift float64
 }
@@ -2904,27 +1327,10 @@ var fxPulses = map[int]fxPulse{
 	230: {-4.0, 0.6625, 0},
 }
 
-// the noise under some of the traced effects. on both units of the VoxRecord
-// recording C0, C1, C2, C4, C6 and C7 have a broad noise under their tones
-// that the traces, which take the strongest peaks as tones, leave out (C1 is as
-// noisy as it is tonal). here oscillators 4 and 5 add it, at a level against
-// the tones' and gated as deep as fitted, along with their frequencies and
-// width, to both units at once. C0 70 to 78% and 2.7 to 2.3dB, C1 42 to 67% and
-// 5.7 to 1.7dB, C2 74 to 79% and 5.1 to 3.3dB, C4 68 to 75% and 4.8 to 4.3dB,
-// C6 66 to 72% and 3.8 to 2.7dB, C7 58 to 65% and 6.3 to 1.9dB. C3's made it
-// match one unit worse, so it has none. C2's, C4's and C6's levels and depths
-// were fitted again for their pulses (see fxPulses): 3dB quieter each, and 0.4,
-// 1 and 0 deep.
-//
-// the tone effects (see fx2Points) have it too: on both units a pure tone sits
-// on a skirt of noise and scattered lines 15 to 30dB under it, across the band,
-// 15 to 30dB over the recording's background, where these had clean sines with
-// nothing. fitted the same way (depth 0: they aren't gated) and kept where
-// neither unit's spectrogram match fell more than half a point: M0 67 to 97% and
-// 5.6 to 0.5dB, A0 66 to 86% and 7.9 to 2.0dB, B6 6.1 to 0.7dB, R2 3.3 to
-// 0.6dB, R9 5.5 to 1.8dB, A6 3.7 to 1.4dB. B7's made its spectrogram worse, as
-// did R3's, R7's, R8's, A5's, B3's and B4's. R9's went again when it was found
-// to pulse (see fxPulses)
+// the noise under some of the traced effects, on oscillators 4 and 5: their
+// frequencies, width (distortion), how deep it is gated and its level against
+// the tones. the C series have a broad noise under their tones, and some tone
+// effects a skirt of noise 15 to 30dB under them
 type fxNoiseFloor struct {
 	n1, n2, dist, depth, db float64
 }
@@ -2982,14 +1388,14 @@ func fxFrame(p fxPoint, code int) frame {
 	g := math.Pow(10, p.db/20.0)
 	var f frame
 	if p.kind == fxNoise {
-		f = noiseFrame(lGlottal, float64(p.freq[0])*0.85, float64(p.freq[0])*1.15, 24*g, 18*g, 200)
+		f = noiseFrame(lGlottal, p.freq[0]*0.85, p.freq[0]*1.15, 24*g, 18*g, 200)
 	} else {
 		base := 28.0
 		if p.freq[1] > 0 {
 			base = 24
 		}
 		for i := range 3 {
-			f.freq[i] = float64(p.freq[i])
+			f.freq[i] = p.freq[i]
 			if p.freq[i] > 0 {
 				f.vol[i] = base * g * math.Pow(10, p.rel[i]/20.0)
 			}
@@ -3032,32 +1438,10 @@ func fxFrame(p fxPoint, code int) frame {
 	return f
 }
 
-// C8 and C9 are noise from about 400Hz to 2.8kHz, flat within a few dB, the
-// same on both units of the VoxRecord recording and nearly the same as each
-// other, gated at 52Hz 13 to 16dB deep. their traces had taken the noise's
-// strongest peaks for three tones, falling away above 1.5kHz. here they are
-// oscillators 4 and 5 spread wide, gated by a saw (see noiseDepth), every 5ms
-// at the level both units have (the mean of the two, in dB against the
-// loudest); the frequencies, width and depth are fitted to both units at once,
-// and the depth comes out at 0.83 (-15dB), as measured. C8 and C9 34% to 58%
-// and 8.4 to 2.9dB.
-//
-// the fourth VoxProbe recording moves them with Bend (see expand()), and at
-// bend 15 both units' noise has a sharp lower edge, nothing under 560Hz within
-// 20dB, which a new random frequency every sample, spreading the noise in long
-// skirts around the oscillator, can't give. holding each random value 0.75ms
-// makes a band with edges instead; with the spread, the frequencies and the
-// hold fitted to both recordings at default and bend 0 and the pitches, and
-// scored over four noise sequences rather than one (the noise carries on from
-// the sounds before), C8 and C9 go from 49 to 55% and 2.8 to 2.3dB there, 52 to
-// 56% and 2.8 to 2.5dB on the VoxRecord recording, and at bend 15, left out of
-// the fit, from 37 to 62% and 8.3 to 4.4dB.
-//
-// the gate keeps time with Speed, not Pitch: on both units of the fourth
-// VoxProbe recording C8's gate comes every 19.1ms at the default speed, 32.7 at
-// speed 90 and 11.2 at speed 127 (1.71 and 0.59 times, where Speed stretches
-// the sound 1.75 and 0.59 times), and every 18.9 to 19.2ms at pitch 60 and 150
-// and both bends. C8 at speed 90 62 to 68%, at speed 127 85 to 86%
+// C8 and C9 are noise from about 400Hz to 2.8kHz, gated by a saw (see
+// noiseDepth) about 15dB deep every 19ms: oscillators 4 and 5 spread wide, each
+// random value held 0.75ms (a band with edges, as on the chip), at these levels
+// in dB every 5ms. the gate keeps time with Speed, not Pitch
 var c8DB = []float64{
 	-16.2, -11.8, -9.5, -5.5, -1.1, -0.5, -0.4, -0.3, -0.1, -0.3,
 	-0.2, -0.1, -0.3, -0.5, -0.5, -0.2, -0.9, -1.3, -1.8, -5.2,
@@ -3090,13 +1474,10 @@ func cNoise(name string, db []float64) sound {
 	return s
 }
 
-// contour plays a traced effect: a quick start on the first point, then a
-// glide to each of the others in turn, then 3ms to silence. a tone doesn't move
-// while it is silent: it fades out where it was and fades in where it is going.
-// the traces give the silent points whatever the background held (C3's first
-// and last are 227Hz), and gliding from those swept each tone in from far
-// below, which at bend 15 put a strong sweep near 660Hz into C3 that neither
-// unit of the fourth VoxProbe recording has (10.6 to 10.1dB there)
+// contour plays a traced effect: a quick start on the first point, a glide to
+// each of the others in turn, then 3ms to silence. a tone doesn't move while it
+// is silent: it fades out where it was and fades in where it is going, rather
+// than sweeping in from wherever the trace's silent points were
 func contour(name string, p []fxPoint, code int) sound {
 	n := len(p)
 	fr := make([]frame, n)
@@ -3136,14 +1517,9 @@ func contour(name string, p []fxPoint, code int) sound {
 	return s
 }
 
-// FXV-BEGIN
-// the sound effects that are a buzz, voiced at the default speech pitch with
-// formants that move, played as the chip plays them, pulse by pulse: measured
-// the same way as the allophones played from the chip's frames (see vfPoints),
-// on both units. each point is a pulse: its time after the one before (glided
-// to in a straight line), the three formants and their volumes. A2 is played
-// this way; A1, A3 and M2 measured this way came out further from the
-// recordings, and keep their traces (A1's traced again: see fxPoints)
+// the buzz effects played as the chip plays them, pulse by pulse (measured as
+// vfPoints are): each point is a pulse's time after the one before, the three
+// formants and their volumes
 type fxvPoint struct {
 	ms   float64
 	freq formants
@@ -3151,78 +1527,90 @@ type fxvPoint struct {
 }
 
 // the buzz effects played from the chip's frames, by code
-var fxvPoints = map[int][]fxvPoint{
+// each pulse as its time in hundredths of a millisecond, the three formants in
+// freqStepHz steps and their volumes in eighths (see fxvPoint)
+var fxvPointsRows = map[int][][7]float64{
 	212: { // A2
-		{1.00, formants{262, 1651, 1422}, [3]float64{5.46, 9.84, 3.08}},
-		{125.61, formants{260, 1549, 2556}, [3]float64{5.65, 9.24, 9.35}},
-		{22.95, formants{235, 1533, 2488}, [3]float64{6.63, 9.81, 8.93}},
-		{24.34, formants{226, 1523, 2417}, [3]float64{7.24, 12.13, 10.91}},
-		{23.09, formants{679, 1509, 2347}, [3]float64{4.85, 15.62, 14.52}},
-		{11.52, formants{219, 1500, 2311}, [3]float64{7.76, 16.22, 14.07}},
-		{11.48, formants{227, 1494, 2265}, [3]float64{6.96, 15.86, 15.20}},
-		{11.50, formants{224, 1486, 2262}, [3]float64{7.05, 15.82, 15.94}},
-		{11.52, formants{215, 1468, 2226}, [3]float64{7.11, 15.58, 15.38}},
-		{11.53, formants{209, 1458, 2209}, [3]float64{7.23, 15.80, 13.78}},
-		{11.45, formants{209, 1444, 2193}, [3]float64{6.94, 15.75, 12.62}},
-		{11.45, formants{189, 1426, 2102}, [3]float64{7.67, 15.86, 13.59}},
-		{11.66, formants{197, 1434, 2015}, [3]float64{8.29, 16.90, 13.79}},
-		{11.50, formants{255, 1420, 2216}, [3]float64{6.54, 17.48, 8.01}},
-		{11.46, formants{211, 1405, 1940}, [3]float64{9.34, 17.45, 15.49}},
-		{11.43, formants{208, 1402, 1918}, [3]float64{10.11, 17.49, 15.89}},
-		{11.42, formants{198, 1395, 1883}, [3]float64{10.80, 17.58, 15.01}},
-		{11.78, formants{204, 1395, 1803}, [3]float64{9.51, 18.15, 16.25}},
-		{11.46, formants{209, 1375, 1783}, [3]float64{8.66, 17.79, 16.84}},
-		{11.44, formants{236, 1352, 1772}, [3]float64{6.21, 17.09, 16.15}},
-		{11.44, formants{230, 1340, 1734}, [3]float64{6.65, 16.83, 16.72}},
-		{11.45, formants{224, 1328, 1674}, [3]float64{6.81, 17.20, 16.27}},
-		{11.46, formants{252, 1332, 1615}, [3]float64{5.75, 17.88, 16.68}},
-		{11.45, formants{239, 1305, 1598}, [3]float64{5.87, 17.50, 16.52}},
-		{11.44, formants{250, 1285, 1562}, [3]float64{5.76, 17.22, 16.06}},
-		{11.47, formants{679, 1265, 1514}, [3]float64{5.10, 16.54, 15.33}},
-		{11.45, formants{679, 1279, 1469}, [3]float64{4.86, 17.50, 17.17}},
-		{11.41, formants{258, 1257, 1422}, [3]float64{5.25, 18.15, 18.08}},
-		{11.50, formants{262, 1315, 1999}, [3]float64{6.11, 17.10, 9.94}},
-		{11.45, formants{282, 1227, 1977}, [3]float64{5.22, 16.80, 9.15}},
-		{11.44, formants{282, 1264, 2558}, [3]float64{5.28, 23.19, 5.94}},
-		{11.42, formants{272, 1245, 2488}, [3]float64{5.50, 26.77, 6.38}},
-		{11.43, formants{270, 1220, 2578}, [3]float64{5.71, 29.62, 7.58}},
-		{11.44, formants{275, 1193, 2581}, [3]float64{5.23, 31.00, 5.37}},
-		{11.46, formants{269, 1174, 2578}, [3]float64{5.50, 31.00, 6.95}},
-		{11.38, formants{679, 1143, 1422}, [3]float64{4.63, 31.00, 3.15}},
-		{11.20, formants{250, 1118, 2492}, [3]float64{6.85, 31.00, 5.91}},
-		{11.50, formants{242, 1092, 1422}, [3]float64{6.88, 31.00, 4.31}},
-		{11.39, formants{192, 1064, 1422}, [3]float64{11.19, 31.00, 1.65}},
-		{11.46, formants{183, 1033, 1422}, [3]float64{11.78, 31.00, 3.34}},
-		{11.29, formants{679, 1018, 1422}, [3]float64{3.22, 28.65, 2.44}},
-		{11.59, formants{911, 1078, 1422}, [3]float64{17.97, 16.82, 2.81}},
-		{11.97, formants{881, 1054, 1422}, [3]float64{18.24, 17.03, 2.42}},
-		{10.87, formants{850, 1040, 1422}, [3]float64{19.04, 17.42, 2.80}},
-		{12.09, formants{810, 1031, 1422}, [3]float64{18.82, 16.88, 1.58}},
-		{11.45, formants{781, 1013, 1422}, [3]float64{19.69, 17.52, 2.05}},
-		{10.74, formants{740, 1001, 1422}, [3]float64{19.92, 17.81, 3.16}},
-		{11.46, formants{715, 980, 1422}, [3]float64{20.36, 18.38, 2.57}},
-		{11.45, formants{679, 968, 1422}, [3]float64{20.58, 18.73, 2.70}},
-		{14.17, formants{672, 915, 2536}, [3]float64{16.48, 15.21, 4.63}},
-		{10.75, formants{630, 912, 2600}, [3]float64{12.57, 11.88, 4.62}},
-		{11.58, formants{601, 918, 2495}, [3]float64{14.14, 13.33, 4.72}},
-		{11.54, formants{549, 911, 2445}, [3]float64{14.24, 13.27, 6.28}},
-		{11.52, formants{535, 924, 2445}, [3]float64{14.22, 13.99, 8.79}},
-		{11.52, formants{517, 921, 2432}, [3]float64{13.84, 13.86, 7.64}},
-		{11.42, formants{396, 877, 1422}, [3]float64{15.13, 13.10, 2.09}},
-		{10.82, formants{409, 845, 1422}, [3]float64{15.81, 14.73, 2.60}},
-		{11.52, formants{386, 841, 1422}, [3]float64{14.56, 15.01, 3.18}},
-		{11.57, formants{366, 831, 2576}, [3]float64{12.89, 14.69, 4.58}},
-		{11.54, formants{313, 831, 1422}, [3]float64{12.18, 14.11, 3.99}},
-		{11.50, formants{215, 797, 1422}, [3]float64{19.92, 14.28, 3.13}},
-		{10.75, formants{200, 803, 1422}, [3]float64{19.90, 13.82, 2.59}},
-		{11.59, formants{186, 786, 1422}, [3]float64{17.65, 12.75, 1.26}},
-		{11.50, formants{189, 769, 1422}, [3]float64{12.85, 12.85, 2.06}},
-		{45.73, formants{206, 711, 1422}, [3]float64{9.25, 16.00, 2.64}},
-		{11.41, formants{220, 714, 1422}, [3]float64{6.82, 14.01, 2.82}},
-		{12.17, formants{679, 1143, 1422}, [3]float64{3.07, 7.34, 0.90}},
-		{11.50, formants{679, 1143, 1422}, [3]float64{3.07, 7.34, 0.90}},
+		{100, 60, 377, 324, 44, 79, 25},
+		{12561, 59, 353, 583, 45, 74, 75},
+		{2295, 54, 350, 567, 53, 78, 71},
+		{2434, 52, 347, 551, 58, 97, 87},
+		{2309, 155, 344, 535, 39, 125, 116},
+		{1152, 50, 342, 527, 62, 130, 113},
+		{1148, 52, 341, 517, 56, 127, 122},
+		{1150, 51, 339, 516, 56, 127, 128},
+		{1152, 49, 335, 508, 57, 125, 123},
+		{1153, 48, 333, 504, 58, 126, 110},
+		{1145, 48, 329, 500, 56, 126, 101},
+		{1145, 43, 325, 479, 61, 127, 109},
+		{1166, 45, 327, 460, 66, 135, 110},
+		{1150, 58, 324, 505, 52, 140, 64},
+		{1146, 48, 320, 442, 75, 140, 124},
+		{1143, 47, 320, 437, 81, 140, 127},
+		{1142, 45, 318, 429, 86, 141, 120},
+		{1178, 47, 318, 411, 76, 145, 130},
+		{1146, 48, 314, 407, 69, 142, 135},
+		{1144, 54, 308, 404, 50, 137, 129},
+		{1144, 52, 306, 395, 53, 135, 134},
+		{1145, 51, 303, 382, 54, 138, 130},
+		{1146, 57, 304, 368, 46, 143, 133},
+		{1145, 55, 298, 364, 47, 140, 132},
+		{1144, 57, 293, 356, 46, 138, 128},
+		{1147, 155, 289, 345, 41, 132, 123},
+		{1145, 155, 292, 335, 39, 140, 137},
+		{1141, 59, 287, 324, 42, 145, 145},
+		{1150, 60, 300, 456, 49, 137, 80},
+		{1145, 64, 280, 451, 42, 134, 73},
+		{1144, 64, 288, 583, 42, 186, 48},
+		{1142, 62, 284, 567, 44, 214, 51},
+		{1143, 62, 278, 588, 46, 237, 61},
+		{1144, 63, 272, 589, 42, 248, 43},
+		{1146, 61, 268, 588, 44, 248, 56},
+		{1138, 155, 261, 324, 37, 248, 25},
+		{1120, 57, 255, 568, 55, 248, 47},
+		{1150, 55, 249, 324, 55, 248, 34},
+		{1139, 44, 243, 324, 90, 248, 13},
+		{1146, 42, 236, 324, 94, 248, 27},
+		{1129, 155, 232, 324, 26, 229, 20},
+		{1159, 208, 246, 324, 144, 135, 22},
+		{1197, 201, 240, 324, 146, 136, 19},
+		{1087, 194, 237, 324, 152, 139, 22},
+		{1209, 185, 235, 324, 151, 135, 13},
+		{1145, 178, 231, 324, 158, 140, 16},
+		{1074, 169, 228, 324, 159, 142, 25},
+		{1146, 163, 224, 324, 163, 147, 21},
+		{1145, 155, 221, 324, 165, 150, 22},
+		{1417, 153, 209, 578, 132, 122, 37},
+		{1075, 144, 208, 593, 101, 95, 37},
+		{1158, 137, 209, 569, 113, 107, 38},
+		{1154, 125, 208, 558, 114, 106, 50},
+		{1152, 122, 211, 558, 114, 112, 70},
+		{1152, 118, 210, 555, 111, 111, 61},
+		{1142, 90, 200, 324, 121, 105, 17},
+		{1082, 93, 193, 324, 126, 118, 21},
+		{1152, 88, 192, 324, 116, 120, 25},
+		{1157, 83, 190, 588, 103, 118, 37},
+		{1154, 71, 190, 324, 97, 113, 32},
+		{1150, 49, 182, 324, 159, 114, 25},
+		{1075, 46, 183, 324, 159, 111, 21},
+		{1159, 42, 179, 324, 141, 102, 10},
+		{1150, 43, 175, 324, 103, 103, 16},
+		{4573, 47, 162, 324, 74, 128, 21},
+		{1141, 50, 163, 324, 55, 112, 23},
+		{1217, 155, 261, 324, 25, 59, 7},
+		{1150, 155, 261, 324, 25, 59, 7},
 	},
 }
+
+var fxvPoints = func() map[int][]fxvPoint {
+	m := map[int][]fxvPoint{}
+	for code, rows := range fxvPointsRows {
+		for _, r := range rows {
+			m[code] = append(m[code], fxvPoint{ms: r[0] / 100, freq: formants{r[1] * freqStepHz, r[2] * freqStepHz, r[3] * freqStepHz}, vol: [3]float64{r[4] / 8, r[5] / 8, r[6] / 8}})
+		}
+	}
+	return m
+}()
 
 // contourVoiced plays a buzz effect from the chip's frames, voiced at the
 // default pitch (which the Pitch control scales)
@@ -3240,196 +1628,93 @@ func contourVoiced(name string, p []fxvPoint) sound {
 
 // FXV-END
 
-// C1 is voiced: a harmonic series whose own pitch sweeps, with three formants
-// moving through it. on both units, in Man Goes Down (C1 at speed 62, where it
-// is slow enough to see), every line is a whole multiple of the pitch, and the
-// pitch steps a whole voicing tick (see voiceHz()) at a time: 24 ticks (333Hz)
-// for the first 40ms, up to 14 (570Hz) by 80ms, then one tick slower every few
-// milliseconds to 40 ticks (200Hz) at the end, the same on both units within
-// 4Hz. the fourth VoxProbe recording plays it at pitch 60, 88 and 150 and at
-// bend 0 and 15, and the sweep is the same at all of them but pitch 150 (a tick
-// or two faster there), so the Pitch control doesn't move it (see
-// sound.ownPitch); Bend moves the formants as usual. over the last 200ms one
-// line rises from 2.0 to 2.9kHz (3.35kHz at bend 15) straight through the
-// harmonics: oscillator 3 there runs free of the voicing (see frame.freeOsc).
-// the trace this replaces took the loudest harmonic for a tone, jumping from
-// one to the next, under broad noise: at speed 62 it was noise and 4.3dB too
-// loud against the speech.
-//
-// the points are every 1.9ms of the sweep at the default speed: the pitch as
-// measured, and the formants and volumes, as knots every 5 to 20ms, fitted to
-// both units of Man Goes Down and of the fourth VoxProbe recording at the
-// default and bend 15, with C1's level against the game's first phrase, full
-// band (150Hz to 16kHz, see docs/design.md in the C library). fitted: Man Goes
-// Down 0.60 to 0.85 and level +4.3 to 0.0dB, default 0.81 to 0.81, bend 15
-// 0.78 to 0.80. left out: pitch 150 0.74 to 0.77, bend 0 0.73 to 0.78 (5.4 to
-// 3.0dB), the VoxRecord recording 0.813 to 0.817, pitch 60 0.81 to 0.79
+// C1 is voiced: a harmonic series whose own pitch sweeps, in whole voicing
+// ticks (see voiceHz()), from 333Hz up to 570Hz by 80ms and down to 200Hz, with
+// three formants moving through it; the Pitch control doesn't move it (see
+// sound.ownPitch). over its last 200ms one line rises from 2.0 to 2.9kHz
+// through the harmonics: oscillator 3 there runs free of the voicing (see
+// frame.freeOsc). each point: its time after the one before, the pitch, the
+// formants and their volumes
 type c1Point struct {
 	ms, pitch float64
 	freq      formants
 	vol       [3]float64
 }
 
-var c1Points = []c1Point{
-	{1.00, 332.8, formants{877, 1443, 1997}, [3]float64{10.15, 1.21, 0.00}},
-	{1.90, 332.8, formants{765, 1439, 2089}, [3]float64{6.63, 0.64, 0.00}},
-	{1.90, 332.8, formants{848, 1354, 2096}, [3]float64{11.68, 3.93, 0.00}},
-	{1.90, 332.8, formants{996, 1242, 2074}, [3]float64{19.58, 8.50, 0.00}},
-	{1.90, 332.8, formants{1112, 1172, 2064}, [3]float64{25.95, 12.43, 0.00}},
-	{1.90, 347.2, formants{1004, 1388, 2133}, [3]float64{21.57, 11.86, 0.00}},
-	{1.90, 347.2, formants{896, 1604, 2203}, [3]float64{17.19, 11.29, 0.00}},
-	{1.90, 347.2, formants{823, 1626, 2249}, [3]float64{16.38, 14.57, 0.00}},
-	{1.90, 347.2, formants{784, 1454, 2273}, [3]float64{19.14, 21.71, 0.00}},
-	{1.90, 347.2, formants{745, 1282, 2297}, [3]float64{21.90, 28.86, 0.00}},
-	{1.90, 347.2, formants{660, 1407, 2243}, [3]float64{22.42, 23.50, 0.00}},
-	{1.90, 347.2, formants{569, 1574, 2179}, [3]float64{22.61, 16.36, 0.00}},
-	{1.90, 347.2, formants{557, 1662, 2137}, [3]float64{23.54, 12.43, 0.19}},
-	{1.90, 347.2, formants{786, 1510, 2163}, [3]float64{26.68, 18.14, 0.95}},
-	{1.90, 347.2, formants{1014, 1357, 2190}, [3]float64{29.82, 23.86, 1.71}},
-	{1.90, 347.2, formants{1076, 1440, 2217}, [3]float64{25.70, 23.50, 1.52}},
-	{1.90, 347.2, formants{1038, 1665, 2243}, [3]float64{17.23, 19.50, 0.76}},
-	{1.90, 347.2, formants{1000, 1890, 2270}, [3]float64{8.75, 15.50, 0.00}},
-	{1.90, 380.3, formants{1335, 1981, 2205}, [3]float64{17.23, 20.64, 2.67}},
-	{1.90, 399.3, formants{1670, 2073, 2140}, [3]float64{25.70, 25.79, 5.33}},
-	{1.90, 399.3, formants{1791, 2064, 2103}, [3]float64{28.79, 28.14, 7.57}},
-	{1.90, 420.3, formants{1555, 1888, 2110}, [3]float64{22.88, 25.86, 9.10}},
-	{1.90, 420.3, formants{1319, 1712, 2118}, [3]float64{16.98, 23.57, 10.62}},
-	{1.90, 420.3, formants{1211, 1607, 2040}, [3]float64{17.50, 22.14, 9.57}},
-	{1.90, 420.3, formants{1147, 1526, 1933}, [3]float64{20.17, 21.00, 7.67}},
-	{1.90, 443.7, formants{1076, 1474, 1832}, [3]float64{22.58, 19.74, 5.90}},
-	{1.90, 443.7, formants{966, 1625, 1771}, [3]float64{23.25, 17.64, 5.14}},
-	{1.90, 443.7, formants{855, 1777, 1710}, [3]float64{23.92, 15.55, 4.38}},
-	{1.90, 469.8, formants{747, 1667, 1730}, [3]float64{23.49, 15.17, 4.76}},
-	{1.90, 469.8, formants{640, 1297, 1829}, [3]float64{21.96, 16.50, 6.29}},
-	{1.90, 469.8, formants{533, 926, 1928}, [3]float64{20.44, 17.83, 7.81}},
-	{1.90, 499.1, formants{433, 1078, 2032}, [3]float64{17.58, 19.17, 12.00}},
-	{1.90, 499.1, formants{334, 1303, 2136}, [3]float64{14.54, 20.50, 16.57}},
-	{1.90, 499.1, formants{264, 1418, 2218}, [3]float64{11.13, 20.60, 20.00}},
-	{1.90, 532.4, formants{279, 1198, 2232}, [3]float64{6.65, 16.98, 20.00}},
-	{1.90, 532.4, formants{294, 977, 2245}, [3]float64{2.18, 13.36, 20.00}},
-	{1.90, 532.4, formants{369, 900, 2258}, [3]float64{1.51, 11.05, 20.48}},
-	{1.90, 532.4, formants{480, 909, 2272}, [3]float64{3.13, 9.52, 21.24}},
-	{1.90, 570.4, formants{590, 918, 2285}, [3]float64{4.75, 8.00, 22.00}},
-	{1.90, 570.4, formants{361, 1086, 2298}, [3]float64{5.61, 11.43, 23.14}},
-	{1.90, 570.4, formants{133, 1255, 2312}, [3]float64{6.46, 14.86, 24.29}},
-	{1.90, 570.4, formants{59, 1412, 2295}, [3]float64{6.00, 18.32, 24.00}},
-	{1.90, 570.4, formants{241, 1550, 2228}, [3]float64{3.33, 21.85, 21.33}},
-	{1.90, 532.4, formants{424, 1688, 2162}, [3]float64{0.67, 25.37, 18.67}},
-	{1.90, 532.4, formants{376, 1632, 2164}, [3]float64{3.57, 22.61, 18.29}},
-	{1.90, 532.4, formants{250, 1511, 2188}, [3]float64{8.33, 17.75, 18.67}},
-	{1.90, 532.4, formants{128, 1447, 2183}, [3]float64{11.90, 14.08, 18.50}},
-	{1.90, 532.4, formants{29, 1779, 1966}, [3]float64{7.14, 18.75, 14.50}},
-	{1.90, 532.4, formants{-70, 2111, 1749}, [3]float64{2.38, 23.42, 10.50}},
-	{1.90, 532.4, formants{-125, 2182, 1667}, [3]float64{0.33, 24.96, 8.79}},
-	{1.90, 532.4, formants{-134, 1992, 1721}, [3]float64{1.00, 23.39, 9.36}},
-	{1.90, 532.4, formants{-143, 1803, 1775}, [3]float64{1.67, 21.82, 9.93}},
-	{1.90, 532.4, formants{-152, 1612, 1829}, [3]float64{2.33, 20.25, 10.50}},
-	{1.90, 499.1, formants{-161, 1422, 1882}, [3]float64{3.00, 18.68, 11.07}},
-	{1.90, 499.1, formants{-158, 1288, 1931}, [3]float64{3.46, 17.39, 11.64}},
-	{1.90, 499.1, formants{-120, 1320, 1963}, [3]float64{3.30, 16.94, 12.21}},
-	{1.90, 499.1, formants{-83, 1351, 1996}, [3]float64{3.14, 16.50, 12.79}},
-	{1.90, 499.1, formants{-45, 1383, 2028}, [3]float64{2.98, 16.06, 13.36}},
-	{1.90, 499.1, formants{-7, 1415, 2060}, [3]float64{2.83, 15.61, 13.93}},
-	{1.90, 499.1, formants{31, 1447, 2092}, [3]float64{2.67, 15.17, 14.50}},
-	{1.90, 499.1, formants{69, 1478, 2125}, [3]float64{2.51, 14.72, 15.07}},
-	{1.90, 499.1, formants{106, 1510, 2157}, [3]float64{2.35, 14.28, 15.64}},
-	{1.90, 499.1, formants{130, 1545, 2182}, [3]float64{2.17, 14.33, 15.43}},
-	{1.90, 469.8, formants{131, 1586, 2195}, [3]float64{1.96, 15.21, 13.90}},
-	{1.90, 469.8, formants{132, 1627, 2208}, [3]float64{1.74, 16.09, 12.38}},
-	{1.90, 469.8, formants{133, 1668, 2221}, [3]float64{1.53, 16.97, 10.86}},
-	{1.90, 469.8, formants{134, 1709, 2234}, [3]float64{1.31, 17.85, 9.33}},
-	{1.90, 469.8, formants{135, 1750, 2247}, [3]float64{1.10, 18.74, 7.81}},
-	{1.90, 469.8, formants{136, 1791, 2260}, [3]float64{0.88, 19.62, 6.29}},
-	{1.90, 469.8, formants{137, 1832, 2272}, [3]float64{0.67, 20.50, 4.76}},
-	{1.90, 469.8, formants{138, 1873, 2285}, [3]float64{0.46, 21.38, 3.24}},
-	{1.90, 469.8, formants{139, 1914, 2298}, [3]float64{0.24, 22.26, 1.71}},
-	{1.90, 443.7, formants{140, 1955, 2311}, [3]float64{0.03, 23.14, 0.19}},
-	{1.90, 443.7, formants{202, 1904, 2288}, [3]float64{0.25, 21.98, 1.33}},
-	{1.90, 443.7, formants{274, 1840, 2259}, [3]float64{0.54, 20.53, 2.86}},
-	{1.90, 443.7, formants{345, 1777, 2230}, [3]float64{0.82, 19.07, 4.38}},
-	{1.90, 443.7, formants{417, 1713, 2201}, [3]float64{1.11, 17.62, 5.90}},
-	{1.90, 443.7, formants{488, 1649, 2172}, [3]float64{1.39, 16.17, 7.43}},
-	{1.90, 443.7, formants{560, 1585, 2143}, [3]float64{1.68, 14.72, 8.95}},
-	{1.90, 420.3, formants{631, 1521, 2114}, [3]float64{1.96, 13.26, 10.48}},
-	{1.90, 420.3, formants{702, 1458, 2085}, [3]float64{2.25, 11.81, 12.00}},
-	{1.90, 420.3, formants{774, 1394, 2056}, [3]float64{2.54, 10.36, 13.52}},
-	{1.90, 420.3, formants{845, 1330, 2027}, [3]float64{2.82, 8.91, 15.05}},
-	{1.90, 420.3, formants{924, 1324, 2017}, [3]float64{3.21, 8.00, 15.57}},
-	{1.90, 420.3, formants{1014, 1414, 2039}, [3]float64{3.79, 8.00, 14.43}},
-	{1.90, 420.3, formants{1105, 1505, 2062}, [3]float64{4.36, 8.00, 13.29}},
-	{1.90, 399.3, formants{1195, 1595, 2084}, [3]float64{4.93, 8.00, 12.14}},
-	{1.90, 399.3, formants{1286, 1686, 2107}, [3]float64{5.50, 8.00, 11.00}},
-	{1.90, 399.3, formants{1376, 1776, 2129}, [3]float64{6.07, 8.00, 9.86}},
-	{1.90, 399.3, formants{1467, 1867, 2152}, [3]float64{6.64, 8.00, 8.71}},
-	{1.90, 399.3, formants{1557, 1957, 2174}, [3]float64{7.21, 8.00, 7.57}},
-	{1.90, 399.3, formants{1648, 2048, 2197}, [3]float64{7.79, 8.00, 6.43}},
-	{1.90, 399.3, formants{1738, 2138, 2219}, [3]float64{8.36, 8.00, 5.29}},
-	{1.90, 399.3, formants{1829, 2229, 2241}, [3]float64{8.93, 8.00, 4.14}},
-	{1.90, 380.3, formants{1762, 2207, 2256}, [3]float64{8.75, 7.96, 4.17}},
-	{1.90, 380.3, formants{1674, 2170, 2270}, [3]float64{8.46, 7.91, 4.36}},
-	{1.90, 380.3, formants{1585, 2133, 2284}, [3]float64{8.18, 7.86, 4.55}},
-	{1.90, 363.0, formants{1497, 2096, 2298}, [3]float64{7.89, 7.82, 4.74}},
-	{1.90, 363.0, formants{1408, 2059, 2312}, [3]float64{7.61, 7.77, 4.93}},
-	{1.90, 363.0, formants{1320, 2022, 2326}, [3]float64{7.32, 7.72, 5.12}},
-	{1.90, 363.0, formants{1231, 1985, 2340}, [3]float64{7.04, 7.67, 5.31}},
-	{1.90, 363.0, formants{1142, 1948, 2354}, [3]float64{6.75, 7.62, 5.50}},
-	{1.90, 347.2, formants{1054, 1910, 2367}, [3]float64{6.46, 7.58, 5.69}},
-	{1.90, 347.2, formants{965, 1873, 2381}, [3]float64{6.18, 7.53, 5.88}},
-	{1.90, 347.2, formants{915, 1842, 2391}, [3]float64{5.95, 7.34, 6.04}},
-	{1.90, 347.2, formants{928, 1821, 2393}, [3]float64{5.80, 6.91, 6.13}},
-	{1.90, 347.2, formants{942, 1800, 2396}, [3]float64{5.66, 6.48, 6.23}},
-	{1.90, 332.8, formants{955, 1779, 2398}, [3]float64{5.52, 6.05, 6.32}},
-	{1.90, 332.8, formants{968, 1758, 2401}, [3]float64{5.37, 5.62, 6.42}},
-	{1.90, 332.8, formants{982, 1737, 2403}, [3]float64{5.23, 5.20, 6.51}},
-	{1.90, 332.8, formants{995, 1716, 2406}, [3]float64{5.09, 4.77, 6.61}},
-	{1.90, 319.4, formants{1008, 1695, 2408}, [3]float64{4.95, 4.34, 6.70}},
-	{1.90, 319.4, formants{1022, 1675, 2411}, [3]float64{4.80, 3.91, 6.80}},
-	{1.90, 319.4, formants{1035, 1654, 2413}, [3]float64{4.66, 3.48, 6.89}},
-	{1.90, 307.2, formants{1048, 1633, 2415}, [3]float64{4.52, 3.05, 6.99}},
-	{1.90, 307.2, formants{1035, 1629, 2433}, [3]float64{4.29, 2.94, 6.75}},
-	{1.90, 307.2, formants{1018, 1628, 2452}, [3]float64{4.05, 2.87, 6.46}},
-	{1.90, 307.2, formants{1001, 1627, 2472}, [3]float64{3.82, 2.79, 6.18}},
-	{1.90, 295.8, formants{984, 1626, 2492}, [3]float64{3.58, 2.72, 5.89}},
-	{1.90, 295.8, formants{966, 1625, 2511}, [3]float64{3.34, 2.65, 5.61}},
-	{1.90, 295.8, formants{949, 1624, 2531}, [3]float64{3.10, 2.58, 5.32}},
-	{1.90, 295.8, formants{932, 1623, 2550}, [3]float64{2.86, 2.51, 5.04}},
-	{1.90, 285.2, formants{915, 1622, 2570}, [3]float64{2.62, 2.44, 4.75}},
-	{1.90, 285.2, formants{898, 1622, 2590}, [3]float64{2.39, 2.37, 4.46}},
-	{1.90, 275.4, formants{881, 1621, 2609}, [3]float64{2.15, 2.29, 4.18}},
-	{1.90, 275.4, formants{866, 1619, 2624}, [3]float64{1.96, 2.17, 3.96}},
-	{1.90, 275.4, formants{854, 1615, 2633}, [3]float64{1.84, 1.96, 3.87}},
-	{1.90, 266.2, formants{843, 1611, 2641}, [3]float64{1.72, 1.74, 3.77}},
-	{1.90, 266.2, formants{831, 1607, 2649}, [3]float64{1.60, 1.53, 3.68}},
-	{1.90, 266.2, formants{820, 1603, 2657}, [3]float64{1.48, 1.31, 3.58}},
-	{1.90, 257.6, formants{809, 1600, 2665}, [3]float64{1.36, 1.10, 3.49}},
-	{1.90, 257.6, formants{797, 1596, 2673}, [3]float64{1.24, 0.88, 3.39}},
-	{1.90, 249.6, formants{786, 1592, 2682}, [3]float64{1.12, 0.67, 3.30}},
-	{1.90, 249.6, formants{774, 1588, 2690}, [3]float64{1.00, 0.46, 3.20}},
-	{1.90, 249.6, formants{763, 1584, 2698}, [3]float64{0.88, 0.24, 3.11}},
-	{1.90, 242.0, formants{751, 1580, 2706}, [3]float64{0.76, 0.03, 3.01}},
-	{1.90, 234.9, formants{732, 1592, 2714}, [3]float64{0.69, 0.00, 2.94}},
-	{1.90, 234.9, formants{711, 1605, 2722}, [3]float64{0.62, 0.00, 2.87}},
-	{1.90, 234.9, formants{690, 1618, 2731}, [3]float64{0.54, 0.00, 2.79}},
-	{1.90, 228.2, formants{669, 1632, 2739}, [3]float64{0.47, 0.00, 2.72}},
-	{1.90, 221.8, formants{648, 1645, 2747}, [3]float64{0.40, 0.00, 2.65}},
-	{1.90, 221.8, formants{627, 1658, 2755}, [3]float64{0.33, 0.00, 2.58}},
-	{1.90, 221.8, formants{606, 1672, 2763}, [3]float64{0.26, 0.00, 2.51}},
-	{1.90, 215.8, formants{585, 1685, 2771}, [3]float64{0.19, 0.00, 2.44}},
-	{1.90, 210.2, formants{564, 1698, 2780}, [3]float64{0.12, 0.00, 2.37}},
-	{1.90, 210.2, formants{543, 1712, 2788}, [3]float64{0.04, 0.00, 2.29}},
-	{1.90, 210.2, formants{530, 1720, 2802}, [3]float64{0.00, 0.04, 2.14}},
-	{1.90, 199.7, formants{530, 1720, 2825}, [3]float64{0.00, 0.13, 1.86}},
-	{1.90, 199.7, formants{530, 1720, 2848}, [3]float64{0.00, 0.23, 1.57}},
-	{1.90, 199.7, formants{530, 1720, 2872}, [3]float64{0.00, 0.32, 1.29}},
-	{1.90, 199.7, formants{530, 1720, 2895}, [3]float64{0.00, 0.42, 1.00}},
-	{1.90, 199.7, formants{530, 1720, 2919}, [3]float64{0.00, 0.51, 0.71}},
-	{1.90, 199.7, formants{530, 1720, 2942}, [3]float64{0.00, 0.61, 0.43}},
-	{1.90, 199.7, formants{530, 1720, 2965}, [3]float64{0.00, 0.70, 0.14}},
-	{1.90, 199.7, formants{530, 1720, 2970}, [3]float64{0.00, 0.68, 0.00}},
-	{1.90, 199.7, formants{530, 1720, 2955}, [3]float64{0.00, 0.54, 0.00}},
-	{1.90, 199.7, formants{530, 1720, 2940}, [3]float64{0.00, 0.39, 0.00}},
-	{1.90, 199.7, formants{530, 1720, 2926}, [3]float64{0.00, 0.25, 0.00}},
+// each point as its time in hundredths of a millisecond, its voicing period in
+// voiceTickHz ticks, the three formants in freqStepHz steps and their volumes
+// in eighths (see c1Point)
+var c1PointsRows = [][8]float64{
+	{100, 24, 200, 329, 455, 81, 10, 0},
+	{190, 24, 174, 328, 476, 53, 5, 0},
+	{190, 24, 193, 309, 478, 93, 31, 0},
+	{380, 24, 254, 267, 471, 208, 99, 0},
+	{380, 23, 204, 366, 502, 138, 90, 0},
+	{190, 23, 188, 371, 513, 131, 117, 0},
+	{380, 23, 170, 292, 524, 175, 231, 0},
+	{380, 23, 130, 359, 497, 181, 131, 0},
+	{190, 23, 127, 379, 487, 188, 99, 2},
+	{380, 23, 231, 309, 499, 239, 191, 14},
+	{190, 23, 245, 328, 506, 206, 188, 12},
+	{380, 23, 228, 431, 518, 70, 124, 0},
+	{380, 20, 381, 473, 488, 206, 206, 43},
+	{190, 20, 408, 471, 480, 230, 225, 61},
+	{380, 19, 301, 390, 483, 136, 189, 85},
+	{380, 19, 262, 348, 441, 161, 168, 61},
+	{190, 18, 245, 336, 418, 181, 158, 47},
+	{380, 18, 195, 405, 390, 191, 124, 35},
+	{190, 17, 170, 380, 395, 188, 121, 38},
+	{380, 17, 122, 211, 440, 164, 143, 62},
+	{190, 16, 99, 246, 463, 141, 153, 96},
+	{190, 16, 76, 297, 487, 116, 164, 133},
+	{190, 16, 60, 323, 506, 89, 165, 160},
+	{190, 15, 64, 273, 509, 53, 136, 160},
+	{190, 15, 67, 223, 512, 17, 107, 160},
+	{190, 15, 84, 205, 515, 12, 88, 164},
+	{190, 15, 109, 207, 518, 25, 76, 170},
+	{190, 14, 135, 209, 521, 38, 64, 176},
+	{380, 14, 30, 286, 527, 52, 119, 194},
+	{190, 14, 13, 322, 523, 48, 147, 192},
+	{190, 14, 55, 354, 508, 27, 175, 171},
+	{190, 15, 97, 385, 493, 5, 203, 149},
+	{190, 15, 86, 372, 494, 29, 181, 146},
+	{190, 15, 57, 345, 499, 67, 142, 149},
+	{190, 15, 29, 330, 498, 95, 113, 148},
+	{380, 15, -16, 481, 399, 19, 187, 84},
+	{190, 15, -29, 498, 380, 3, 200, 70},
+	{570, 15, -35, 368, 417, 19, 162, 84},
+	{190, 16, -37, 324, 429, 24, 149, 89},
+	{190, 16, -36, 294, 440, 28, 139, 93},
+	{1330, 16, 24, 344, 492, 19, 114, 125},
+	{190, 16, 30, 352, 498, 17, 115, 123},
+	{190, 17, 30, 362, 501, 16, 122, 111},
+	{1520, 17, 32, 437, 524, 2, 178, 14},
+	{190, 18, 32, 446, 527, 0, 185, 2},
+	{190, 18, 46, 434, 522, 2, 176, 11},
+	{1710, 19, 193, 303, 462, 23, 71, 120},
+	{190, 19, 211, 302, 460, 26, 64, 125},
+	{380, 19, 252, 343, 470, 35, 64, 106},
+	{190, 20, 273, 364, 475, 39, 64, 97},
+	{1330, 20, 417, 508, 511, 71, 64, 33},
+	{760, 22, 341, 478, 524, 63, 63, 38},
+	{1140, 23, 220, 427, 543, 49, 60, 47},
+	{190, 23, 209, 420, 545, 48, 59, 48},
+	{1900, 26, 239, 372, 551, 36, 24, 56},
+	{2280, 29, 195, 368, 601, 15, 16, 31},
+	{1710, 33, 171, 360, 617, 6, 0, 24},
+	{2090, 38, 121, 392, 639, 0, 0, 17},
+	{190, 40, 121, 392, 644, 0, 1, 15},
+	{1140, 40, 121, 392, 676, 0, 6, 1},
+	{760, 40, 121, 392, 667, 0, 2, 0},
 }
+
+var c1Points = func() []c1Point {
+	var p []c1Point
+	for _, r := range c1PointsRows {
+		p = append(p, c1Point{ms: r[0] / 100, pitch: voiceTickHz / r[1], freq: formants{r[2] * freqStepHz, r[3] * freqStepHz, r[4] * freqStepHz}, vol: [3]float64{r[5] / 8, r[6] / 8, r[7] / 8}})
+	}
+	return p
+}()
 
 func c1(name string) sound {
 	s := effect(name)
@@ -3449,1507 +1734,537 @@ func c1(name string) sound {
 	return s
 }
 
-// FX2-BEGIN
-// the sound effects that are pure tones, traced again from both units'
-// VoxRecord recordings: the tones were tracked every millisecond (12ms
-// windows), each tone followed while it lasts and split where its level jumps,
-// the two units' tracks paired and averaged (and a strong one heard on only one
-// unit kept), and each reduced to the points where it bends (10Hz, 2dB). each
-// tone gets an oscillator of its own, which takes its frequency while silent
-// before the tone starts, so tones start and stop in place rather than sweeping
-// in from another frequency as the first traces did. the levels are the
-// recording's with the output filter's loss added back, scaled so that the DTMF
-// tones play at their measured level. effects whose recordings are mostly not
-// tones (buzzes and noise) keep fxPoints. each point is its time after the one
-// before (glided to in a straight line), the five oscillators' frequencies and
-// their volumes. A4's trace stopped at 1315Hz, where its volume reached the
-// oscillators' limit; on both units it goes on, faster, to 3.9kHz by 190ms,
-// holds there and dies away by 245ms. from 1083Hz on it is tracked again every
-// 4ms (the two units within 50Hz and 0.5dB of each other) with this library's
-// output filter loss added back, against its level at 1083Hz. the volumes had
-// been cut off at the oscillators' limit (31), which flattened the loudest part
-// of 30 effects (A0's swell, B6's and B7's fall, the DTMF tones' whole body);
-// each effect is now scaled so that its loudest point is at the limit instead,
-// which keeps its shape below it: effects 82.9 to 83.5% and 2.91 to 2.45dB, B2
-// 4.9 to 0.6dB, R0 3.1 to 1.0dB. A4, M0 and R6 keep their cut-off volumes,
-// which matched both units better
+// the effects that are pure tones, traced from both units every millisecond,
+// the levels with the output filter's loss added back, each effect scaled so
+// its loudest point is at the oscillators' limit. each tone has an oscillator
+// of its own and is kept as its knots: its time from the start of the sound in
+// half milliseconds, its frequency in freqStepHz steps and its volume in eighths,
+// glided between in straight lines (only the knots a straight line can't pass
+// close enough to are kept). before its first knot a tone sits silent at its
+// first frequency
 type fx2Point struct {
 	ms   float64
 	freq [5]float64
 	vol  [5]float64
 }
 
-// the tone effects traced again, by code
-var fx2Points = map[int][]fx2Point{
+// toneKnots is a tone of a traced effect: its oscillator and its knots, in threes
+type toneKnots struct {
+	osc   int
+	knots []int
+}
+
+// the tone effects, by code
+var fxTones = map[int][]toneKnots{
 	200: { // R0
-		{1.0, [5]float64{794, 409, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{794, 409, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{794, 409, 0, 0, 0}, [5]float64{2.52, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{798, 409, 0, 0, 0}, [5]float64{16.51, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{803, 409, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{803, 409, 0, 0, 0}, [5]float64{30.98, 4.08, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{803, 450, 0, 0, 0}, [5]float64{30.78, 7.00, 0.00, 0.00, 0.00}},
-		{24.0, [5]float64{802, 539, 0, 0, 0}, [5]float64{30.33, 8.44, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{802, 570, 0, 0, 0}, [5]float64{30.24, 10.56, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{802, 570, 0, 0, 0}, [5]float64{30.22, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{802, 570, 0, 0, 0}, [5]float64{30.11, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{804, 570, 0, 0, 0}, [5]float64{19.17, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{809, 570, 0, 0, 0}, [5]float64{6.41, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{809, 570, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{809, 570, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 181, 0, 10, 181, 0, 12, 181, 20, 34, 183, 248, 130, 183, 241, 156, 185, 51, 158, 185, 0, 164, 185, 0,
+		}},
+		{1, []int{
+			2, 93, 0, 34, 93, 0, 36, 93, 33, 58, 103, 56, 106, 123, 68, 116, 130, 84, 118, 130, 0, 164, 130, 0,
+		}},
 	},
 	201: { // R1
-		{1.0, [5]float64{635, 1105, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{635, 1105, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{635, 1105, 0, 0, 0}, [5]float64{0.37, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{681, 1105, 0, 0, 0}, [5]float64{0.79, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{681, 1105, 0, 0, 0}, [5]float64{1.01, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{681, 1105, 0, 0, 0}, [5]float64{1.31, 2.09, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{681, 1105, 0, 0, 0}, [5]float64{1.69, 3.31, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{685, 1105, 0, 0, 0}, [5]float64{1.72, 13.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{686, 1105, 0, 0, 0}, [5]float64{1.74, 15.42, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{660, 1105, 0, 0, 0}, [5]float64{2.47, 28.86, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{699, 1105, 0, 0, 0}, [5]float64{3.24, 29.03, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{698, 1105, 0, 0, 0}, [5]float64{3.47, 29.37, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{733, 1105, 0, 0, 0}, [5]float64{3.41, 29.67, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{735, 1105, 0, 0, 0}, [5]float64{3.35, 30.33, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{776, 1105, 0, 0, 0}, [5]float64{3.42, 30.69, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{766, 1105, 0, 0, 0}, [5]float64{3.42, 30.73, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{777, 1105, 0, 0, 0}, [5]float64{3.40, 30.82, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{765, 1105, 0, 0, 0}, [5]float64{3.35, 30.86, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{766, 1105, 0, 0, 0}, [5]float64{3.31, 31.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{767, 1105, 0, 0, 0}, [5]float64{3.27, 27.70, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{715, 1105, 0, 0, 0}, [5]float64{2.66, 24.75, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{710, 1104, 0, 0, 0}, [5]float64{2.55, 23.40, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{701, 1105, 0, 0, 0}, [5]float64{2.33, 16.96, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{733, 1107, 0, 0, 0}, [5]float64{2.51, 10.46, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{744, 1107, 0, 0, 0}, [5]float64{2.57, 7.34, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{768, 1107, 0, 0, 0}, [5]float64{1.45, 3.62, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{768, 1107, 0, 0, 0}, [5]float64{0.00, 2.54, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{768, 1107, 0, 0, 0}, [5]float64{0.00, 0.37, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{768, 1107, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{768, 1107, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 145, 0, 6, 145, 0, 8, 145, 3, 10, 155, 6, 16, 155, 14, 24, 156, 14, 32, 151, 20, 40, 159, 26,
+			56, 159, 28, 70, 167, 27, 100, 168, 27, 116, 177, 27, 134, 175, 26, 138, 163, 21, 144, 160, 19, 152, 170, 21,
+			156, 175, 12, 158, 175, 0, 172, 175, 0,
+		}},
+		{1, []int{
+			2, 252, 0, 12, 252, 0, 14, 252, 17, 16, 252, 26, 22, 252, 106, 32, 252, 231, 130, 252, 248, 156, 252, 29,
+			158, 252, 20, 164, 252, 3, 172, 252, 0,
+		}},
 	},
 	202: { // R2
-		{1.0, [5]float64{1300, 733, 1697, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1300, 733, 1697, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1300, 733, 1697, 0, 0}, [5]float64{0.18, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1300, 733, 1697, 0, 0}, [5]float64{1.01, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1300, 733, 1697, 0, 0}, [5]float64{2.44, 1.03, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1300, 653, 1697, 0, 0}, [5]float64{4.18, 0.75, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1300, 655, 1697, 0, 0}, [5]float64{7.15, 1.01, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1301, 659, 1697, 0, 0}, [5]float64{18.65, 2.41, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1303, 678, 1697, 0, 0}, [5]float64{27.16, 2.89, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1304, 685, 1697, 0, 0}, [5]float64{30.78, 3.08, 3.67, 0.00, 0.00}},
-		{4.0, [5]float64{1304, 662, 1667, 0, 0}, [5]float64{30.80, 3.11, 5.18, 0.00, 0.00}},
-		{4.0, [5]float64{1304, 639, 1606, 0, 0}, [5]float64{30.81, 3.14, 6.90, 0.00, 0.00}},
-		{1.0, [5]float64{1304, 633, 1606, 0, 0}, [5]float64{30.82, 3.15, 0.00, 0.00, 0.00}},
-		{42.0, [5]float64{1304, 392, 1606, 0, 0}, [5]float64{31.00, 3.52, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1303, 375, 1606, 0, 0}, [5]float64{24.71, 3.55, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1302, 376, 1606, 0, 0}, [5]float64{21.24, 3.34, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1303, 377, 1606, 0, 0}, [5]float64{17.46, 3.24, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1304, 415, 1606, 0, 0}, [5]float64{11.80, 2.59, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 418, 1606, 0, 0}, [5]float64{9.70, 2.39, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1306, 386, 1606, 0, 0}, [5]float64{5.39, 2.52, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 376, 1606, 0, 0}, [5]float64{7.11, 2.57, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 388, 1606, 0, 0}, [5]float64{0.00, 2.45, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1305, 412, 1606, 0, 0}, [5]float64{0.00, 2.23, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1305, 421, 1606, 0, 0}, [5]float64{0.00, 0.24, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 420, 1606, 0, 0}, [5]float64{0.00, 0.60, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 420, 1606, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1305, 420, 1606, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 296, 0, 8, 296, 1, 12, 296, 8, 14, 296, 20, 16, 296, 33, 18, 296, 57, 24, 297, 149, 32, 297, 246,
+			134, 297, 248, 144, 297, 170, 150, 297, 94, 152, 298, 78, 158, 298, 43, 160, 298, 57, 162, 298, 0, 190, 298, 0,
+		}},
+		{1, []int{
+			2, 167, 0, 12, 167, 0, 14, 167, 8, 16, 149, 6, 24, 150, 19, 32, 156, 25, 140, 86, 28, 146, 86, 26,
+			150, 95, 21, 152, 95, 19, 160, 86, 21, 166, 94, 18, 180, 96, 2, 182, 96, 5, 184, 96, 0, 190, 96, 0,
+		}},
+		{2, []int{
+			2, 387, 0, 30, 387, 0, 32, 387, 29, 40, 380, 41, 48, 366, 55, 50, 366, 0, 190, 366, 0,
+		}},
 	},
 	203: { // R3
-		{1.0, [5]float64{1605, 636, 345, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1605, 636, 345, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1605, 636, 345, 0, 0}, [5]float64{0.95, 0.87, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1605, 636, 345, 0, 0}, [5]float64{4.51, 2.96, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1604, 645, 345, 0, 0}, [5]float64{13.51, 3.97, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1605, 653, 345, 0, 0}, [5]float64{24.38, 5.32, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1606, 662, 345, 0, 0}, [5]float64{29.19, 7.12, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 670, 345, 0, 0}, [5]float64{31.00, 7.18, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 678, 345, 0, 0}, [5]float64{30.94, 7.24, 1.21, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 686, 360, 0, 0}, [5]float64{30.88, 7.30, 1.70, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 694, 357, 0, 0}, [5]float64{30.83, 7.36, 1.70, 0.00, 0.00}},
-		{4.0, [5]float64{1607, 697, 345, 0, 0}, [5]float64{30.60, 7.44, 1.69, 0.00, 0.00}},
-		{4.0, [5]float64{1607, 699, 351, 0, 0}, [5]float64{30.37, 7.52, 2.28, 0.00, 0.00}},
-		{6.0, [5]float64{1607, 728, 360, 0, 0}, [5]float64{30.03, 6.62, 3.54, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 729, 361, 0, 0}, [5]float64{29.97, 6.43, 3.81, 0.00, 0.00}},
-		{15.0, [5]float64{1606, 737, 364, 0, 0}, [5]float64{29.14, 4.21, 4.08, 0.00, 0.00}},
-		{7.0, [5]float64{1606, 771, 365, 0, 0}, [5]float64{28.76, 3.20, 4.21, 0.00, 0.00}},
-		{8.0, [5]float64{1606, 769, 367, 0, 0}, [5]float64{28.34, 3.57, 4.36, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 758, 357, 0, 0}, [5]float64{28.28, 3.49, 4.14, 0.00, 0.00}},
-		{4.0, [5]float64{1606, 717, 318, 0, 0}, [5]float64{17.71, 3.18, 3.36, 0.00, 0.00}},
-		{3.0, [5]float64{1607, 726, 296, 0, 0}, [5]float64{12.47, 3.04, 1.77, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 728, 296, 0, 0}, [5]float64{11.09, 3.00, 1.43, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 731, 296, 0, 0}, [5]float64{8.30, 2.95, 1.16, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 731, 296, 0, 0}, [5]float64{6.22, 2.53, 0.94, 0.00, 0.00}},
-		{1.0, [5]float64{1607, 731, 296, 0, 0}, [5]float64{4.65, 2.17, 0.88, 0.00, 0.00}},
-		{3.0, [5]float64{1607, 731, 298, 0, 0}, [5]float64{1.09, 1.36, 0.71, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 731, 298, 0, 0}, [5]float64{1.35, 1.17, 0.66, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 731, 299, 0, 0}, [5]float64{0.00, 1.15, 0.62, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 731, 299, 0, 0}, [5]float64{0.00, 1.14, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1606, 731, 299, 0, 0}, [5]float64{0.00, 1.08, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1606, 731, 299, 0, 0}, [5]float64{0.00, 0.35, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 731, 299, 0, 0}, [5]float64{0.00, 0.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 706, 299, 0, 0}, [5]float64{0.00, 0.07, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1606, 706, 299, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1606, 706, 299, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 366, 0, 6, 366, 0, 8, 366, 8, 14, 366, 36, 26, 366, 195, 132, 366, 226, 160, 367, 9, 162, 366, 11,
+			164, 366, 0, 192, 366, 0,
+		}},
+		{1, []int{
+			2, 145, 0, 6, 145, 0, 40, 158, 59, 114, 176, 26, 192, 161, 0,
+		}},
+		{2, []int{
+			2, 79, 0, 34, 79, 0, 36, 79, 10, 130, 84, 35, 146, 68, 14, 164, 68, 5, 166, 68, 0, 192, 68, 0,
+		}},
 	},
 	204: { // R4
-		{1.0, [5]float64{1901, 629, 462, 282, 1476}, [5]float64{0.13, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1901, 629, 462, 282, 1476}, [5]float64{0.75, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1901, 629, 462, 282, 1476}, [5]float64{1.83, 0.59, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1901, 608, 462, 282, 1476}, [5]float64{3.34, 0.55, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1901, 603, 462, 282, 1476}, [5]float64{6.08, 0.85, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1904, 588, 462, 282, 1476}, [5]float64{15.30, 3.12, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1905, 572, 462, 282, 1476}, [5]float64{20.81, 3.49, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1905, 555, 462, 282, 1476}, [5]float64{22.99, 3.90, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1906, 549, 462, 282, 1476}, [5]float64{31.00, 4.25, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1906, 629, 462, 282, 1476}, [5]float64{30.89, 4.75, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1907, 635, 462, 282, 1476}, [5]float64{30.82, 4.69, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1907, 671, 462, 282, 1476}, [5]float64{30.75, 4.21, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1907, 682, 462, 282, 1476}, [5]float64{30.71, 4.10, 5.21, 0.00, 0.00}},
-		{1.0, [5]float64{1907, 693, 463, 282, 1476}, [5]float64{30.67, 4.00, 4.02, 0.00, 0.00}},
-		{7.0, [5]float64{1907, 770, 505, 282, 1476}, [5]float64{30.42, 3.33, 4.32, 0.00, 0.00}},
-		{3.0, [5]float64{1907, 790, 522, 282, 1476}, [5]float64{30.32, 3.18, 4.46, 0.00, 0.00}},
-		{1.0, [5]float64{1907, 797, 531, 282, 1476}, [5]float64{30.28, 3.13, 4.36, 1.97, 0.00}},
-		{1.0, [5]float64{1907, 804, 540, 281, 1476}, [5]float64{30.25, 3.08, 4.25, 2.05, 0.00}},
-		{2.0, [5]float64{1907, 833, 558, 279, 1476}, [5]float64{30.17, 2.58, 4.04, 2.22, 0.00}},
-		{1.0, [5]float64{1907, 848, 567, 282, 1476}, [5]float64{30.14, 2.37, 3.94, 2.41, 1.77}},
-		{1.0, [5]float64{1907, 863, 576, 286, 1472}, [5]float64{30.10, 2.17, 3.85, 2.62, 1.75}},
-		{1.0, [5]float64{1907, 863, 585, 289, 1468}, [5]float64{30.07, 2.07, 3.75, 2.84, 1.74}},
-		{4.0, [5]float64{1907, 863, 621, 304, 1514}, [5]float64{29.93, 1.71, 3.40, 3.94, 2.59}},
-		{1.0, [5]float64{1907, 863, 630, 307, 1535}, [5]float64{29.89, 1.63, 3.32, 4.27, 2.70}},
-		{2.0, [5]float64{1907, 863, 641, 314, 1578}, [5]float64{29.82, 1.48, 3.30, 5.03, 2.94}},
-		{1.0, [5]float64{1907, 863, 646, 318, 1581}, [5]float64{29.79, 1.41, 3.30, 5.00, 2.80}},
-		{1.0, [5]float64{1907, 863, 651, 321, 1618}, [5]float64{29.75, 1.35, 3.29, 4.96, 2.86}},
-		{1.0, [5]float64{1907, 863, 657, 324, 1634}, [5]float64{29.72, 1.28, 3.28, 4.93, 2.98}},
-		{1.0, [5]float64{1907, 863, 662, 327, 1634}, [5]float64{29.68, 1.22, 3.27, 4.90, 0.00}},
-		{3.0, [5]float64{1907, 863, 678, 337, 1634}, [5]float64{29.58, 1.06, 3.25, 4.80, 0.00}},
-		{1.0, [5]float64{1907, 861, 683, 340, 1634}, [5]float64{29.54, 0.87, 3.24, 4.77, 0.00}},
-		{3.0, [5]float64{1907, 857, 710, 350, 1634}, [5]float64{29.44, 0.48, 3.50, 4.68, 0.00}},
-		{1.0, [5]float64{1907, 857, 719, 354, 1634}, [5]float64{29.41, 0.00, 3.58, 4.64, 0.00}},
-		{4.0, [5]float64{1907, 857, 734, 367, 1634}, [5]float64{29.27, 0.00, 3.87, 4.52, 0.00}},
-		{1.0, [5]float64{1907, 857, 737, 366, 1634}, [5]float64{29.23, 0.00, 3.94, 4.43, 0.00}},
-		{1.0, [5]float64{1907, 857, 729, 366, 1634}, [5]float64{29.20, 0.00, 3.70, 4.34, 0.00}},
-		{3.0, [5]float64{1907, 857, 702, 365, 1634}, [5]float64{20.17, 0.00, 3.07, 4.08, 0.00}},
-		{1.0, [5]float64{1907, 857, 709, 373, 1634}, [5]float64{17.83, 0.00, 3.03, 3.55, 0.00}},
-		{1.0, [5]float64{1907, 857, 715, 441, 1634}, [5]float64{15.76, 0.00, 3.00, 3.73, 0.00}},
-		{1.0, [5]float64{1907, 857, 722, 441, 1634}, [5]float64{13.94, 0.00, 2.96, 0.00, 0.00}},
-		{1.0, [5]float64{1907, 857, 728, 441, 1634}, [5]float64{12.32, 0.00, 2.92, 0.00, 0.00}},
-		{1.0, [5]float64{1906, 857, 728, 441, 1634}, [5]float64{10.89, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1905, 857, 728, 441, 1634}, [5]float64{1.30, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1905, 857, 728, 441, 1634}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1905, 857, 728, 441, 1634}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 434, 1, 6, 434, 6, 8, 434, 15, 10, 434, 27, 28, 435, 248, 130, 435, 234, 158, 434, 10, 160, 434, 0,
+			166, 434, 0,
+		}},
+		{1, []int{
+			2, 143, 0, 6, 143, 0, 8, 143, 5, 12, 138, 7, 18, 134, 25, 22, 127, 31, 28, 125, 34, 34, 143, 38,
+			78, 197, 17, 108, 197, 8, 118, 195, 0, 166, 195, 0,
+		}},
+		{2, []int{
+			2, 105, 0, 42, 105, 0, 44, 105, 42, 46, 106, 32, 118, 164, 29, 128, 168, 32, 136, 160, 25, 144, 166, 23,
+			146, 166, 0, 166, 166, 0,
+		}},
+		{3, []int{
+			2, 64, 0, 66, 64, 0, 68, 64, 16, 74, 64, 18, 94, 72, 40, 126, 84, 36, 136, 83, 33, 138, 85, 28,
+			140, 101, 30, 142, 101, 0, 166, 101, 0,
+		}},
+		{4, []int{
+			2, 337, 0, 74, 337, 0, 76, 337, 14, 100, 373, 24, 102, 373, 0, 166, 373, 0,
+		}},
 	},
 	205: { // R5
-		{1.0, [5]float64{347, 2206, 810, 0, 0}, [5]float64{0.12, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{347, 2206, 810, 0, 0}, [5]float64{0.19, 0.12, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{347, 2206, 810, 0, 0}, [5]float64{0.30, 0.43, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{347, 2206, 810, 0, 0}, [5]float64{0.75, 2.36, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{347, 2206, 810, 0, 0}, [5]float64{1.85, 6.25, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{334, 2206, 810, 0, 0}, [5]float64{2.07, 10.17, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{321, 2206, 810, 0, 0}, [5]float64{2.31, 12.71, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{307, 2207, 810, 0, 0}, [5]float64{2.58, 15.89, 3.46, 0.00, 0.00}},
-		{2.0, [5]float64{302, 2207, 813, 0, 0}, [5]float64{2.91, 24.83, 3.25, 0.00, 0.00}},
-		{1.0, [5]float64{310, 2208, 804, 0, 0}, [5]float64{3.06, 25.95, 3.41, 0.00, 0.00}},
-		{2.0, [5]float64{359, 2208, 786, 0, 0}, [5]float64{3.72, 28.36, 3.76, 0.00, 0.00}},
-		{2.0, [5]float64{379, 2208, 769, 0, 0}, [5]float64{4.26, 31.00, 4.14, 0.00, 0.00}},
-		{45.0, [5]float64{381, 2208, 768, 0, 0}, [5]float64{4.19, 25.60, 4.24, 0.00, 0.00}},
-		{2.0, [5]float64{382, 2208, 757, 0, 0}, [5]float64{4.19, 25.38, 4.16, 0.00, 0.00}},
-		{3.0, [5]float64{362, 2208, 740, 0, 0}, [5]float64{4.07, 25.06, 4.04, 0.00, 0.00}},
-		{1.0, [5]float64{356, 2208, 812, 0, 0}, [5]float64{4.03, 21.18, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{349, 2208, 812, 0, 0}, [5]float64{3.99, 17.90, 1.71, 0.00, 0.00}},
-		{1.0, [5]float64{361, 2208, 833, 0, 0}, [5]float64{4.02, 15.13, 2.11, 0.00, 0.00}},
-		{2.0, [5]float64{384, 2207, 831, 0, 0}, [5]float64{4.07, 10.81, 2.12, 0.00, 0.00}},
-		{3.0, [5]float64{419, 2207, 798, 0, 0}, [5]float64{4.16, 6.52, 2.17, 0.00, 0.00}},
-		{1.0, [5]float64{431, 2207, 787, 0, 0}, [5]float64{4.19, 4.20, 2.18, 0.00, 0.00}},
-		{1.0, [5]float64{446, 2207, 776, 0, 0}, [5]float64{3.51, 2.71, 2.20, 0.00, 0.00}},
-		{1.0, [5]float64{462, 2207, 756, 0, 0}, [5]float64{2.93, 1.74, 1.96, 0.00, 0.00}},
-		{1.0, [5]float64{477, 2208, 736, 0, 0}, [5]float64{2.46, 0.97, 1.75, 0.00, 0.00}},
-		{1.0, [5]float64{492, 2208, 736, 0, 0}, [5]float64{2.06, 0.54, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{492, 2209, 736, 0, 0}, [5]float64{1.34, 0.17, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{492, 2209, 736, 0, 0}, [5]float64{1.08, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{492, 2209, 736, 0, 0}, [5]float64{0.88, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{496, 2209, 736, 0, 0}, [5]float64{1.03, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{496, 2209, 736, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{496, 2209, 736, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 79, 1, 10, 79, 6, 14, 79, 15, 20, 70, 21, 24, 69, 23, 26, 71, 24, 30, 82, 30, 34, 86, 34,
+			128, 87, 34, 138, 80, 32, 152, 98, 34, 160, 112, 16, 166, 112, 9, 170, 113, 8, 172, 113, 0, 178, 113, 0,
+		}},
+		{1, []int{
+			2, 503, 0, 6, 503, 3, 10, 503, 19, 14, 503, 50, 24, 503, 199, 134, 504, 200, 138, 504, 143, 154, 503, 22,
+			158, 504, 8, 166, 504, 0, 178, 504, 0,
+		}},
+		{2, []int{
+			2, 185, 0, 18, 185, 0, 20, 185, 28, 34, 175, 33, 128, 173, 33, 134, 169, 32, 136, 185, 0, 138, 185, 14,
+			144, 190, 17, 152, 179, 17, 158, 168, 14, 160, 168, 0, 178, 168, 0,
+		}},
 	},
 	206: { // R6
-		{1.0, [5]float64{1668, 477, 2511, 760, 878}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1668, 477, 2511, 760, 878}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1668, 477, 2511, 760, 878}, [5]float64{0.26, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1668, 477, 2511, 760, 878}, [5]float64{0.58, 1.39, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1668, 475, 2511, 760, 878}, [5]float64{1.27, 2.00, 0.75, 0.00, 0.00}},
-		{2.0, [5]float64{1654, 471, 2511, 760, 878}, [5]float64{2.21, 4.14, 3.26, 0.00, 0.00}},
-		{1.0, [5]float64{1646, 469, 2511, 760, 878}, [5]float64{2.91, 4.40, 5.29, 0.00, 0.00}},
-		{2.0, [5]float64{1597, 464, 2511, 760, 878}, [5]float64{2.79, 4.96, 13.94, 0.00, 0.00}},
-		{1.0, [5]float64{1573, 462, 2510, 760, 878}, [5]float64{2.74, 5.26, 18.16, 0.00, 0.00}},
-		{1.0, [5]float64{1548, 434, 2510, 760, 878}, [5]float64{2.68, 5.42, 23.67, 0.00, 0.00}},
-		{1.0, [5]float64{1489, 405, 2510, 760, 878}, [5]float64{2.17, 5.60, 30.84, 0.00, 0.00}},
-		{1.0, [5]float64{1707, 377, 2509, 760, 878}, [5]float64{0.00, 5.78, 31.00, 3.20, 0.00}},
-		{1.0, [5]float64{1707, 367, 2509, 713, 878}, [5]float64{0.00, 6.33, 31.00, 4.66, 0.00}},
-		{1.0, [5]float64{1707, 358, 2509, 719, 878}, [5]float64{0.00, 6.95, 31.00, 4.95, 0.00}},
-		{3.0, [5]float64{1707, 366, 2509, 739, 878}, [5]float64{0.00, 7.07, 31.00, 5.92, 0.00}},
-		{3.0, [5]float64{1707, 374, 2509, 735, 878}, [5]float64{0.00, 7.20, 31.00, 6.05, 0.00}},
-		{3.0, [5]float64{1707, 363, 2509, 712, 878}, [5]float64{0.00, 7.11, 31.00, 6.06, 0.00}},
-		{1.0, [5]float64{1707, 359, 2509, 704, 878}, [5]float64{2.00, 7.08, 31.00, 6.07, 1.06}},
-		{3.0, [5]float64{1691, 348, 2509, 682, 877}, [5]float64{3.38, 6.99, 31.00, 6.08, 1.29}},
-		{5.0, [5]float64{1643, 329, 2509, 644, 874}, [5]float64{4.26, 6.85, 31.00, 6.10, 1.77}},
-		{6.0, [5]float64{1535, 307, 2509, 598, 871}, [5]float64{3.33, 6.69, 31.00, 6.14, 2.58}},
-		{3.0, [5]float64{1482, 302, 2509, 575, 869}, [5]float64{2.95, 4.94, 31.00, 6.15, 3.12}},
-		{1.0, [5]float64{1482, 301, 2509, 568, 869}, [5]float64{3.01, 4.47, 31.00, 6.16, 3.32}},
-		{2.0, [5]float64{1482, 297, 2509, 553, 840}, [5]float64{3.12, 3.65, 31.00, 6.17, 3.86}},
-		{1.0, [5]float64{542, 296, 2509, 549, 826}, [5]float64{0.00, 3.30, 31.00, 6.34, 4.17}},
-		{2.0, [5]float64{542, 292, 2509, 541, 798}, [5]float64{0.00, 2.70, 31.00, 6.69, 4.84}},
-		{3.0, [5]float64{542, 287, 2509, 529, 772}, [5]float64{0.00, 1.99, 31.00, 7.25, 5.20}},
-		{1.0, [5]float64{542, 1622, 2509, 522, 763}, [5]float64{0.00, 0.00, 31.00, 7.32, 5.33}},
-		{8.0, [5]float64{542, 1622, 2510, 466, 692}, [5]float64{0.00, 0.00, 31.00, 7.94, 6.45}},
-		{1.0, [5]float64{542, 1622, 2510, 466, 683}, [5]float64{0.00, 0.00, 31.00, 0.00, 6.60}},
-		{2.0, [5]float64{542, 1622, 2510, 466, 643}, [5]float64{0.00, 0.00, 31.00, 0.00, 6.82}},
-		{4.0, [5]float64{542, 1622, 2509, 466, 625}, [5]float64{0.00, 0.00, 31.00, 0.00, 7.46}},
-		{1.0, [5]float64{542, 1622, 2509, 466, 625}, [5]float64{5.79, 0.00, 31.00, 0.00, 0.00}},
-		{1.0, [5]float64{538, 1622, 2509, 466, 625}, [5]float64{5.62, 3.46, 31.00, 0.00, 0.00}},
-		{2.0, [5]float64{530, 1600, 2509, 466, 625}, [5]float64{5.29, 2.72, 26.30, 0.00, 0.00}},
-		{1.0, [5]float64{526, 1607, 2509, 466, 625}, [5]float64{5.13, 2.69, 22.60, 0.00, 0.00}},
-		{2.0, [5]float64{518, 1668, 2508, 466, 625}, [5]float64{4.84, 2.84, 16.68, 0.00, 0.00}},
-		{1.0, [5]float64{502, 1670, 2508, 466, 625}, [5]float64{4.03, 2.63, 14.33, 0.00, 0.00}},
-		{2.0, [5]float64{469, 1675, 2508, 466, 625}, [5]float64{2.79, 2.25, 6.77, 0.00, 0.00}},
-		{2.0, [5]float64{451, 1680, 2508, 466, 625}, [5]float64{3.64, 2.48, 3.20, 0.00, 0.00}},
-		{1.0, [5]float64{442, 1683, 2508, 466, 625}, [5]float64{4.16, 2.61, 1.72, 0.00, 0.00}},
-		{2.0, [5]float64{473, 1688, 2506, 466, 625}, [5]float64{3.73, 2.87, 0.50, 0.00, 0.00}},
-		{1.0, [5]float64{488, 1685, 2506, 466, 625}, [5]float64{3.53, 2.34, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{504, 1682, 2506, 466, 625}, [5]float64{3.35, 1.91, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{504, 1681, 2506, 466, 625}, [5]float64{0.00, 1.19, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{504, 1678, 2506, 466, 625}, [5]float64{0.00, 0.29, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{504, 1678, 2506, 466, 625}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{504, 1678, 2506, 466, 625}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 380, 0, 8, 380, 5, 16, 375, 23, 26, 340, 17, 28, 389, 0, 50, 389, 0, 52, 389, 16, 68, 375, 34,
+			92, 338, 25, 94, 124, 0, 136, 124, 0, 138, 124, 46, 150, 118, 39, 156, 107, 22, 162, 101, 33, 170, 115, 27,
+			172, 115, 0, 186, 115, 0,
+		}},
+		{1, []int{
+			2, 109, 0, 6, 109, 0, 8, 109, 11, 14, 107, 33, 22, 105, 42, 28, 86, 46, 32, 82, 56, 44, 85, 58,
+			80, 70, 54, 104, 65, 16, 106, 370, 0, 138, 370, 0, 140, 370, 28, 152, 381, 21, 166, 385, 23, 172, 383, 10,
+			180, 383, 0, 186, 383, 0,
+		}},
+		{2, []int{
+			2, 573, 0, 8, 573, 0, 10, 573, 6, 14, 573, 26, 16, 573, 42, 26, 572, 247, 140, 572, 248, 156, 572, 54,
+			162, 572, 14, 166, 572, 4, 168, 572, 0, 186, 572, 0,
+		}},
+		{3, []int{
+			2, 173, 0, 26, 173, 0, 28, 173, 26, 30, 163, 37, 44, 168, 48, 122, 106, 64, 124, 106, 0, 186, 106, 0,
+		}},
+		{4, []int{
+			2, 200, 0, 50, 200, 0, 52, 200, 8, 88, 198, 27, 128, 147, 55, 136, 143, 60, 138, 143, 0, 186, 143, 0,
+		}},
 	},
 	207: { // R7
-		{1.0, [5]float64{2805, 593, 639, 424, 901}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2805, 593, 639, 424, 901}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2805, 593, 639, 424, 901}, [5]float64{0.73, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2805, 593, 639, 424, 901}, [5]float64{1.60, 1.12, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2805, 600, 639, 424, 901}, [5]float64{3.51, 2.17, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2805, 565, 639, 424, 901}, [5]float64{8.33, 3.45, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2805, 529, 639, 424, 901}, [5]float64{12.82, 3.40, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2806, 492, 639, 424, 901}, [5]float64{15.84, 3.34, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2808, 480, 639, 424, 901}, [5]float64{19.56, 3.37, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2809, 477, 639, 424, 901}, [5]float64{24.16, 3.51, 2.99, 0.00, 0.00}},
-		{1.0, [5]float64{2809, 475, 625, 424, 901}, [5]float64{25.72, 3.67, 3.43, 0.00, 0.00}},
-		{1.0, [5]float64{2810, 493, 611, 424, 901}, [5]float64{27.37, 4.86, 3.94, 0.00, 0.00}},
-		{1.0, [5]float64{2810, 1002, 597, 424, 901}, [5]float64{29.13, 0.00, 4.52, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 1002, 597, 424, 901}, [5]float64{31.00, 0.00, 4.78, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 1002, 596, 424, 901}, [5]float64{30.97, 3.33, 5.06, 0.00, 0.00}},
-		{2.0, [5]float64{2811, 1021, 596, 424, 901}, [5]float64{30.91, 3.13, 5.66, 0.00, 0.00}},
-		{2.0, [5]float64{2811, 1041, 614, 424, 901}, [5]float64{30.85, 2.94, 5.33, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 1051, 623, 424, 901}, [5]float64{30.82, 2.85, 5.17, 4.19, 0.00}},
-		{2.0, [5]float64{2810, 1070, 641, 430, 901}, [5]float64{30.77, 2.67, 4.86, 4.44, 0.00}},
-		{1.0, [5]float64{2810, 1083, 650, 433, 901}, [5]float64{30.74, 2.36, 4.72, 4.57, 0.00}},
-		{3.0, [5]float64{2810, 1120, 664, 442, 901}, [5]float64{30.65, 1.62, 4.26, 4.98, 0.00}},
-		{1.0, [5]float64{2810, 1133, 669, 445, 901}, [5]float64{30.62, 1.43, 4.11, 5.12, 2.83}},
-		{1.0, [5]float64{2810, 260, 674, 448, 907}, [5]float64{30.59, 0.00, 3.97, 5.27, 2.93}},
-		{2.0, [5]float64{2810, 260, 683, 455, 919}, [5]float64{30.53, 0.00, 3.71, 5.59, 3.13}},
-		{2.0, [5]float64{2810, 260, 693, 466, 931}, [5]float64{30.47, 0.00, 3.46, 5.47, 3.35}},
-		{1.0, [5]float64{2810, 260, 697, 471, 943}, [5]float64{30.45, 0.00, 3.34, 5.41, 3.44}},
-		{1.0, [5]float64{2810, 260, 761, 477, 956}, [5]float64{30.42, 0.00, 0.00, 5.36, 3.54}},
-		{3.0, [5]float64{2810, 260, 761, 494, 993}, [5]float64{30.33, 0.00, 0.00, 5.19, 3.84}},
-		{1.0, [5]float64{2810, 260, 761, 499, 1005}, [5]float64{30.30, 1.88, 0.00, 5.14, 3.95}},
-		{1.0, [5]float64{2810, 261, 761, 505, 1018}, [5]float64{30.27, 1.98, 0.00, 5.09, 4.06}},
-		{1.0, [5]float64{2810, 262, 761, 507, 1023}, [5]float64{30.24, 2.09, 1.83, 4.99, 4.02}},
-		{1.0, [5]float64{2810, 263, 764, 510, 1028}, [5]float64{30.22, 2.20, 2.23, 4.90, 3.97}},
-		{7.0, [5]float64{2810, 269, 778, 526, 1062}, [5]float64{30.02, 3.18, 1.37, 4.29, 3.69}},
-		{1.0, [5]float64{2810, 270, 780, 529, 1073}, [5]float64{29.99, 3.35, 1.28, 4.21, 3.70}},
-		{1.0, [5]float64{2810, 271, 1077, 534, 1083}, [5]float64{29.96, 3.53, 0.00, 4.16, 3.70}},
-		{4.0, [5]float64{2810, 275, 1077, 557, 1125}, [5]float64{29.84, 4.36, 0.00, 3.95, 3.73}},
-		{6.0, [5]float64{2809, 281, 1077, 591, 1188}, [5]float64{29.68, 4.40, 0.00, 3.66, 3.77}},
-		{3.0, [5]float64{2809, 284, 1077, 595, 1196}, [5]float64{29.59, 4.42, 0.00, 3.87, 3.83}},
-		{2.0, [5]float64{2809, 286, 1077, 579, 1204}, [5]float64{23.89, 4.43, 0.00, 3.73, 3.14}},
-		{1.0, [5]float64{2809, 287, 1077, 571, 1231}, [5]float64{21.47, 4.44, 0.00, 3.67, 2.81}},
-		{1.0, [5]float64{2809, 296, 1077, 563, 1258}, [5]float64{19.29, 4.45, 2.55, 3.60, 2.51}},
-		{1.0, [5]float64{2809, 304, 1072, 566, 1266}, [5]float64{17.34, 4.46, 2.63, 3.55, 1.87}},
-		{1.0, [5]float64{2809, 321, 1066, 569, 1273}, [5]float64{15.58, 4.50, 2.71, 3.51, 1.39}},
-		{1.0, [5]float64{2809, 337, 1082, 572, 1273}, [5]float64{14.00, 4.54, 2.81, 3.46, 0.00}},
-		{1.0, [5]float64{2809, 354, 1098, 572, 1273}, [5]float64{12.58, 4.59, 2.90, 0.00, 0.00}},
-		{1.0, [5]float64{2809, 370, 1114, 572, 1273}, [5]float64{9.15, 4.63, 3.00, 0.00, 0.00}},
-		{2.0, [5]float64{2810, 403, 1126, 572, 1273}, [5]float64{4.85, 4.72, 2.91, 0.00, 0.00}},
-		{2.0, [5]float64{2811, 403, 1138, 572, 1273}, [5]float64{2.57, 3.62, 2.82, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 404, 1139, 572, 1273}, [5]float64{1.87, 3.17, 2.14, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 405, 1139, 572, 1273}, [5]float64{0.00, 2.36, 1.62, 0.00, 0.00}},
-		{3.0, [5]float64{2811, 409, 1141, 572, 1273}, [5]float64{0.00, 0.97, 0.71, 0.00, 0.00}},
-		{6.0, [5]float64{2811, 409, 1141, 572, 1273}, [5]float64{0.00, 0.85, 0.78, 0.00, 0.00}},
-		{2.0, [5]float64{2811, 410, 1144, 572, 1273}, [5]float64{0.00, 0.48, 0.35, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 410, 1144, 572, 1273}, [5]float64{0.00, 0.36, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2811, 410, 1144, 572, 1273}, [5]float64{0.00, 0.20, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2811, 410, 1144, 572, 1273}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2811, 410, 1144, 572, 1273}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 640, 0, 4, 640, 0, 6, 640, 6, 8, 640, 13, 22, 641, 193, 128, 641, 237, 150, 641, 39, 158, 641, 0,
+			194, 641, 0,
+		}},
+		{1, []int{
+			2, 135, 0, 6, 135, 0, 8, 135, 9, 14, 129, 28, 18, 112, 27, 24, 108, 29, 26, 112, 39, 28, 229, 0,
+			30, 229, 0, 32, 229, 27, 56, 258, 11, 58, 59, 0, 76, 59, 0, 78, 59, 15, 134, 65, 36, 150, 92, 38,
+			164, 93, 8, 194, 94, 0,
+		}},
+		{2, []int{
+			2, 146, 0, 20, 146, 0, 22, 146, 24, 36, 136, 45, 68, 159, 27, 70, 174, 0, 80, 174, 0, 82, 174, 15,
+			100, 178, 10, 102, 246, 0, 134, 246, 0, 136, 246, 20, 154, 260, 23, 164, 260, 6, 176, 260, 6, 182, 261, 0,
+			194, 261, 0,
+		}},
+		{3, []int{
+			2, 97, 0, 40, 97, 0, 42, 97, 34, 122, 135, 29, 142, 130, 28, 144, 130, 0, 194, 130, 0,
+		}},
+		{4, []int{
+			2, 205, 0, 54, 205, 0, 56, 205, 23, 128, 273, 31, 140, 290, 11, 142, 290, 0, 194, 290, 0,
+		}},
 	},
 	208: { // R8
-		{1.0, [5]float64{728, 0, 575, 3111, 2311}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{728, 0, 575, 3111, 2311}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{728, 0, 575, 3111, 2311}, [5]float64{0.89, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{709, 0, 575, 3111, 2311}, [5]float64{2.13, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{707, 0, 575, 3111, 2311}, [5]float64{3.39, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{706, 0, 575, 3111, 2311}, [5]float64{5.40, 0.00, 0.00, 1.75, 0.00}},
-		{5.0, [5]float64{748, 0, 575, 3111, 2311}, [5]float64{10.50, 0.00, 0.00, 14.17, 0.00}},
-		{1.0, [5]float64{756, 0, 575, 3111, 2311}, [5]float64{12.00, 0.00, 9.03, 16.31, 0.00}},
-		{1.0, [5]float64{2783, 0, 607, 3111, 2311}, [5]float64{0.00, 0.00, 9.51, 18.79, 0.00}},
-		{1.0, [5]float64{2783, 0, 621, 3111, 2311}, [5]float64{4.11, 0.00, 11.43, 21.63, 0.00}},
-		{1.0, [5]float64{2779, 0, 634, 3111, 2311}, [5]float64{4.62, 0.00, 13.73, 24.91, 0.00}},
-		{1.0, [5]float64{2774, 0, 643, 3110, 2311}, [5]float64{5.19, 0.00, 14.28, 28.68, 0.00}},
-		{1.0, [5]float64{2770, 0, 652, 3111, 2311}, [5]float64{5.83, 0.00, 14.85, 28.73, 0.00}},
-		{2.0, [5]float64{2725, 0, 670, 3111, 2311}, [5]float64{5.85, 0.00, 16.05, 28.83, 0.00}},
-		{1.0, [5]float64{2702, 0, 679, 3111, 2311}, [5]float64{5.85, 0.00, 16.70, 28.87, 1.07}},
-		{1.0, [5]float64{2679, 0, 677, 3111, 2317}, [5]float64{5.85, 0.00, 16.70, 28.92, 0.91}},
-		{2.0, [5]float64{2655, 0, 674, 3111, 2317}, [5]float64{6.27, 0.00, 16.70, 29.02, 1.14}},
-		{4.0, [5]float64{2658, 0, 669, 3111, 2317}, [5]float64{4.12, 0.00, 16.70, 29.21, 1.80}},
-		{4.0, [5]float64{2660, 0, 663, 3111, 2316}, [5]float64{2.70, 0.00, 16.70, 29.40, 2.83}},
-		{3.0, [5]float64{2663, 0, 659, 3111, 2316}, [5]float64{1.98, 0.00, 16.70, 29.55, 3.99}},
-		{1.0, [5]float64{2663, 0, 658, 3111, 2304}, [5]float64{1.77, 0.00, 16.70, 29.60, 3.97}},
-		{1.0, [5]float64{2670, 0, 657, 3111, 2291}, [5]float64{2.22, 0.00, 16.70, 29.65, 3.95}},
-		{1.0, [5]float64{1910, 0, 655, 3111, 2278}, [5]float64{0.00, 0.00, 16.70, 29.70, 3.93}},
-		{1.0, [5]float64{1910, 0, 654, 3111, 2266}, [5]float64{0.00, 0.00, 16.70, 29.75, 3.92}},
-		{3.0, [5]float64{1910, 0, 650, 3111, 2228}, [5]float64{0.00, 0.00, 16.70, 29.89, 3.86}},
-		{1.0, [5]float64{1910, 0, 648, 3111, 2228}, [5]float64{0.00, 0.00, 16.70, 29.94, 3.71}},
-		{1.0, [5]float64{1910, 0, 647, 3111, 2228}, [5]float64{0.85, 0.00, 16.70, 29.99, 3.56}},
-		{5.0, [5]float64{1905, 0, 640, 3111, 2228}, [5]float64{2.25, 0.00, 16.70, 30.24, 2.90}},
-		{2.0, [5]float64{1903, 0, 637, 3111, 2228}, [5]float64{3.31, 0.00, 16.70, 30.34, 2.67}},
-		{1.0, [5]float64{1903, 0, 636, 3111, 2228}, [5]float64{4.02, 0.00, 16.70, 30.39, 2.57}},
-		{1.0, [5]float64{1903, 0, 634, 3111, 2228}, [5]float64{4.21, 0.00, 16.70, 30.44, 2.46}},
-		{1.0, [5]float64{1902, 0, 633, 3111, 2224}, [5]float64{4.41, 0.00, 16.70, 30.49, 2.18}},
-		{1.0, [5]float64{1902, 0, 632, 3111, 2220}, [5]float64{4.62, 0.00, 16.70, 30.54, 1.93}},
-		{1.0, [5]float64{1890, 0, 630, 3112, 2211}, [5]float64{4.74, 0.00, 16.70, 30.59, 2.42}},
-		{1.0, [5]float64{1877, 0, 629, 3112, 2211}, [5]float64{4.88, 0.00, 16.70, 30.64, 0.00}},
-		{2.0, [5]float64{1851, 0, 626, 3112, 2211}, [5]float64{5.15, 0.00, 16.70, 30.75, 0.00}},
-		{2.0, [5]float64{1825, 0, 623, 3112, 2211}, [5]float64{5.45, 0.00, 16.70, 30.85, 0.00}},
-		{3.0, [5]float64{1827, 0, 619, 3112, 2211}, [5]float64{5.70, 0.00, 16.70, 31.00, 0.00}},
-		{1.0, [5]float64{1827, 0, 618, 3112, 2211}, [5]float64{5.79, 0.00, 16.70, 30.05, 0.00}},
-		{2.0, [5]float64{1828, 0, 615, 3112, 2211}, [5]float64{5.99, 0.00, 16.70, 28.23, 0.00}},
-		{1.0, [5]float64{1823, 0, 614, 3112, 2211}, [5]float64{5.76, 0.00, 16.70, 27.37, 0.00}},
-		{2.0, [5]float64{1814, 0, 584, 3112, 2211}, [5]float64{5.35, 0.00, 15.35, 25.71, 0.00}},
-		{1.0, [5]float64{1809, 0, 569, 3111, 2211}, [5]float64{5.15, 0.00, 14.71, 22.89, 0.00}},
-		{2.0, [5]float64{1792, 0, 540, 3111, 2211}, [5]float64{4.56, 0.00, 13.53, 18.14, 0.00}},
-		{1.0, [5]float64{1730, 0, 540, 3111, 2211}, [5]float64{3.85, 0.00, 12.88, 16.15, 0.00}},
-		{1.0, [5]float64{689, 0, 540, 3111, 2211}, [5]float64{0.00, 0.00, 12.27, 14.38, 0.00}},
-		{0.7, [5]float64{689, 0, 540, 3111, 2211}, [5]float64{0.00, 0.00, 11.83, 11.91, 0.00}},
-		{1.0, [5]float64{689, 0, 541, 3111, 2211}, [5]float64{7.73, 0.00, 11.27, 9.25, 0.00}},
-		{0.5, [5]float64{688, 0, 541, 3111, 2211}, [5]float64{7.73, 0.00, 11.12, 8.67, 0.00}},
-		{1.0, [5]float64{688, 0, 574, 3111, 2211}, [5]float64{7.71, 0.00, 17.49, 6.73, 0.00}},
-		{0.7, [5]float64{687, 0, 574, 3111, 2211}, [5]float64{7.70, 0.00, 0.00, 5.58, 0.00}},
-		{0.5, [5]float64{682, 0, 574, 3111, 2211}, [5]float64{7.68, 0.00, 0.00, 5.23, 0.00}},
-		{0.7, [5]float64{667, 0, 574, 3111, 2211}, [5]float64{7.62, 0.00, 0.00, 3.59, 0.00}},
-		{1.0, [5]float64{624, 0, 574, 3111, 2211}, [5]float64{7.98, 0.00, 0.00, 2.15, 0.00}},
-		{1.0, [5]float64{614, 0, 574, 3111, 2211}, [5]float64{7.80, 0.00, 0.00, 1.29, 0.00}},
-		{0.5, [5]float64{614, 0, 574, 3111, 2211}, [5]float64{7.12, 0.00, 0.00, 1.12, 0.00}},
-		{1.0, [5]float64{615, 0, 574, 3112, 2211}, [5]float64{5.10, 0.00, 0.00, 1.26, 0.00}},
-		{1.0, [5]float64{616, 0, 574, 3112, 2211}, [5]float64{3.65, 0.00, 0.00, 0.00, 0.00}},
-		{3.7, [5]float64{619, 0, 574, 3112, 2211}, [5]float64{1.05, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{619, 0, 574, 3112, 2211}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{619, 0, 574, 3112, 2211}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
+		{0, []int{
+			2, 166, 0, 4, 166, 0, 6, 166, 7, 12, 161, 43, 24, 172, 96, 26, 635, 0, 28, 635, 33, 34, 632, 47,
+			46, 606, 50, 62, 607, 22, 70, 607, 14, 72, 609, 18, 74, 436, 0, 84, 436, 0, 86, 436, 7, 96, 434, 18,
+			102, 434, 32, 132, 417, 48, 144, 409, 36, 146, 395, 31, 148, 157, 0, 149, 157, 0, 151, 157, 62, 157, 156, 61,
+			160, 142, 64, 162, 140, 62, 167, 140, 29, 177, 141, 0, 183, 141, 0,
+		}},
+		{2, []int{
+			2, 131, 0, 22, 131, 0, 24, 131, 72, 28, 142, 91, 40, 155, 134, 134, 140, 134, 144, 123, 108, 152, 123, 89,
+			154, 131, 140, 156, 131, 0, 183, 131, 0,
+		}},
+		{3, []int{
+			2, 710, 0, 10, 710, 0, 12, 710, 14, 22, 710, 113, 32, 709, 229, 138, 710, 206, 151, 710, 74, 160, 710, 17,
+			162, 710, 10, 165, 710, 10, 167, 710, 0, 183, 710, 0,
+		}},
+		{4, []int{
+			2, 527, 0, 38, 527, 0, 40, 527, 9, 54, 528, 14, 68, 528, 32, 82, 508, 31, 108, 506, 15, 110, 504, 19,
+			112, 504, 0, 183, 504, 0,
+		}},
 	},
 	209: { // R9
-		{1.0, [5]float64{680, 1693, 0, 3412, 334}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{680, 1693, 0, 3412, 334}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{680, 1693, 0, 3412, 334}, [5]float64{1.17, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{678, 1693, 0, 3412, 334}, [5]float64{2.02, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{676, 1693, 0, 3412, 334}, [5]float64{3.51, 1.30, 0.00, 1.50, 0.00}},
-		{2.0, [5]float64{682, 1710, 0, 3412, 334}, [5]float64{6.22, 2.76, 0.00, 5.24, 0.00}},
-		{2.0, [5]float64{686, 1756, 0, 3412, 334}, [5]float64{8.00, 3.23, 0.00, 11.87, 0.00}},
-		{1.0, [5]float64{689, 1763, 0, 3412, 334}, [5]float64{9.06, 3.35, 0.00, 17.84, 0.00}},
-		{1.0, [5]float64{681, 1771, 0, 3413, 334}, [5]float64{9.87, 3.48, 0.00, 21.95, 0.00}},
-		{1.0, [5]float64{673, 1800, 0, 3414, 334}, [5]float64{10.74, 4.00, 0.00, 27.00, 0.00}},
-		{1.0, [5]float64{666, 1677, 0, 3414, 334}, [5]float64{11.69, 0.00, 0.00, 33.22, 0.00}},
-		{2.0, [5]float64{651, 1677, 0, 3414, 334}, [5]float64{13.85, 0.00, 0.00, 37.65, 0.00}},
-		{1.0, [5]float64{657, 1677, 0, 3413, 334}, [5]float64{14.12, 0.00, 0.00, 40.08, 0.00}},
-		{1.0, [5]float64{664, 1677, 0, 3413, 334}, [5]float64{14.41, 3.26, 0.00, 42.66, 0.00}},
-		{1.0, [5]float64{671, 1702, 0, 3413, 334}, [5]float64{14.70, 4.08, 0.00, 42.62, 0.00}},
-		{1.0, [5]float64{678, 1695, 0, 3413, 334}, [5]float64{14.98, 4.29, 0.00, 42.59, 2.60}},
-		{2.0, [5]float64{677, 1681, 0, 3413, 334}, [5]float64{14.99, 4.75, 0.00, 42.49, 1.49}},
-		{1.0, [5]float64{676, 1674, 0, 3413, 350}, [5]float64{14.99, 4.99, 0.00, 42.46, 1.43}},
-		{1.0, [5]float64{675, 1667, 0, 3413, 349}, [5]float64{14.99, 5.26, 0.00, 42.42, 1.38}},
-		{2.0, [5]float64{674, 1667, 0, 3413, 348}, [5]float64{15.00, 5.25, 0.00, 42.34, 1.29}},
-		{1.0, [5]float64{673, 1667, 0, 3413, 328}, [5]float64{15.00, 5.24, 0.00, 42.30, 1.19}},
-		{2.0, [5]float64{671, 1667, 0, 3413, 347}, [5]float64{15.00, 5.23, 0.00, 42.22, 1.07}},
-		{1.0, [5]float64{671, 1667, 0, 3413, 324}, [5]float64{15.02, 5.21, 0.00, 42.18, 1.01}},
-		{1.0, [5]float64{670, 1667, 0, 3413, 335}, [5]float64{15.02, 5.21, 0.00, 42.13, 0.97}},
-		{1.0, [5]float64{669, 1667, 0, 3413, 344}, [5]float64{15.02, 5.20, 0.00, 42.11, 0.97}},
-		{1.0, [5]float64{668, 1668, 0, 3413, 327}, [5]float64{15.02, 5.19, 0.00, 42.06, 0.98}},
-		{2.0, [5]float64{667, 1668, 0, 3413, 360}, [5]float64{15.03, 5.18, 0.00, 41.98, 1.08}},
-		{1.0, [5]float64{663, 1657, 0, 3413, 331}, [5]float64{14.97, 5.18, 0.00, 41.94, 1.00}},
-		{3.0, [5]float64{651, 1626, 0, 3413, 300}, [5]float64{14.79, 5.16, 0.00, 41.82, 1.10}},
-		{2.0, [5]float64{643, 1605, 0, 3413, 308}, [5]float64{14.69, 5.16, 0.00, 41.74, 1.34}},
-		{1.0, [5]float64{643, 1605, 0, 3413, 312}, [5]float64{14.72, 5.14, 0.00, 41.70, 1.49}},
-		{2.0, [5]float64{643, 1605, 0, 3413, 340}, [5]float64{14.76, 5.12, 0.00, 41.62, 1.84}},
-		{1.0, [5]float64{642, 1604, 0, 3413, 323}, [5]float64{14.78, 5.09, 0.00, 41.59, 1.95}},
-		{1.0, [5]float64{642, 1604, 0, 3413, 688}, [5]float64{14.82, 5.08, 0.00, 41.55, 0.00}},
-		{7.0, [5]float64{640, 1602, 0, 3413, 688}, [5]float64{14.99, 4.97, 0.00, 41.28, 0.00}},
-		{1.0, [5]float64{640, 1594, 0, 3413, 688}, [5]float64{15.02, 5.04, 0.00, 41.23, 0.00}},
-		{7.0, [5]float64{626, 1538, 0, 3413, 688}, [5]float64{14.67, 5.47, 0.00, 40.96, 0.00}},
-		{6.0, [5]float64{614, 1542, 0, 3413, 688}, [5]float64{14.40, 4.81, 0.00, 40.74, 0.00}},
-		{1.0, [5]float64{612, 1543, 0, 3413, 688}, [5]float64{14.36, 4.70, 0.00, 36.91, 0.00}},
-		{4.0, [5]float64{534, 1546, 0, 3412, 688}, [5]float64{11.69, 4.31, 0.00, 24.90, 0.00}},
-		{2.0, [5]float64{531, 1548, 0, 3412, 688}, [5]float64{10.75, 4.12, 0.00, 20.46, 0.00}},
-		{1.7, [5]float64{528, 1517, 0, 3411, 688}, [5]float64{9.98, 3.72, 0.00, 13.17, 0.00}},
-		{0.5, [5]float64{528, 1512, 0, 3411, 688}, [5]float64{9.88, 3.66, 0.00, 12.36, 0.00}},
-		{0.7, [5]float64{526, 1519, 0, 3411, 688}, [5]float64{9.57, 3.61, 0.00, 10.25, 6.21}},
-		{0.5, [5]float64{526, 1522, 0, 3411, 688}, [5]float64{9.46, 3.60, 0.00, 9.60, 6.23}},
-		{1.0, [5]float64{545, 1531, 0, 3411, 688}, [5]float64{13.72, 3.52, 0.00, 7.47, 6.31}},
-		{0.7, [5]float64{545, 1538, 0, 3410, 689}, [5]float64{0.00, 3.48, 0.00, 6.20, 6.37}},
-		{0.5, [5]float64{545, 1540, 0, 3410, 684}, [5]float64{0.00, 3.45, 0.00, 5.80, 6.36}},
-		{0.7, [5]float64{545, 1574, 0, 3410, 672}, [5]float64{0.00, 3.29, 0.00, 4.81, 6.32}},
-		{0.5, [5]float64{545, 1587, 0, 3410, 661}, [5]float64{0.00, 3.23, 0.00, 4.51, 6.39}},
-		{0.7, [5]float64{545, 1587, 0, 3410, 630}, [5]float64{0.00, 0.00, 0.00, 0.00, 6.60}},
-		{0.5, [5]float64{545, 1587, 0, 3410, 627}, [5]float64{0.00, 0.00, 0.00, 0.00, 6.59}},
-		{0.7, [5]float64{545, 1587, 0, 3410, 618}, [5]float64{0.00, 0.00, 0.00, 0.00, 6.58}},
-		{2.0, [5]float64{545, 1587, 0, 3410, 623}, [5]float64{0.00, 0.00, 0.00, 0.00, 4.44}},
-		{4.0, [5]float64{545, 1587, 0, 3410, 628}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.94}},
-		{1.0, [5]float64{545, 1587, 0, 3410, 628}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{545, 1587, 0, 3410, 628}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
+		{0, []int{
+			2, 155, 0, 4, 155, 0, 8, 155, 16, 14, 156, 50, 20, 157, 72, 30, 148, 111, 38, 155, 120, 134, 140, 115,
+			142, 122, 94, 146, 121, 86, 153, 120, 76, 155, 124, 110, 156, 124, 0, 183, 124, 0,
+		}},
+		{1, []int{
+			2, 386, 0, 8, 386, 0, 10, 386, 10, 14, 390, 22, 24, 411, 32, 26, 382, 0, 32, 382, 0, 34, 382, 26,
+			46, 380, 42, 68, 380, 41, 80, 366, 41, 104, 365, 40, 120, 351, 44, 146, 353, 33, 150, 345, 29, 160, 362, 26,
+			161, 362, 0, 183, 362, 0,
+		}},
+		{3, []int{
+			2, 778, 0, 8, 778, 0, 10, 778, 12, 14, 778, 42, 18, 778, 95, 34, 778, 341, 132, 778, 326, 152, 778, 82,
+			156, 778, 50, 160, 778, 36, 161, 778, 0, 183, 778, 0,
+		}},
+		{4, []int{
+			2, 76, 0, 36, 76, 0, 38, 76, 21, 42, 76, 12, 44, 80, 11, 50, 79, 10, 52, 75, 10, 56, 79, 9,
+			58, 74, 8, 62, 78, 8, 64, 75, 8, 68, 82, 9, 70, 75, 8, 76, 68, 9, 82, 71, 12, 86, 78, 15,
+			88, 74, 16, 90, 157, 0, 150, 157, 0, 152, 157, 50, 157, 156, 51, 161, 144, 53, 163, 141, 53, 177, 143, 0,
+			183, 143, 0,
+		}},
 	},
 	210: { // A0
-		{1.0, [5]float64{1615, 305, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{1615, 305, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1615, 305, 0, 0, 0}, [5]float64{5.71, 0.00, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{1695, 305, 0, 0, 0}, [5]float64{7.41, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1718, 305, 0, 0, 0}, [5]float64{6.47, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1724, 305, 0, 0, 0}, [5]float64{6.25, 1.92, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1729, 301, 0, 0, 0}, [5]float64{6.04, 1.32, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1735, 300, 0, 0, 0}, [5]float64{5.84, 1.67, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1763, 294, 0, 0, 0}, [5]float64{5.89, 5.35, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1803, 215, 0, 0, 0}, [5]float64{5.97, 2.89, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1814, 228, 0, 0, 0}, [5]float64{6.00, 3.45, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1831, 281, 0, 0, 0}, [5]float64{6.04, 6.05, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1870, 242, 0, 0, 0}, [5]float64{6.13, 5.04, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1904, 283, 0, 0, 0}, [5]float64{6.21, 8.02, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1932, 262, 0, 0, 0}, [5]float64{6.29, 6.60, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1961, 292, 0, 0, 0}, [5]float64{6.37, 8.83, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1989, 277, 0, 0, 0}, [5]float64{6.45, 7.50, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2017, 303, 0, 0, 0}, [5]float64{6.53, 9.33, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2045, 293, 0, 0, 0}, [5]float64{6.62, 7.76, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2073, 316, 0, 0, 0}, [5]float64{6.71, 9.39, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2096, 303, 0, 0, 0}, [5]float64{6.79, 8.56, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2124, 327, 0, 0, 0}, [5]float64{6.89, 9.42, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2147, 312, 0, 0, 0}, [5]float64{6.97, 8.93, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2169, 340, 0, 0, 0}, [5]float64{7.05, 8.40, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2197, 314, 0, 0, 0}, [5]float64{7.16, 9.27, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2220, 360, 0, 0, 0}, [5]float64{7.25, 8.16, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2237, 322, 0, 0, 0}, [5]float64{7.31, 10.79, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2254, 269, 0, 0, 0}, [5]float64{7.38, 8.45, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2259, 274, 0, 0, 0}, [5]float64{7.40, 7.49, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2265, 361, 0, 0, 0}, [5]float64{7.43, 9.21, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2271, 224, 0, 0, 0}, [5]float64{7.45, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{2305, 224, 0, 0, 0}, [5]float64{7.59, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2310, 224, 0, 0, 0}, [5]float64{7.62, 7.84, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2316, 266, 0, 0, 0}, [5]float64{7.64, 8.66, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2333, 291, 0, 0, 0}, [5]float64{7.71, 12.42, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2362, 236, 0, 0, 0}, [5]float64{7.44, 11.42, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2385, 280, 0, 0, 0}, [5]float64{7.22, 15.38, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2408, 247, 0, 0, 0}, [5]float64{7.01, 14.21, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2431, 279, 0, 0, 0}, [5]float64{6.81, 17.69, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2449, 258, 0, 0, 0}, [5]float64{6.66, 16.99, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2472, 280, 0, 0, 0}, [5]float64{6.47, 19.24, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2495, 263, 0, 0, 0}, [5]float64{6.28, 18.30, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2518, 285, 0, 0, 0}, [5]float64{6.10, 20.93, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2536, 273, 0, 0, 0}, [5]float64{5.96, 20.68, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2559, 289, 0, 0, 0}, [5]float64{5.79, 22.30, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2576, 288, 0, 0, 0}, [5]float64{5.66, 22.38, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{2599, 285, 0, 0, 0}, [5]float64{5.45, 22.62, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2608, 299, 0, 0, 0}, [5]float64{5.37, 24.10, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2613, 301, 0, 0, 0}, [5]float64{5.32, 24.22, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2653, 304, 0, 0, 0}, [5]float64{5.67, 24.41, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2653, 308, 0, 0, 0}, [5]float64{4.43, 24.72, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2574, 309, 0, 0, 0}, [5]float64{5.12, 24.78, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{415, 310, 0, 0, 0}, [5]float64{0.00, 24.85, 0.00, 0.00, 0.00}},
-		{87.0, [5]float64{415, 384, 0, 0, 0}, [5]float64{0.00, 31.00, 0.00, 0.00, 0.00}},
-		{18.0, [5]float64{415, 342, 0, 0, 0}, [5]float64{0.00, 17.90, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{415, 308, 0, 0, 0}, [5]float64{0.00, 13.56, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{415, 305, 0, 0, 0}, [5]float64{0.00, 16.94, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{415, 305, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{415, 305, 0, 0, 0}, [5]float64{10.70, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{437, 305, 0, 0, 0}, [5]float64{12.05, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{388, 305, 0, 0, 0}, [5]float64{10.02, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{390, 305, 0, 0, 0}, [5]float64{8.95, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{385, 305, 0, 0, 0}, [5]float64{6.16, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{371, 305, 0, 0, 0}, [5]float64{4.87, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{327, 305, 0, 0, 0}, [5]float64{6.31, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{327, 305, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{327, 305, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 368, 0, 24, 368, 0, 26, 368, 46, 408, 605, 35, 410, 587, 41, 412, 95, 0, 634, 95, 0, 636, 95, 86,
+			644, 100, 96, 670, 88, 49, 674, 75, 50, 676, 75, 0, 682, 75, 0,
+		}},
+		{1, []int{
+			2, 70, 0, 64, 70, 0, 66, 70, 15, 68, 69, 11, 80, 67, 43, 94, 49, 23, 104, 64, 48, 118, 55, 40,
+			130, 65, 64, 140, 60, 53, 224, 78, 67, 234, 72, 74, 242, 82, 65, 254, 61, 68, 256, 62, 60, 258, 82, 74,
+			260, 51, 0, 272, 51, 0, 274, 51, 63, 276, 61, 69, 282, 66, 99, 292, 54, 91, 300, 64, 123, 308, 56, 114,
+			316, 64, 142, 338, 60, 146, 586, 88, 248, 632, 70, 136, 634, 70, 0, 682, 70, 0,
+		}},
 	},
 	214: { // A4
-		{1.0, [5]float64{247, 0, 0, 0, 0}, [5]float64{0.37, 0.00, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{247, 0, 0, 0, 0}, [5]float64{10.50, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{247, 0, 0, 0, 0}, [5]float64{20.36, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{247, 0, 0, 0, 0}, [5]float64{19.65, 0.00, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{261, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{303, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{49.0, [5]float64{496, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{534, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{45.0, [5]float64{1083, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.1, [5]float64{1122, 0, 0, 0, 0}, [5]float64{27.99, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1257, 0, 0, 0, 0}, [5]float64{23.91, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1408, 0, 0, 0, 0}, [5]float64{22.51, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1559, 0, 0, 0, 0}, [5]float64{21.35, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1712, 0, 0, 0, 0}, [5]float64{20.41, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1863, 0, 0, 0, 0}, [5]float64{20.10, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2015, 0, 0, 0, 0}, [5]float64{19.50, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2169, 0, 0, 0, 0}, [5]float64{19.68, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2320, 0, 0, 0, 0}, [5]float64{19.73, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2464, 0, 0, 0, 0}, [5]float64{18.74, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2689, 0, 0, 0, 0}, [5]float64{14.39, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2998, 0, 0, 0, 0}, [5]float64{13.33, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3298, 0, 0, 0, 0}, [5]float64{11.45, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3578, 0, 0, 0, 0}, [5]float64{10.41, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3878, 0, 0, 0, 0}, [5]float64{18.59, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3911, 0, 0, 0, 0}, [5]float64{22.95, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{21.53, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{19.52, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{17.75, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{16.17, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{14.74, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3912, 0, 0, 0, 0}, [5]float64{13.01, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{11.02, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3914, 0, 0, 0, 0}, [5]float64{9.23, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3912, 0, 0, 0, 0}, [5]float64{7.60, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3914, 0, 0, 0, 0}, [5]float64{6.08, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{4.17, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3913, 0, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 56, 3, 22, 56, 84, 28, 56, 163, 42, 56, 157, 64, 60, 248, 186, 113, 248, 194, 122, 248, 290, 256, 224,
+			322, 390, 163, 362, 562, 150, 370, 613, 115, 394, 816, 83, 402, 884, 149, 410, 892, 184, 418, 892, 172, 498, 892, 33,
+			500, 892, 0, 506, 892, 0,
+		}},
 	},
 	215: { // A5
-		{1.0, [5]float64{644, 333, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{644, 333, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{644, 333, 0, 0, 0}, [5]float64{1.67, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{641, 333, 0, 0, 0}, [5]float64{1.67, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{641, 333, 0, 0, 0}, [5]float64{6.38, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{641, 333, 0, 0, 0}, [5]float64{12.67, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{636, 333, 0, 0, 0}, [5]float64{18.94, 0.00, 0.00, 0.00, 0.00}},
-		{173.0, [5]float64{420, 333, 0, 0, 0}, [5]float64{19.05, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{405, 333, 0, 0, 0}, [5]float64{19.13, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{417, 333, 0, 0, 0}, [5]float64{18.90, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{389, 333, 0, 0, 0}, [5]float64{19.80, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{413, 333, 0, 0, 0}, [5]float64{18.27, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{358, 333, 0, 0, 0}, [5]float64{21.81, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{409, 333, 0, 0, 0}, [5]float64{17.66, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{409, 333, 0, 0, 0}, [5]float64{17.47, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{345, 333, 0, 0, 0}, [5]float64{24.17, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{338, 333, 0, 0, 0}, [5]float64{25.84, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{341, 333, 0, 0, 0}, [5]float64{24.61, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{404, 333, 0, 0, 0}, [5]float64{16.39, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{409, 333, 0, 0, 0}, [5]float64{15.78, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{341, 333, 0, 0, 0}, [5]float64{23.88, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{336, 333, 0, 0, 0}, [5]float64{24.87, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{368, 333, 0, 0, 0}, [5]float64{15.99, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{377, 333, 0, 0, 0}, [5]float64{15.81, 0.00, 0.00, 0.00, 0.00}},
-		{0.8, [5]float64{410, 333, 0, 0, 0}, [5]float64{15.24, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 10.62, 0.00, 0.00, 0.00}},
-		{0.8, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 10.02, 0.00, 0.00, 0.00}},
-		{1.2, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 9.13, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{410, 331, 0, 0, 0}, [5]float64{0.00, 25.97, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{410, 331, 0, 0, 0}, [5]float64{0.00, 31.00, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{410, 331, 0, 0, 0}, [5]float64{0.00, 15.08, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 6.31, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 393, 0, 0, 0}, [5]float64{0.00, 4.61, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 409, 0, 0, 0}, [5]float64{0.00, 4.21, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 390, 0, 0, 0}, [5]float64{0.00, 5.41, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 7.96, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{410, 331, 0, 0, 0}, [5]float64{0.00, 26.45, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{410, 332, 0, 0, 0}, [5]float64{0.00, 21.68, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 334, 0, 0, 0}, [5]float64{0.00, 16.97, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 384, 0, 0, 0}, [5]float64{0.00, 12.30, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 411, 0, 0, 0}, [5]float64{0.00, 10.39, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 401, 0, 0, 0}, [5]float64{0.00, 11.37, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 19.58, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{410, 333, 0, 0, 0}, [5]float64{0.00, 24.72, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 335, 0, 0, 0}, [5]float64{0.00, 20.98, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 405, 0, 0, 0}, [5]float64{0.00, 13.64, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 413, 0, 0, 0}, [5]float64{0.00, 13.07, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 384, 0, 0, 0}, [5]float64{0.00, 15.35, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 338, 0, 0, 0}, [5]float64{0.00, 19.51, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 335, 0, 0, 0}, [5]float64{0.00, 22.71, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 342, 0, 0, 0}, [5]float64{0.00, 20.17, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 386, 0, 0, 0}, [5]float64{0.00, 16.49, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 409, 0, 0, 0}, [5]float64{0.00, 14.96, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 414, 0, 0, 0}, [5]float64{0.00, 14.60, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 388, 0, 0, 0}, [5]float64{0.00, 16.25, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 350, 0, 0, 0}, [5]float64{0.00, 18.84, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 348, 0, 0, 0}, [5]float64{0.00, 19.63, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 403, 0, 0, 0}, [5]float64{0.00, 16.18, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 414, 0, 0, 0}, [5]float64{0.00, 15.63, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 408, 0, 0, 0}, [5]float64{0.00, 15.85, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 376, 0, 0, 0}, [5]float64{0.00, 17.51, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{410, 418, 0, 0, 0}, [5]float64{0.00, 16.15, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{410, 403, 0, 0, 0}, [5]float64{0.00, 16.28, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{410, 423, 0, 0, 0}, [5]float64{0.00, 16.21, 0.00, 0.00, 0.00}},
-		{180.4, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 14.44, 0.00, 0.00, 0.00}},
-		{27.9, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 7.07, 0.00, 0.00, 0.00}},
-		{16.9, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 2.45, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 0.64, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 0.23, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 0.05, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{410, 628, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{410, 628, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 147, 0, 6, 147, 0, 8, 147, 13, 10, 146, 13, 18, 146, 101, 26, 145, 152, 378, 92, 153, 384, 95, 151,
+			390, 89, 158, 398, 94, 146, 406, 82, 174, 412, 93, 141, 414, 93, 140, 420, 79, 193, 422, 77, 207, 424, 78, 197,
+			432, 93, 126, 438, 78, 191, 448, 77, 199, 453, 86, 126, 455, 94, 122, 456, 94, 0, 1118, 94, 0,
+		}},
+		{1, []int{
+			2, 76, 0, 455, 76, 0, 456, 76, 85, 460, 76, 73, 480, 75, 248, 514, 76, 50, 516, 90, 37, 518, 93, 34,
+			522, 89, 43, 524, 76, 64, 536, 75, 212, 552, 76, 136, 554, 88, 98, 558, 94, 83, 560, 91, 91, 564, 76, 157,
+			572, 76, 198, 574, 76, 168, 578, 92, 109, 580, 94, 105, 584, 88, 123, 586, 77, 156, 590, 76, 182, 592, 78, 161,
+			594, 88, 132, 598, 94, 117, 602, 88, 130, 604, 80, 151, 606, 79, 157, 612, 94, 125, 616, 93, 127, 620, 86, 140,
+			626, 95, 129, 632, 92, 130, 640, 96, 130, 1000, 143, 116, 1102, 143, 5, 1118, 143, 0,
+		}},
 	},
 	216: { // A6
-		{1.0, [5]float64{308, 262, 0, 0, 0}, [5]float64{0.22, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{308, 262, 0, 0, 0}, [5]float64{1.71, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{308, 262, 0, 0, 0}, [5]float64{12.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{368, 262, 0, 0, 0}, [5]float64{22.68, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{457, 262, 0, 0, 0}, [5]float64{28.15, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{475, 262, 0, 0, 0}, [5]float64{30.38, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{503, 262, 0, 0, 0}, [5]float64{29.91, 21.41, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{561, 263, 0, 0, 0}, [5]float64{29.03, 20.34, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{704, 304, 0, 0, 0}, [5]float64{27.04, 30.57, 0.00, 0.00, 0.00}},
-		{33.0, [5]float64{1649, 662, 0, 0, 0}, [5]float64{18.59, 30.66, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{1649, 759, 0, 0, 0}, [5]float64{14.88, 30.87, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1649, 799, 0, 0, 0}, [5]float64{13.15, 31.00, 0.00, 0.00, 0.00}},
-		{37.0, [5]float64{1649, 802, 0, 0, 0}, [5]float64{5.27, 30.87, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{1649, 803, 0, 0, 0}, [5]float64{2.52, 30.84, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.72, 30.81, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 30.81, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 30.79, 0.00, 0.00, 0.00}},
-		{31.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 15.09, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 8.37, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 3.78, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 1.35, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 0.32, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1649, 804, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 70, 2, 14, 70, 14, 22, 70, 96, 30, 104, 225, 114, 376, 149, 254, 376, 6, 256, 376, 0, 394, 376, 0,
+		}},
+		{1, []int{
+			2, 60, 0, 32, 60, 0, 34, 60, 171, 48, 69, 245, 142, 182, 248, 330, 183, 121, 380, 183, 11, 388, 183, 0,
+			394, 183, 0,
+		}},
 	},
 	217: { // A7
-		{1.0, [5]float64{1145, 418, 876, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1145, 418, 876, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1145, 418, 876, 0, 0}, [5]float64{0.67, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1142, 418, 876, 0, 0}, [5]float64{4.17, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1142, 418, 876, 0, 0}, [5]float64{11.24, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1153, 418, 876, 0, 0}, [5]float64{19.99, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1156, 418, 876, 0, 0}, [5]float64{23.09, 0.48, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1161, 418, 876, 0, 0}, [5]float64{22.83, 0.41, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1163, 418, 876, 0, 0}, [5]float64{22.70, 0.50, 0.48, 0.00, 0.00}},
-		{3.0, [5]float64{1169, 418, 875, 0, 0}, [5]float64{22.31, 0.97, 0.74, 0.00, 0.00}},
-		{6.0, [5]float64{1182, 418, 873, 0, 0}, [5]float64{21.55, 1.86, 1.78, 0.00, 0.00}},
-		{1.0, [5]float64{1184, 418, 873, 0, 0}, [5]float64{21.43, 2.07, 1.87, 0.00, 0.00}},
-		{8.0, [5]float64{1202, 418, 873, 0, 0}, [5]float64{20.46, 2.93, 2.81, 0.00, 0.00}},
-		{8.0, [5]float64{1219, 418, 873, 0, 0}, [5]float64{19.55, 4.15, 3.36, 0.00, 0.00}},
-		{44.0, [5]float64{1314, 418, 874, 0, 0}, [5]float64{15.21, 9.86, 9.01, 0.00, 0.00}},
-		{9.0, [5]float64{1333, 418, 894, 0, 0}, [5]float64{14.45, 11.77, 9.54, 0.00, 0.00}},
-		{60.0, [5]float64{1462, 458, 1027, 0, 0}, [5]float64{10.32, 17.55, 13.88, 0.00, 0.00}},
-		{58.0, [5]float64{1463, 497, 1156, 0, 0}, [5]float64{5.28, 25.83, 20.00, 0.00, 0.00}},
-		{27.0, [5]float64{1463, 515, 1215, 0, 0}, [5]float64{2.33, 30.93, 23.72, 0.00, 0.00}},
-		{1.0, [5]float64{1463, 516, 1218, 0, 0}, [5]float64{2.26, 30.93, 23.88, 0.00, 0.00}},
-		{5.0, [5]float64{1463, 524, 1229, 0, 0}, [5]float64{2.32, 30.93, 24.65, 0.00, 0.00}},
-		{29.0, [5]float64{1463, 567, 1293, 0, 0}, [5]float64{2.67, 30.94, 24.17, 0.00, 0.00}},
-		{16.0, [5]float64{1463, 590, 1328, 0, 0}, [5]float64{2.06, 30.95, 23.92, 0.00, 0.00}},
-		{10.0, [5]float64{1463, 605, 1350, 0, 0}, [5]float64{1.11, 30.96, 23.77, 0.00, 0.00}},
-		{22.0, [5]float64{1463, 638, 1398, 0, 0}, [5]float64{0.90, 30.99, 23.47, 0.00, 0.00}},
-		{4.0, [5]float64{1463, 644, 1407, 0, 0}, [5]float64{1.08, 31.00, 23.41, 0.00, 0.00}},
-		{3.0, [5]float64{1463, 648, 1413, 0, 0}, [5]float64{1.24, 30.95, 23.37, 0.00, 0.00}},
-		{11.0, [5]float64{1463, 664, 1438, 0, 0}, [5]float64{0.88, 30.75, 23.23, 0.00, 0.00}},
-		{6.0, [5]float64{1463, 673, 1456, 0, 0}, [5]float64{0.73, 30.64, 23.15, 0.00, 0.00}},
-		{13.0, [5]float64{1463, 692, 1494, 0, 0}, [5]float64{1.08, 30.42, 22.99, 0.00, 0.00}},
-		{1.0, [5]float64{1463, 694, 1496, 0, 0}, [5]float64{1.11, 30.40, 22.98, 0.00, 0.00}},
-		{14.0, [5]float64{1463, 715, 1524, 0, 0}, [5]float64{0.70, 30.16, 22.84, 0.00, 0.00}},
-		{26.0, [5]float64{1463, 753, 1574, 0, 0}, [5]float64{1.01, 29.72, 22.60, 0.00, 0.00}},
-		{11.0, [5]float64{1463, 770, 1596, 0, 0}, [5]float64{0.65, 29.54, 22.51, 0.00, 0.00}},
-		{1.0, [5]float64{1456, 771, 1598, 0, 0}, [5]float64{0.85, 29.53, 22.50, 0.00, 0.00}},
-		{1.0, [5]float64{1456, 772, 1600, 0, 0}, [5]float64{0.00, 29.51, 22.49, 0.00, 0.00}},
-		{4.0, [5]float64{1456, 778, 1608, 0, 0}, [5]float64{0.00, 29.44, 22.46, 0.00, 0.00}},
-		{15.0, [5]float64{1456, 801, 1658, 0, 0}, [5]float64{0.00, 29.20, 22.24, 0.00, 0.00}},
-		{9.0, [5]float64{1456, 814, 1659, 0, 0}, [5]float64{0.00, 29.06, 22.10, 0.00, 0.00}},
-		{5.0, [5]float64{1456, 821, 1690, 0, 0}, [5]float64{0.00, 28.98, 22.01, 0.00, 0.00}},
-		{9.0, [5]float64{1456, 835, 1694, 0, 0}, [5]float64{0.00, 28.84, 22.08, 0.00, 0.00}},
-		{16.0, [5]float64{1456, 858, 1748, 0, 0}, [5]float64{0.00, 28.59, 21.93, 0.00, 0.00}},
-		{6.0, [5]float64{1456, 867, 1748, 0, 0}, [5]float64{0.00, 28.50, 21.90, 0.00, 0.00}},
-		{42.0, [5]float64{1456, 919, 1816, 0, 0}, [5]float64{0.00, 16.03, 13.46, 0.00, 0.00}},
-		{3.0, [5]float64{1456, 920, 1821, 0, 0}, [5]float64{0.00, 14.48, 13.00, 0.00, 0.00}},
-		{35.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 4.39, 5.13, 0.00, 0.00}},
-		{8.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 2.03, 4.15, 0.00, 0.00}},
-		{1.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 1.84, 3.91, 0.00, 0.00}},
-		{8.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 0.33, 2.46, 0.00, 0.00}},
-		{1.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 0.00, 2.32, 0.00, 0.00}},
-		{4.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 0.00, 1.84, 0.00, 0.00}},
-		{3.0, [5]float64{1456, 928, 1821, 0, 0}, [5]float64{0.00, 0.00, 1.01, 0.00, 0.00}},
-		{4.0, [5]float64{1456, 928, 1815, 0, 0}, [5]float64{0.00, 0.00, 0.22, 0.00, 0.00}},
-		{1.0, [5]float64{1456, 928, 1815, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1456, 928, 1815, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 261, 0, 4, 261, 0, 6, 261, 5, 24, 264, 185, 308, 333, 83, 480, 334, 18, 600, 334, 9, 692, 334, 6,
+			824, 332, 7, 826, 332, 0, 1180, 332, 0,
+		}},
+		{1, []int{
+			2, 95, 0, 22, 95, 0, 24, 95, 4, 30, 95, 4, 188, 95, 94, 478, 117, 247, 954, 198, 228, 1130, 212, 16,
+			1150, 212, 0, 1180, 212, 0,
+		}},
+		{2, []int{
+			2, 200, 0, 28, 200, 0, 30, 200, 4, 170, 199, 72, 490, 280, 197, 954, 399, 175, 1174, 414, 0, 1180, 414, 0,
+		}},
 	},
 	218: { // A8
-		{1.0, [5]float64{348, 289, 0, 0, 0}, [5]float64{0.16, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{348, 289, 0, 0, 0}, [5]float64{0.98, 0.00, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{348, 289, 0, 0, 0}, [5]float64{6.76, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{348, 289, 0, 0, 0}, [5]float64{10.80, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{389, 289, 0, 0, 0}, [5]float64{11.75, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{423, 289, 0, 0, 0}, [5]float64{14.24, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{484, 289, 0, 0, 0}, [5]float64{15.53, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{500, 289, 0, 0, 0}, [5]float64{15.87, 11.06, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{577, 290, 0, 0, 0}, [5]float64{17.71, 13.80, 0.00, 0.00, 0.00}},
-		{23.0, [5]float64{931, 449, 0, 0, 0}, [5]float64{29.84, 24.49, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{999, 491, 0, 0, 0}, [5]float64{31.00, 28.49, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{999, 498, 0, 0, 0}, [5]float64{30.38, 29.22, 0.00, 0.00, 0.00}},
-		{22.0, [5]float64{1003, 501, 0, 0, 0}, [5]float64{19.48, 17.99, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1003, 502, 0, 0, 0}, [5]float64{17.19, 16.84, 0.00, 0.00, 0.00}},
-		{21.0, [5]float64{1003, 501, 0, 0, 0}, [5]float64{7.18, 6.86, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1003, 501, 0, 0, 0}, [5]float64{5.59, 3.93, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1003, 501, 0, 0, 0}, [5]float64{2.54, 1.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1003, 544, 0, 0, 0}, [5]float64{2.23, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1003, 544, 0, 0, 0}, [5]float64{1.50, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1003, 544, 0, 0, 0}, [5]float64{0.33, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 0.15, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 0.06, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 0.07, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 0.11, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 1.77, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{284, 544, 0, 0, 0}, [5]float64{0.00, 5.53, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{284, 575, 0, 0, 0}, [5]float64{0.00, 5.78, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{284, 606, 0, 0, 0}, [5]float64{0.44, 6.06, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{280, 916, 0, 0, 0}, [5]float64{4.00, 9.66, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{280, 1134, 0, 0, 0}, [5]float64{11.72, 13.49, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{294, 1196, 0, 0, 0}, [5]float64{13.52, 14.85, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{336, 1383, 0, 0, 0}, [5]float64{20.75, 16.11, 0.00, 0.00, 0.00}},
-		{17.0, [5]float64{461, 1913, 0, 0, 0}, [5]float64{27.33, 22.10, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{476, 1966, 0, 0, 0}, [5]float64{28.24, 23.70, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{491, 1997, 0, 0, 0}, [5]float64{29.18, 25.07, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{498, 2001, 0, 0, 0}, [5]float64{29.66, 24.91, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{499, 2009, 0, 0, 0}, [5]float64{27.84, 24.58, 0.00, 0.00, 0.00}},
-		{26.0, [5]float64{500, 2009, 0, 0, 0}, [5]float64{12.22, 12.76, 0.00, 0.00, 0.00}},
-		{19.0, [5]float64{501, 2008, 0, 0, 0}, [5]float64{6.70, 5.25, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{501, 2008, 0, 0, 0}, [5]float64{5.85, 5.01, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{501, 2008, 0, 0, 0}, [5]float64{2.26, 1.48, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{501, 2008, 0, 0, 0}, [5]float64{1.59, 1.24, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{501, 2008, 0, 0, 0}, [5]float64{0.80, 0.52, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0.39, 0.33, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0.19, 0.18, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0.00, 0.09, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0.00, 0.05, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{502, 2008, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 79, 1, 14, 79, 8, 40, 79, 86, 128, 228, 248, 260, 229, 3, 262, 65, 0, 324, 65, 0, 346, 64, 32,
+			360, 64, 94, 420, 114, 237, 538, 114, 3, 552, 114, 0,
+		}},
+		{1, []int{
+			2, 66, 0, 58, 66, 0, 60, 66, 88, 70, 66, 110, 130, 114, 234, 246, 114, 10, 248, 124, 0, 292, 124, 1,
+			322, 124, 44, 414, 448, 190, 536, 458, 4, 552, 458, 0,
+		}},
 	},
 	219: { // A9
-		{1.0, [5]float64{1303, 2431, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1303, 2431, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1303, 2431, 0, 0, 0}, [5]float64{0.88, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1302, 2431, 0, 0, 0}, [5]float64{1.79, 1.29, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1302, 2449, 0, 0, 0}, [5]float64{3.62, 3.67, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1301, 2449, 0, 0, 0}, [5]float64{7.35, 5.76, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1301, 2449, 0, 0, 0}, [5]float64{9.31, 9.02, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1301, 2449, 0, 0, 0}, [5]float64{18.90, 14.36, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1301, 2449, 0, 0, 0}, [5]float64{18.93, 16.76, 0.00, 0.00, 0.00}},
-		{45.0, [5]float64{1295, 2449, 0, 0, 0}, [5]float64{20.68, 18.19, 0.00, 0.00, 0.00}},
-		{20.0, [5]float64{1169, 2449, 0, 0, 0}, [5]float64{21.57, 18.87, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1137, 2431, 0, 0, 0}, [5]float64{21.82, 19.13, 0.00, 0.00, 0.00}},
-		{132.0, [5]float64{304, 1531, 0, 0, 0}, [5]float64{31.00, 21.28, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{252, 1449, 0, 0, 0}, [5]float64{12.16, 21.91, 0.00, 0.00, 0.00}},
-		{14.0, [5]float64{251, 1354, 0, 0, 0}, [5]float64{0.67, 22.76, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{251, 1347, 0, 0, 0}, [5]float64{0.00, 22.83, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{251, 1334, 0, 0, 0}, [5]float64{0.00, 22.96, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{251, 1308, 0, 0, 0}, [5]float64{0.00, 10.28, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{251, 1308, 0, 0, 0}, [5]float64{0.00, 3.93, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{251, 1308, 0, 0, 0}, [5]float64{0.00, 0.46, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{251, 1308, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{251, 1308, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 297, 0, 4, 297, 0, 8, 297, 14, 10, 297, 29, 20, 297, 151, 112, 295, 165, 426, 69, 248, 450, 57, 97,
+			480, 57, 0, 512, 57, 0,
+		}},
+		{1, []int{
+			2, 554, 0, 6, 554, 0, 8, 554, 10, 22, 559, 134, 162, 554, 153, 484, 304, 184, 498, 298, 31, 504, 298, 4,
+			506, 298, 0, 512, 298, 0,
+		}},
 	},
 	220: { // B0
-		{1.0, [5]float64{2603, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2603, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2603, 0, 0, 0, 0}, [5]float64{1.02, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2597, 0, 0, 0, 0}, [5]float64{3.97, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2597, 0, 0, 0, 0}, [5]float64{12.47, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2602, 0, 0, 0, 0}, [5]float64{22.56, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2606, 0, 0, 0, 0}, [5]float64{30.76, 0.00, 0.00, 0.00, 0.00}},
-		{104.0, [5]float64{2607, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{29.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{15.71, 0.00, 0.00, 0.00, 0.00}},
-		{17.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{6.63, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{2.08, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{0.31, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2605, 0, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 594, 0, 4, 594, 0, 6, 594, 8, 22, 594, 246, 230, 595, 248, 348, 594, 2, 356, 594, 0,
+		}},
 	},
 	221: { // B1
-		{1.0, [5]float64{1421, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1421, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1421, 0, 0, 0, 0}, [5]float64{1.69, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1416, 0, 0, 0, 0}, [5]float64{15.65, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1473, 0, 0, 0, 0}, [5]float64{29.09, 0.00, 0.00, 0.00, 0.00}},
-		{87.0, [5]float64{2986, 0, 0, 0, 0}, [5]float64{16.04, 0.00, 0.00, 0.00, 0.00}},
-		{49.0, [5]float64{3837, 0, 0, 0, 0}, [5]float64{8.91, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3868, 0, 0, 0, 0}, [5]float64{9.53, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3879, 0, 0, 0, 0}, [5]float64{9.96, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3822, 0, 0, 0, 0}, [5]float64{8.75, 0.00, 0.00, 0.00, 0.00}},
-		{35.0, [5]float64{3070, 0, 0, 0, 0}, [5]float64{14.74, 0.00, 0.00, 0.00, 0.00}},
-		{71.0, [5]float64{1546, 0, 0, 0, 0}, [5]float64{27.52, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1443, 0, 0, 0, 0}, [5]float64{29.51, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1418, 0, 0, 0, 0}, [5]float64{30.74, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{61.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{15.11, 0.00, 0.00, 0.00, 0.00}},
-		{32.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{6.24, 0.00, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{3.50, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{1.53, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{0.51, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{0.11, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1407, 0, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 324, 0, 6, 324, 0, 8, 324, 14, 16, 323, 125, 26, 336, 233, 298, 875, 71, 306, 885, 80, 314, 872, 70,
+			526, 353, 220, 540, 323, 246, 774, 321, 4, 788, 321, 0,
+		}},
 	},
 	222: { // B2
-		{1.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{1.17, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{3.34, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{11.39, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1409, 260, 0, 0, 0}, [5]float64{21.47, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1412, 260, 0, 0, 0}, [5]float64{30.32, 0.00, 0.00, 0.00, 0.00}},
-		{108.0, [5]float64{1406, 260, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1414, 260, 0, 0, 0}, [5]float64{30.18, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1443, 260, 0, 0, 0}, [5]float64{26.56, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1471, 260, 0, 0, 0}, [5]float64{23.98, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1562, 260, 0, 0, 0}, [5]float64{16.52, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1869, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1869, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1869, 260, 0, 0, 0}, [5]float64{24.59, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{2266, 260, 0, 0, 0}, [5]float64{25.25, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2395, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2395, 260, 0, 0, 0}, [5]float64{26.78, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2468, 260, 0, 0, 0}, [5]float64{26.16, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2507, 260, 0, 0, 0}, [5]float64{30.23, 0.00, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{2508, 260, 0, 0, 0}, [5]float64{30.07, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2487, 260, 0, 0, 0}, [5]float64{22.17, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2461, 260, 0, 0, 0}, [5]float64{17.31, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1767, 260, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1767, 260, 0, 0, 0}, [5]float64{16.98, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1719, 260, 0, 0, 0}, [5]float64{21.73, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1707, 260, 0, 0, 0}, [5]float64{29.06, 0.00, 0.00, 0.00, 0.00}},
-		{33.0, [5]float64{1707, 260, 0, 0, 0}, [5]float64{29.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1707, 260, 0, 0, 0}, [5]float64{29.00, 0.30, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1707, 257, 0, 0, 0}, [5]float64{29.00, 0.32, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{1707, 259, 0, 0, 0}, [5]float64{28.98, 2.51, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1707, 298, 0, 0, 0}, [5]float64{28.97, 5.09, 0.00, 0.00, 0.00}},
-		{33.0, [5]float64{1707, 573, 0, 0, 0}, [5]float64{28.91, 5.19, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1707, 601, 0, 0, 0}, [5]float64{28.90, 5.10, 0.00, 0.00, 0.00}},
-		{21.0, [5]float64{1707, 601, 0, 0, 0}, [5]float64{28.87, 4.12, 0.00, 0.00, 0.00}},
-		{68.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{12.02, 2.07, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{11.03, 2.01, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{7.19, 1.22, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{6.23, 0.79, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{5.52, 0.66, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{3.59, 0.63, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{2.99, 0.44, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{2.65, 0.25, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1708, 603, 0, 0, 0}, [5]float64{1.91, 0.15, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1708, 600, 0, 0, 0}, [5]float64{1.38, 0.17, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1708, 600, 0, 0, 0}, [5]float64{1.18, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1708, 600, 0, 0, 0}, [5]float64{0.85, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1709, 600, 0, 0, 0}, [5]float64{0.10, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1709, 600, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1709, 600, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 321, 0, 6, 321, 0, 8, 321, 9, 10, 321, 27, 24, 322, 243, 244, 322, 241, 254, 356, 132, 256, 426, 0,
+			262, 426, 0, 264, 426, 197, 278, 517, 202, 280, 546, 0, 282, 546, 214, 292, 572, 242, 318, 572, 241, 326, 561, 138,
+			328, 403, 0, 330, 403, 136, 342, 389, 232, 564, 389, 231, 784, 390, 9, 798, 390, 1, 806, 390, 0,
+		}},
+		{1, []int{
+			2, 59, 0, 408, 59, 0, 414, 59, 3, 432, 59, 20, 446, 68, 41, 522, 137, 41, 784, 137, 0, 806, 137, 0,
+		}},
 	},
 	223: { // B3
-		{1.0, [5]float64{3103, 615, 1416, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3103, 615, 1416, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3103, 615, 1416, 0, 0}, [5]float64{1.30, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3102, 615, 1416, 0, 0}, [5]float64{2.81, 1.30, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3100, 612, 1416, 0, 0}, [5]float64{6.04, 1.89, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3103, 605, 1416, 0, 0}, [5]float64{12.93, 3.95, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3105, 602, 1416, 0, 0}, [5]float64{14.29, 5.73, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3114, 596, 1416, 0, 0}, [5]float64{21.35, 8.15, 0.00, 0.00, 0.00}},
-		{98.0, [5]float64{3112, 599, 1416, 0, 0}, [5]float64{20.72, 8.15, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3104, 599, 1416, 0, 0}, [5]float64{17.08, 8.15, 0.67, 0.00, 0.00}},
-		{3.0, [5]float64{3083, 599, 1422, 0, 0}, [5]float64{9.57, 8.15, 6.19, 0.00, 0.00}},
-		{1.0, [5]float64{3076, 599, 1418, 0, 0}, [5]float64{7.88, 8.15, 9.20, 0.00, 0.00}},
-		{1.0, [5]float64{3076, 599, 1415, 0, 0}, [5]float64{5.01, 8.15, 13.68, 0.00, 0.00}},
-		{1.0, [5]float64{3075, 599, 1412, 0, 0}, [5]float64{1.54, 8.15, 20.35, 0.00, 0.00}},
-		{1.0, [5]float64{3075, 599, 1409, 0, 0}, [5]float64{0.00, 8.15, 23.14, 0.00, 0.00}},
-		{2.0, [5]float64{3075, 599, 1404, 0, 0}, [5]float64{0.00, 8.15, 29.94, 0.00, 0.00}},
-		{9.0, [5]float64{3075, 599, 1404, 0, 0}, [5]float64{0.00, 8.15, 31.00, 0.00, 0.00}},
-		{99.0, [5]float64{3075, 602, 1404, 0, 0}, [5]float64{0.00, 8.15, 30.83, 0.00, 0.00}},
-		{3.0, [5]float64{3075, 602, 1404, 0, 0}, [5]float64{0.00, 7.73, 30.82, 0.00, 0.00}},
-		{31.0, [5]float64{3075, 601, 1403, 0, 0}, [5]float64{0.00, 4.46, 18.58, 0.00, 0.00}},
-		{5.0, [5]float64{3075, 600, 1403, 0, 0}, [5]float64{0.00, 4.08, 15.24, 0.00, 0.00}},
-		{19.0, [5]float64{3075, 604, 1403, 0, 0}, [5]float64{0.00, 1.89, 7.17, 0.00, 0.00}},
-		{8.0, [5]float64{3075, 604, 1403, 0, 0}, [5]float64{0.00, 0.94, 5.22, 0.00, 0.00}},
-		{2.0, [5]float64{3075, 604, 1403, 0, 0}, [5]float64{0.00, 0.79, 3.99, 0.00, 0.00}},
-		{5.0, [5]float64{3075, 602, 1403, 0, 0}, [5]float64{0.00, 0.25, 2.03, 0.00, 0.00}},
-		{1.0, [5]float64{3075, 602, 1403, 0, 0}, [5]float64{0.00, 0.00, 1.51, 0.00, 0.00}},
-		{3.0, [5]float64{3075, 602, 1403, 0, 0}, [5]float64{0.00, 0.00, 0.63, 0.00, 0.00}},
-		{1.0, [5]float64{3075, 602, 1404, 0, 0}, [5]float64{0.00, 0.00, 0.70, 0.00, 0.00}},
-		{1.0, [5]float64{3075, 602, 1404, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3075, 602, 1404, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 708, 0, 4, 708, 0, 6, 708, 10, 24, 710, 171, 220, 710, 166, 230, 702, 63, 234, 701, 12, 236, 701, 0,
+			620, 701, 0,
+		}},
+		{1, []int{
+			2, 140, 0, 6, 140, 0, 8, 140, 10, 24, 136, 65, 456, 137, 65, 604, 137, 0, 620, 137, 0,
+		}},
+		{2, []int{
+			2, 323, 0, 220, 323, 0, 222, 323, 5, 228, 324, 50, 240, 320, 240, 462, 320, 247, 614, 320, 0, 620, 320, 0,
+		}},
 	},
 	224: { // B4
-		{1.0, [5]float64{1828, 1620, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1828, 1620, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1828, 1620, 0, 0, 0}, [5]float64{2.16, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1828, 1620, 0, 0, 0}, [5]float64{8.65, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1828, 1620, 0, 0, 0}, [5]float64{16.32, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1823, 1620, 0, 0, 0}, [5]float64{24.15, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1855, 1620, 0, 0, 0}, [5]float64{30.20, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1825, 1620, 0, 0, 0}, [5]float64{19.76, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1835, 1620, 0, 0, 0}, [5]float64{16.78, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1844, 1620, 0, 0, 0}, [5]float64{18.82, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1805, 1620, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1841, 1620, 0, 0, 0}, [5]float64{24.95, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1829, 1620, 0, 0, 0}, [5]float64{25.50, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1829, 1620, 0, 0, 0}, [5]float64{25.50, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1829, 1620, 0, 0, 0}, [5]float64{25.50, 15.24, 0.00, 0.00, 0.00}},
-		{106.0, [5]float64{1834, 357, 0, 0, 0}, [5]float64{25.31, 21.67, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1834, 325, 0, 0, 0}, [5]float64{25.30, 21.15, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1834, 353, 0, 0, 0}, [5]float64{25.29, 21.63, 0.00, 0.00, 0.00}},
-		{104.0, [5]float64{1839, 1574, 0, 0, 0}, [5]float64{25.10, 14.87, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{25.09, 19.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{25.09, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{25.09, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1805, 1617, 0, 0, 0}, [5]float64{29.51, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1853, 1617, 0, 0, 0}, [5]float64{16.82, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1807, 1617, 0, 0, 0}, [5]float64{14.98, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1858, 1617, 0, 0, 0}, [5]float64{30.74, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1825, 1617, 0, 0, 0}, [5]float64{25.39, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1838, 1617, 0, 0, 0}, [5]float64{25.34, 0.00, 0.00, 0.00, 0.00}},
-		{31.0, [5]float64{1832, 1617, 0, 0, 0}, [5]float64{15.28, 0.00, 0.00, 0.00, 0.00}},
-		{28.0, [5]float64{1834, 1617, 0, 0, 0}, [5]float64{5.56, 0.00, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{1834, 1617, 0, 0, 0}, [5]float64{1.66, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1834, 1617, 0, 0, 0}, [5]float64{0.76, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1834, 1617, 0, 0, 0}, [5]float64{0.29, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{0.27, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1839, 1617, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 417, 0, 4, 417, 0, 6, 417, 17, 14, 417, 131, 28, 423, 242, 46, 419, 134, 62, 412, 248, 72, 420, 200,
+			546, 412, 236, 556, 423, 135, 572, 412, 120, 584, 424, 246, 738, 418, 13, 748, 418, 2, 758, 419, 0,
+		}},
+		{1, []int{
+			2, 369, 0, 80, 369, 0, 82, 369, 122, 294, 81, 173, 304, 74, 169, 312, 81, 173, 520, 359, 119, 528, 369, 154,
+			530, 369, 0, 758, 369, 0,
+		}},
 	},
 	225: { // B5
-		{1.0, [5]float64{982, 3508, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{982, 3508, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{982, 3508, 0, 0, 0}, [5]float64{1.45, 0.56, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{981, 3502, 0, 0, 0}, [5]float64{2.77, 2.12, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{979, 3502, 0, 0, 0}, [5]float64{10.13, 6.67, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{977, 3506, 0, 0, 0}, [5]float64{18.58, 11.02, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{973, 3508, 0, 0, 0}, [5]float64{20.69, 14.16, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{965, 3510, 0, 0, 0}, [5]float64{25.65, 15.72, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{956, 3511, 0, 0, 0}, [5]float64{25.71, 16.56, 0.00, 0.00, 0.00}},
-		{65.0, [5]float64{320, 3513, 0, 0, 0}, [5]float64{31.00, 16.18, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{260, 3514, 0, 0, 0}, [5]float64{13.75, 16.12, 0.00, 0.00, 0.00}},
-		{16.0, [5]float64{258, 3514, 0, 0, 0}, [5]float64{0.33, 16.03, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{258, 3514, 0, 0, 0}, [5]float64{0.00, 16.03, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{258, 3514, 0, 0, 0}, [5]float64{0.00, 15.99, 0.00, 0.00, 0.00}},
-		{34.0, [5]float64{258, 3516, 0, 0, 0}, [5]float64{0.00, 6.12, 0.00, 0.00, 0.00}},
-		{18.0, [5]float64{258, 3517, 0, 0, 0}, [5]float64{0.00, 1.32, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{258, 3517, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{258, 3517, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 224, 0, 6, 224, 0, 10, 224, 22, 24, 220, 205, 156, 73, 248, 174, 59, 110, 206, 59, 3, 208, 59, 0,
+			332, 59, 0,
+		}},
+		{1, []int{
+			2, 800, 0, 6, 800, 0, 8, 800, 4, 10, 799, 17, 26, 801, 132, 220, 801, 128, 324, 802, 11, 326, 802, 0,
+			332, 802, 0,
+		}},
 	},
 	226: { // B6
-		{1.0, [5]float64{3503, 1821, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3503, 1821, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3503, 1821, 0, 0, 0}, [5]float64{1.41, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3495, 1821, 0, 0, 0}, [5]float64{7.11, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{3507, 1821, 0, 0, 0}, [5]float64{22.97, 0.00, 0.00, 0.00, 0.00}},
-		{14.0, [5]float64{3506, 1821, 0, 0, 0}, [5]float64{24.65, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3500, 1821, 0, 0, 0}, [5]float64{20.49, 1.01, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3486, 1821, 0, 0, 0}, [5]float64{14.16, 4.47, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3452, 1821, 0, 0, 0}, [5]float64{13.05, 9.41, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3493, 1817, 0, 0, 0}, [5]float64{0.00, 12.47, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3493, 1805, 0, 0, 0}, [5]float64{0.00, 29.04, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{3493, 1804, 0, 0, 0}, [5]float64{0.00, 30.86, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3493, 1804, 0, 0, 0}, [5]float64{0.00, 19.87, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3493, 1803, 0, 0, 0}, [5]float64{11.54, 15.94, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3501, 1803, 0, 0, 0}, [5]float64{17.05, 10.26, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3506, 1803, 0, 0, 0}, [5]float64{20.73, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3510, 1803, 0, 0, 0}, [5]float64{25.20, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{3513, 1803, 0, 0, 0}, [5]float64{26.47, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3512, 1803, 0, 0, 0}, [5]float64{25.20, 0.47, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3511, 1802, 0, 0, 0}, [5]float64{23.99, 1.62, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3509, 1802, 0, 0, 0}, [5]float64{22.84, 3.61, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3505, 1802, 0, 0, 0}, [5]float64{18.34, 8.04, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3495, 1802, 0, 0, 0}, [5]float64{11.82, 18.57, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3491, 1802, 0, 0, 0}, [5]float64{9.49, 22.02, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3469, 1803, 0, 0, 0}, [5]float64{0.00, 26.11, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3469, 1803, 0, 0, 0}, [5]float64{0.00, 30.96, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{3469, 1809, 0, 0, 0}, [5]float64{0.00, 25.78, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3469, 1817, 0, 0, 0}, [5]float64{0.00, 13.98, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3469, 1821, 0, 0, 0}, [5]float64{12.74, 10.30, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3497, 1823, 0, 0, 0}, [5]float64{18.34, 2.98, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3500, 1824, 0, 0, 0}, [5]float64{19.98, 1.61, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3503, 1822, 0, 0, 0}, [5]float64{21.77, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3509, 1822, 0, 0, 0}, [5]float64{25.86, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3503, 1822, 0, 0, 0}, [5]float64{22.12, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3498, 1822, 0, 0, 0}, [5]float64{18.93, 1.17, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3488, 1822, 0, 0, 0}, [5]float64{13.86, 4.96, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3463, 1822, 0, 0, 0}, [5]float64{13.13, 10.23, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3463, 1817, 0, 0, 0}, [5]float64{0.00, 13.90, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{3463, 1808, 0, 0, 0}, [5]float64{0.00, 25.65, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{3463, 1804, 0, 0, 0}, [5]float64{0.00, 31.00, 0.00, 0.00, 0.00}},
-		{26.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0.00, 15.96, 0.00, 0.00, 0.00}},
-		{16.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0.00, 6.83, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0.00, 2.03, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0.00, 0.33, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3463, 1805, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 799, 0, 4, 799, 0, 6, 799, 11, 18, 800, 184, 54, 787, 104, 56, 797, 0, 96, 797, 0, 98, 797, 92,
+			122, 801, 212, 136, 796, 76, 138, 791, 0, 164, 791, 0, 166, 791, 102, 178, 800, 207, 188, 790, 105, 190, 790, 0,
+			342, 790, 0,
+		}},
+		{1, []int{
+			2, 415, 0, 46, 415, 0, 48, 415, 8, 52, 415, 36, 62, 412, 232, 92, 411, 247, 102, 411, 82, 104, 411, 0,
+			122, 411, 0, 124, 411, 4, 126, 411, 13, 128, 411, 29, 140, 411, 248, 160, 413, 206, 170, 416, 24, 174, 416, 0,
+			180, 416, 0, 182, 416, 9, 186, 416, 40, 194, 412, 205, 224, 411, 248, 324, 412, 16, 334, 412, 3, 342, 412, 0,
+		}},
 	},
 	227: { // B7
-		{1.0, [5]float64{2908, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2908, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2908, 0, 0, 0, 0}, [5]float64{1.74, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2910, 0, 0, 0, 0}, [5]float64{11.64, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{2914, 0, 0, 0, 0}, [5]float64{29.00, 0.00, 0.00, 0.00, 0.00}},
-		{31.0, [5]float64{2912, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2910, 0, 0, 0, 0}, [5]float64{25.56, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2907, 0, 0, 0, 0}, [5]float64{12.20, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2907, 0, 0, 0, 0}, [5]float64{4.34, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2907, 0, 0, 0, 0}, [5]float64{0.70, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3884, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{3884, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3884, 0, 0, 0, 0}, [5]float64{1.15, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3903, 0, 0, 0, 0}, [5]float64{4.60, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3897, 0, 0, 0, 0}, [5]float64{13.53, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{3918, 0, 0, 0, 0}, [5]float64{28.13, 0.00, 0.00, 0.00, 0.00}},
-		{33.0, [5]float64{3916, 0, 0, 0, 0}, [5]float64{27.42, 0.00, 0.00, 0.00, 0.00}},
-		{29.0, [5]float64{3918, 0, 0, 0, 0}, [5]float64{13.85, 0.00, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{3916, 0, 0, 0, 0}, [5]float64{6.25, 0.00, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{3917, 0, 0, 0, 0}, [5]float64{2.02, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{3917, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{3917, 0, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 663, 0, 4, 663, 0, 6, 663, 14, 12, 664, 93, 20, 665, 232, 82, 664, 248, 88, 664, 204, 98, 663, 35,
+			102, 663, 6, 104, 886, 0, 122, 886, 0, 124, 886, 9, 126, 890, 37, 132, 889, 108, 146, 894, 225, 212, 893, 219,
+			270, 894, 111, 318, 893, 16, 320, 893, 0, 326, 893, 0,
+		}},
 	},
 	228: { // B8
-		{1.0, [5]float64{2085, 3618, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2085, 3618, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2085, 3618, 0, 0, 0}, [5]float64{0.84, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{2086, 3618, 0, 0, 0}, [5]float64{2.40, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2086, 3618, 0, 0, 0}, [5]float64{9.29, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{2086, 3618, 0, 0, 0}, [5]float64{18.76, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{2082, 3618, 0, 0, 0}, [5]float64{28.04, 0.00, 0.00, 0.00, 0.00}},
-		{24.0, [5]float64{1961, 3618, 0, 0, 0}, [5]float64{28.72, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1956, 3618, 0, 0, 0}, [5]float64{28.75, 4.55, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{1946, 3621, 0, 0, 0}, [5]float64{28.82, 9.15, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1925, 3621, 0, 0, 0}, [5]float64{28.76, 14.01, 0.00, 0.00, 0.00}},
-		{17.0, [5]float64{1808, 3619, 0, 0, 0}, [5]float64{28.55, 22.37, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1752, 3501, 0, 0, 0}, [5]float64{28.53, 23.14, 0.00, 0.00, 0.00}},
-		{23.0, [5]float64{1654, 3280, 0, 0, 0}, [5]float64{29.03, 24.86, 0.00, 0.00, 0.00}},
-		{35.0, [5]float64{1505, 3005, 0, 0, 0}, [5]float64{30.12, 28.94, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1501, 3001, 0, 0, 0}, [5]float64{30.15, 28.94, 0.00, 0.00, 0.00}},
-		{76.0, [5]float64{1330, 2709, 0, 0, 0}, [5]float64{31.00, 28.72, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1325, 2686, 0, 0, 0}, [5]float64{29.86, 28.62, 0.00, 0.00, 0.00}},
-		{23.0, [5]float64{1305, 2611, 0, 0, 0}, [5]float64{25.88, 24.51, 0.00, 0.00, 0.00}},
-		{39.0, [5]float64{1305, 2609, 0, 0, 0}, [5]float64{24.36, 24.54, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1305, 2610, 0, 0, 0}, [5]float64{24.17, 22.01, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{1305, 2611, 0, 0, 0}, [5]float64{15.99, 17.71, 0.00, 0.00, 0.00}},
-		{21.0, [5]float64{1305, 2612, 0, 0, 0}, [5]float64{6.71, 6.24, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1305, 2612, 0, 0, 0}, [5]float64{2.79, 2.47, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1305, 2612, 0, 0, 0}, [5]float64{1.24, 0.97, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 2612, 0, 0, 0}, [5]float64{0.77, 0.71, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1305, 2613, 0, 0, 0}, [5]float64{0.49, 0.82, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1306, 2613, 0, 0, 0}, [5]float64{0.49, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1306, 2613, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1306, 2613, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 476, 0, 4, 476, 0, 6, 476, 7, 8, 476, 19, 22, 475, 224, 132, 400, 228, 250, 342, 241, 402, 303, 248,
+			548, 298, 193, 630, 298, 10, 634, 298, 4, 644, 298, 0,
+		}},
+		{1, []int{
+			2, 825, 0, 70, 825, 0, 72, 825, 36, 82, 826, 112, 116, 825, 179, 248, 685, 232, 460, 596, 196, 538, 595, 196,
+			568, 596, 142, 630, 596, 8, 634, 596, 7, 636, 596, 0, 644, 596, 0,
+		}},
 	},
 	235: { // C5
-		{1.0, [5]float64{716, 2705, 302, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{716, 2705, 302, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{716, 2705, 302, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{716, 2705, 302, 0, 0}, [5]float64{1.28, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{716, 2705, 302, 0, 0}, [5]float64{1.28, 8.05, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{716, 2708, 302, 0, 0}, [5]float64{1.49, 3.89, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{716, 2710, 302, 0, 0}, [5]float64{2.33, 9.25, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{716, 2710, 302, 0, 0}, [5]float64{2.68, 9.99, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{716, 2710, 302, 0, 0}, [5]float64{2.68, 12.78, 0.00, 0.00, 0.00}},
-		{31.0, [5]float64{716, 2709, 302, 0, 0}, [5]float64{2.67, 12.87, 0.00, 0.00, 0.00}},
-		{1.8, [5]float64{716, 2701, 302, 0, 0}, [5]float64{2.66, 12.40, 0.00, 0.00, 0.00}},
-		{1.2, [5]float64{716, 2696, 302, 0, 0}, [5]float64{2.94, 12.11, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{716, 2668, 302, 0, 0}, [5]float64{3.49, 10.62, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{716, 2708, 302, 0, 0}, [5]float64{3.80, 15.95, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{716, 901, 302, 0, 0}, [5]float64{4.13, 0.00, 0.00, 0.00, 0.00}},
-		{9.8, [5]float64{716, 901, 302, 0, 0}, [5]float64{9.48, 0.00, 0.00, 0.00, 0.00}},
-		{14.2, [5]float64{640, 901, 302, 0, 0}, [5]float64{16.96, 0.00, 0.00, 0.00, 0.00}},
-		{0.7, [5]float64{636, 901, 302, 0, 0}, [5]float64{17.48, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{636, 901, 302, 0, 0}, [5]float64{17.56, 13.06, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{620, 902, 302, 0, 0}, [5]float64{19.12, 16.49, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{617, 902, 302, 0, 0}, [5]float64{19.45, 17.28, 2.54, 0.00, 0.00}},
-		{4.0, [5]float64{605, 903, 301, 0, 0}, [5]float64{20.82, 20.83, 3.77, 0.00, 0.00}},
-		{2.7, [5]float64{597, 903, 301, 0, 0}, [5]float64{21.79, 20.25, 4.93, 0.00, 0.00}},
-		{7.3, [5]float64{596, 902, 299, 0, 0}, [5]float64{21.75, 18.76, 10.20, 0.00, 0.00}},
-		{4.0, [5]float64{595, 902, 299, 0, 0}, [5]float64{21.72, 17.99, 12.86, 0.00, 0.00}},
-		{6.0, [5]float64{594, 900, 299, 0, 0}, [5]float64{21.69, 13.66, 18.22, 0.00, 0.00}},
-		{3.0, [5]float64{593, 900, 299, 0, 0}, [5]float64{21.67, 11.90, 18.52, 0.00, 0.00}},
-		{14.6, [5]float64{590, 898, 300, 0, 0}, [5]float64{21.59, 3.07, 20.04, 0.00, 0.00}},
-		{1.4, [5]float64{586, 898, 300, 0, 0}, [5]float64{21.65, 2.68, 20.20, 0.00, 0.00}},
-		{1.0, [5]float64{583, 899, 300, 0, 0}, [5]float64{21.70, 3.61, 20.31, 0.00, 0.00}},
-		{1.0, [5]float64{580, 281, 300, 0, 0}, [5]float64{21.75, 0.00, 20.42, 0.00, 0.00}},
-		{5.5, [5]float64{563, 281, 300, 0, 0}, [5]float64{22.02, 0.00, 21.05, 0.00, 0.00}},
-		{10.5, [5]float64{512, 281, 300, 0, 0}, [5]float64{21.38, 0.00, 22.28, 0.00, 0.00}},
-		{1.0, [5]float64{507, 281, 300, 0, 0}, [5]float64{21.32, 0.00, 0.00, 0.00, 0.00}},
-		{7.5, [5]float64{471, 281, 300, 0, 0}, [5]float64{20.89, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{472, 281, 300, 0, 0}, [5]float64{21.36, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{421, 281, 300, 0, 0}, [5]float64{21.88, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{453, 281, 300, 0, 0}, [5]float64{19.85, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{453, 281, 300, 0, 0}, [5]float64{19.85, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{447, 281, 300, 0, 0}, [5]float64{19.47, 17.55, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{441, 307, 300, 0, 0}, [5]float64{19.09, 20.06, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{339, 334, 300, 0, 0}, [5]float64{0.00, 22.94, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{339, 361, 300, 0, 0}, [5]float64{0.00, 26.22, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{339, 360, 300, 0, 0}, [5]float64{0.00, 25.45, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{339, 417, 300, 0, 0}, [5]float64{0.00, 16.80, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{339, 424, 300, 0, 0}, [5]float64{0.00, 15.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{339, 406, 300, 0, 0}, [5]float64{0.00, 16.27, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{339, 406, 300, 0, 0}, [5]float64{0.00, 16.28, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{339, 406, 300, 0, 0}, [5]float64{21.31, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{339, 406, 300, 0, 0}, [5]float64{21.32, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{332, 406, 300, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{324, 406, 300, 0, 0}, [5]float64{11.53, 0.00, 0.00, 0.00, 0.00}},
-		{0.6, [5]float64{406, 406, 300, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{0.5, [5]float64{406, 406, 300, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{0.6, [5]float64{406, 406, 300, 0, 0}, [5]float64{17.57, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{357, 406, 300, 0, 0}, [5]float64{10.11, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{318, 406, 300, 0, 0}, [5]float64{13.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{313, 406, 300, 0, 0}, [5]float64{22.88, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{302, 406, 300, 0, 0}, [5]float64{25.32, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{323, 406, 300, 0, 0}, [5]float64{23.83, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{289, 406, 300, 0, 0}, [5]float64{23.22, 0.00, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{299, 406, 300, 0, 0}, [5]float64{21.74, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{8.52, 0.00, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.57, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.87, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.71, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.80, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.67, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.79, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.66, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.79, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.73, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.88, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.73, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.77, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.63, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{6.70, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{3.99, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{4.05, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{305, 406, 300, 0, 0}, [5]float64{0.68, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{316, 406, 300, 0, 0}, [5]float64{1.23, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{316, 406, 300, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{316, 406, 300, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 163, 0, 17, 163, 0, 19, 163, 10, 30, 163, 21, 102, 163, 21, 132, 163, 76, 188, 136, 174, 260, 134, 173,
+			319, 108, 171, 325, 96, 175, 329, 103, 159, 334, 101, 153, 336, 77, 0, 353, 77, 0, 355, 77, 170, 366, 76, 248,
+			376, 74, 92, 378, 93, 0, 379, 93, 0, 380, 93, 141, 382, 81, 81, 386, 73, 104, 402, 69, 203, 410, 74, 191,
+			422, 66, 186, 452, 68, 174, 466, 70, 68, 486, 70, 37, 498, 70, 55, 510, 70, 38, 522, 70, 54, 532, 70, 37,
+			544, 70, 54, 556, 70, 37, 566, 70, 54, 578, 70, 38, 590, 70, 55, 602, 70, 38, 614, 70, 54, 624, 70, 37,
+			636, 70, 54, 648, 70, 32, 660, 70, 32, 676, 70, 5, 678, 72, 10, 680, 72, 0, 686, 72, 0,
+		}},
+		{1, []int{
+			2, 617, 0, 19, 617, 0, 20, 617, 64, 22, 618, 31, 36, 618, 102, 108, 609, 85, 110, 618, 128, 112, 205, 0,
+			161, 205, 0, 162, 205, 104, 182, 206, 167, 210, 206, 144, 258, 205, 25, 260, 205, 21, 262, 205, 29, 264, 64, 0,
+			330, 64, 0, 332, 64, 140, 338, 82, 210, 342, 82, 204, 346, 95, 134, 350, 97, 120, 353, 93, 130, 355, 93, 0,
+			686, 93, 0,
+		}},
+		{2, []int{
+			2, 69, 0, 172, 69, 0, 174, 69, 20, 188, 69, 39, 222, 68, 146, 258, 68, 160, 296, 68, 178, 298, 68, 0,
+			686, 68, 0,
+		}},
 	},
 	240: { // D0
-		{1.0, [5]float64{965, 1334, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{965, 1334, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{965, 1334, 0, 0, 0}, [5]float64{3.18, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{968, 1334, 0, 0, 0}, [5]float64{7.64, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{963, 1334, 0, 0, 0}, [5]float64{17.75, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{960, 1334, 0, 0, 0}, [5]float64{20.41, 17.54, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{950, 1340, 0, 0, 0}, [5]float64{31.00, 21.88, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{950, 1346, 0, 0, 0}, [5]float64{30.99, 27.30, 0.00, 0.00, 0.00}},
-		{84.0, [5]float64{950, 1341, 0, 0, 0}, [5]float64{30.66, 27.11, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{950, 1341, 0, 0, 0}, [5]float64{30.65, 25.67, 0.00, 0.00, 0.00}},
-		{18.0, [5]float64{950, 1342, 0, 0, 0}, [5]float64{17.88, 18.53, 0.00, 0.00, 0.00}},
-		{23.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{8.99, 6.41, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{5.35, 4.86, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{4.13, 3.02, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{2.36, 1.88, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{1.96, 1.36, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{0.98, 0.72, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1342, 0, 0, 0}, [5]float64{0.69, 0.43, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{950, 1342, 0, 0, 0}, [5]float64{0.79, 0.26, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{950, 1344, 0, 0, 0}, [5]float64{0.00, 0.30, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{950, 1344, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{950, 1344, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 220, 0, 6, 220, 0, 8, 220, 25, 10, 221, 61, 14, 220, 142, 22, 217, 248, 202, 217, 245, 238, 217, 143,
+			284, 216, 72, 296, 216, 43, 308, 216, 19, 314, 216, 8, 318, 217, 6, 320, 217, 0, 328, 217, 0,
+		}},
+		{1, []int{
+			2, 304, 0, 14, 304, 0, 16, 304, 140, 28, 307, 218, 196, 306, 217, 238, 306, 148, 284, 306, 51, 296, 306, 39,
+			302, 306, 24, 310, 306, 11, 318, 306, 2, 328, 307, 0,
+		}},
 	},
 	241: { // D1
-		{1.0, [5]float64{690, 1231, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{690, 1231, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{690, 1231, 0, 0, 0}, [5]float64{3.77, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{697, 1231, 0, 0, 0}, [5]float64{8.78, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1231, 0, 0, 0}, [5]float64{13.38, 12.47, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{705, 1213, 0, 0, 0}, [5]float64{20.40, 17.27, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{707, 1214, 0, 0, 0}, [5]float64{31.00, 25.89, 0.00, 0.00, 0.00}},
-		{90.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{30.46, 20.47, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{20.16, 19.78, 0.00, 0.00, 0.00}},
-		{20.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{10.69, 10.64, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{8.29, 6.40, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{5.59, 4.97, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{3.42, 2.50, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{701, 1215, 0, 0, 0}, [5]float64{2.09, 1.90, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{700, 1215, 0, 0, 0}, [5]float64{0.78, 0.50, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{700, 1215, 0, 0, 0}, [5]float64{0.61, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{700, 1215, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{700, 1215, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 157, 0, 8, 157, 0, 10, 157, 30, 14, 159, 70, 18, 161, 163, 26, 161, 248, 206, 160, 244, 232, 160, 161,
+			272, 160, 86, 288, 160, 66, 310, 160, 17, 322, 160, 0, 328, 160, 0,
+		}},
+		{1, []int{
+			2, 281, 0, 14, 281, 0, 16, 281, 100, 18, 277, 138, 26, 277, 207, 206, 277, 164, 232, 277, 158, 306, 277, 20,
+			320, 277, 0, 328, 277, 0,
+		}},
 	},
 	242: { // D2
-		{1.0, [5]float64{714, 1350, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{714, 1350, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{714, 1350, 0, 0, 0}, [5]float64{3.28, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{693, 1350, 0, 0, 0}, [5]float64{4.11, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{692, 1350, 0, 0, 0}, [5]float64{6.72, 4.53, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{690, 1343, 0, 0, 0}, [5]float64{17.89, 14.05, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{704, 1346, 0, 0, 0}, [5]float64{30.98, 22.51, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{704, 1347, 0, 0, 0}, [5]float64{30.98, 25.33, 0.00, 0.00, 0.00}},
-		{90.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{31.00, 21.88, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{26.18, 21.63, 0.00, 0.00, 0.00}},
-		{19.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{16.55, 12.46, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{12.34, 10.47, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{7.57, 5.50, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{4.82, 4.26, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{3.07, 2.18, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{1.79, 1.56, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{1.37, 1.05, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{0.57, 0.48, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{0.36, 0.25, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1341, 0, 0, 0}, [5]float64{0.38, 0.13, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1342, 0, 0, 0}, [5]float64{0.00, 0.15, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1342, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{701, 1342, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 163, 0, 8, 163, 0, 10, 163, 26, 12, 158, 33, 26, 161, 248, 208, 160, 248, 318, 160, 5, 324, 160, 0,
+			332, 160, 0,
+		}},
+		{1, []int{
+			2, 308, 0, 12, 308, 0, 18, 306, 112, 28, 307, 203, 222, 306, 173, 300, 306, 34, 318, 306, 4, 332, 306, 0,
+		}},
 	},
 	243: { // D3
-		{1.0, [5]float64{699, 1489, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{699, 1489, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{699, 1489, 0, 0, 0}, [5]float64{2.30, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{699, 1489, 0, 0, 0}, [5]float64{4.24, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{699, 1489, 0, 0, 0}, [5]float64{7.83, 10.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{699, 1487, 0, 0, 0}, [5]float64{14.47, 11.73, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{706, 1479, 0, 0, 0}, [5]float64{31.00, 23.66, 0.00, 0.00, 0.00}},
-		{89.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{30.55, 20.34, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{25.08, 20.04, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{18.04, 13.25, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{13.71, 11.23, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{7.56, 5.50, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{6.04, 4.93, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{2.76, 1.85, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{2.03, 1.61, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{0.59, 0.35, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{0.43, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{701, 1480, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 159, 0, 8, 159, 0, 12, 159, 34, 14, 159, 63, 16, 159, 116, 26, 161, 248, 204, 160, 244, 310, 160, 16,
+			322, 160, 0, 328, 160, 0,
+		}},
+		{1, []int{
+			2, 340, 0, 12, 340, 0, 14, 340, 82, 26, 337, 189, 222, 338, 160, 308, 338, 15, 320, 338, 0, 328, 338, 0,
+		}},
 	},
 	244: { // D4
-		{1.0, [5]float64{794, 1202, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{794, 1202, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{794, 1202, 0, 0, 0}, [5]float64{5.90, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{780, 1202, 0, 0, 0}, [5]float64{15.68, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{775, 1202, 0, 0, 0}, [5]float64{21.73, 18.39, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{773, 1216, 0, 0, 0}, [5]float64{30.98, 26.27, 0.00, 0.00, 0.00}},
-		{87.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{31.00, 21.14, 0.00, 0.00, 0.00}},
-		{15.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{23.03, 20.36, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{772, 1215, 0, 0, 0}, [5]float64{20.05, 15.47, 0.00, 0.00, 0.00}},
-		{20.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{9.23, 7.05, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{6.49, 6.03, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{3.83, 2.93, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{2.96, 2.60, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0.82, 0.65, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0.48, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0.28, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0.09, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{773, 1215, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 181, 0, 8, 181, 0, 16, 178, 125, 26, 176, 248, 200, 176, 248, 318, 176, 4, 330, 176, 0,
+		}},
+		{1, []int{
+			2, 274, 0, 16, 274, 0, 18, 274, 147, 230, 277, 163, 292, 277, 48, 318, 277, 0, 330, 277, 0,
+		}},
 	},
 	245: { // D5
-		{1.0, [5]float64{765, 1354, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{765, 1354, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{765, 1354, 0, 0, 0}, [5]float64{2.21, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{765, 1354, 0, 0, 0}, [5]float64{7.72, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{765, 1354, 0, 0, 0}, [5]float64{14.41, 14.60, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{772, 1348, 0, 0, 0}, [5]float64{31.00, 23.16, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{772, 1346, 0, 0, 0}, [5]float64{30.99, 25.40, 0.00, 0.00, 0.00}},
-		{89.0, [5]float64{773, 1342, 0, 0, 0}, [5]float64{30.52, 20.40, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{773, 1341, 0, 0, 0}, [5]float64{23.04, 19.80, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{773, 1341, 0, 0, 0}, [5]float64{16.99, 11.77, 0.00, 0.00, 0.00}},
-		{19.0, [5]float64{773, 1341, 0, 0, 0}, [5]float64{6.84, 5.50, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{773, 1341, 0, 0, 0}, [5]float64{2.94, 2.33, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{772, 1342, 0, 0, 0}, [5]float64{0.54, 0.48, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{772, 1342, 0, 0, 0}, [5]float64{0.39, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{772, 1342, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{772, 1342, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 174, 0, 8, 174, 0, 10, 174, 18, 14, 174, 62, 16, 174, 115, 26, 176, 248, 206, 176, 244, 318, 176, 4,
+			322, 176, 0, 328, 176, 0,
+		}},
+		{1, []int{
+			2, 309, 0, 14, 309, 0, 16, 309, 117, 28, 307, 203, 230, 306, 158, 256, 306, 94, 308, 306, 19, 320, 306, 0,
+			328, 306, 0,
+		}},
 	},
 	246: { // D6
-		{1.0, [5]float64{780, 1476, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{780, 1476, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{780, 1476, 0, 0, 0}, [5]float64{4.49, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{758, 1476, 0, 0, 0}, [5]float64{5.03, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{758, 1476, 0, 0, 0}, [5]float64{7.82, 4.24, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{758, 1470, 0, 0, 0}, [5]float64{12.17, 10.89, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{757, 1473, 0, 0, 0}, [5]float64{18.93, 14.95, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{771, 1479, 0, 0, 0}, [5]float64{31.00, 24.40, 0.00, 0.00, 0.00}},
-		{91.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{30.28, 23.33, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{29.31, 23.32, 0.00, 0.00, 0.00}},
-		{27.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{12.10, 11.78, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{773, 1481, 0, 0, 0}, [5]float64{7.91, 5.91, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{773, 1481, 0, 0, 0}, [5]float64{6.39, 5.31, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{773, 1481, 0, 0, 0}, [5]float64{3.03, 2.14, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1481, 0, 0, 0}, [5]float64{2.27, 1.88, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{0.54, 0.28, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{773, 1480, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 178, 0, 8, 178, 0, 10, 178, 36, 12, 173, 40, 14, 173, 63, 18, 173, 151, 26, 176, 248, 208, 176, 242,
+			264, 176, 97, 290, 176, 63, 310, 176, 18, 322, 176, 0, 328, 176, 0,
+		}},
+		{1, []int{
+			2, 337, 0, 12, 337, 0, 14, 337, 34, 16, 335, 87, 26, 337, 195, 210, 338, 187, 308, 338, 17, 322, 338, 0,
+			328, 338, 0,
+		}},
 	},
 	247: { // D7
-		{1.0, [5]float64{895, 1220, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{895, 1220, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{895, 1220, 0, 0, 0}, [5]float64{5.77, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{862, 1220, 0, 0, 0}, [5]float64{4.45, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{856, 1220, 0, 0, 0}, [5]float64{11.19, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{852, 1220, 0, 0, 0}, [5]float64{17.76, 8.60, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{854, 1212, 0, 0, 0}, [5]float64{19.85, 18.94, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{861, 1214, 0, 0, 0}, [5]float64{31.00, 27.18, 0.00, 0.00, 0.00}},
-		{92.0, [5]float64{856, 1214, 0, 0, 0}, [5]float64{27.69, 25.70, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{856, 1214, 0, 0, 0}, [5]float64{27.59, 23.24, 0.00, 0.00, 0.00}},
-		{25.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{13.95, 10.07, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{7.51, 6.97, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{6.35, 5.12, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{3.17, 3.06, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{2.40, 1.78, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{855, 1215, 0, 0, 0}, [5]float64{0.73, 0.78, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1215, 0, 0, 0}, [5]float64{0.49, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1215, 0, 0, 0}, [5]float64{0.33, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1215, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{856, 1215, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 204, 0, 6, 204, 0, 8, 204, 46, 10, 197, 36, 26, 196, 248, 216, 195, 221, 314, 195, 6, 320, 195, 0,
+			326, 195, 0,
+		}},
+		{1, []int{
+			2, 278, 0, 14, 278, 0, 18, 276, 152, 26, 277, 217, 210, 277, 206, 316, 277, 0, 326, 277, 0,
+		}},
 	},
 	248: { // D8
-		{1.0, [5]float64{878, 1360, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{878, 1360, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{878, 1360, 0, 0, 0}, [5]float64{2.56, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{853, 1360, 0, 0, 0}, [5]float64{3.07, 0.00, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{850, 1360, 0, 0, 0}, [5]float64{9.08, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{849, 1360, 0, 0, 0}, [5]float64{15.60, 8.53, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{852, 1344, 0, 0, 0}, [5]float64{17.90, 17.35, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{860, 1346, 0, 0, 0}, [5]float64{31.00, 26.07, 0.00, 0.00, 0.00}},
-		{90.0, [5]float64{856, 1342, 0, 0, 0}, [5]float64{30.44, 23.89, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{856, 1342, 0, 0, 0}, [5]float64{27.55, 23.80, 0.00, 0.00, 0.00}},
-		{25.0, [5]float64{856, 1342, 0, 0, 0}, [5]float64{14.76, 9.98, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{855, 1342, 0, 0, 0}, [5]float64{7.33, 6.35, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{855, 1342, 0, 0, 0}, [5]float64{6.94, 5.66, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{855, 1342, 0, 0, 0}, [5]float64{2.40, 2.24, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{855, 1342, 0, 0, 0}, [5]float64{2.10, 1.59, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{854, 1342, 0, 0, 0}, [5]float64{0.47, 0.41, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{854, 1342, 0, 0, 0}, [5]float64{0.32, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{854, 1342, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{854, 1342, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 200, 0, 6, 200, 0, 10, 195, 25, 26, 196, 248, 206, 195, 244, 318, 195, 4, 328, 195, 0,
+		}},
+		{1, []int{
+			2, 310, 0, 14, 310, 0, 16, 310, 68, 26, 307, 209, 214, 306, 190, 318, 306, 3, 320, 306, 0, 328, 306, 0,
+		}},
 	},
 	249: { // D9
-		{1.0, [5]float64{865, 1486, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{865, 1486, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{865, 1486, 0, 0, 0}, [5]float64{3.72, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{861, 1486, 0, 0, 0}, [5]float64{5.67, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{858, 1486, 0, 0, 0}, [5]float64{8.64, 7.37, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{850, 1478, 0, 0, 0}, [5]float64{20.07, 16.23, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{860, 1480, 0, 0, 0}, [5]float64{31.00, 25.01, 0.00, 0.00, 0.00}},
-		{92.0, [5]float64{856, 1480, 0, 0, 0}, [5]float64{29.91, 23.41, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{856, 1480, 0, 0, 0}, [5]float64{27.99, 23.37, 0.00, 0.00, 0.00}},
-		{37.0, [5]float64{856, 1481, 0, 0, 0}, [5]float64{8.21, 7.04, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{856, 1481, 0, 0, 0}, [5]float64{7.68, 5.73, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{856, 1481, 0, 0, 0}, [5]float64{3.01, 2.51, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1482, 0, 0, 0}, [5]float64{2.68, 1.97, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{856, 1483, 0, 0, 0}, [5]float64{0.49, 0.59, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1483, 0, 0, 0}, [5]float64{0.35, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{856, 1483, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{856, 1483, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 197, 0, 8, 197, 0, 18, 194, 161, 210, 195, 239, 320, 195, 4, 330, 195, 0,
+		}},
+		{1, []int{
+			2, 339, 0, 12, 339, 0, 14, 339, 59, 26, 338, 200, 214, 338, 187, 322, 338, 0, 330, 338, 0,
+		}},
 	},
 	250: { // D10
-		{1.0, [5]float64{936, 1211, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{936, 1211, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{936, 1211, 0, 0, 0}, [5]float64{5.07, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{937, 1211, 0, 0, 0}, [5]float64{20.72, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{940, 1211, 0, 0, 0}, [5]float64{22.92, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{944, 1211, 0, 0, 0}, [5]float64{25.35, 21.74, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{950, 1214, 0, 0, 0}, [5]float64{31.00, 25.90, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{950, 1215, 0, 0, 0}, [5]float64{31.00, 28.27, 0.00, 0.00, 0.00}},
-		{87.0, [5]float64{949, 1215, 0, 0, 0}, [5]float64{30.65, 27.86, 0.00, 0.00, 0.00}},
-		{34.0, [5]float64{948, 1216, 0, 0, 0}, [5]float64{11.60, 11.60, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{948, 1216, 0, 0, 0}, [5]float64{10.05, 7.80, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{948, 1216, 0, 0, 0}, [5]float64{4.57, 3.53, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{948, 1216, 0, 0, 0}, [5]float64{3.30, 3.01, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{948, 1217, 0, 0, 0}, [5]float64{2.80, 3.75, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{948, 1217, 0, 0, 0}, [5]float64{2.38, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{948, 1217, 0, 0, 0}, [5]float64{0.93, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1217, 0, 0, 0}, [5]float64{1.11, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1217, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1217, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 213, 0, 8, 213, 0, 10, 213, 41, 26, 217, 248, 202, 216, 245, 314, 216, 7, 316, 216, 9, 318, 216, 0,
+			324, 216, 0,
+		}},
+		{1, []int{
+			2, 276, 0, 20, 276, 0, 22, 276, 174, 28, 277, 226, 202, 277, 223, 300, 277, 28, 304, 277, 24, 306, 278, 30,
+			308, 278, 0, 324, 278, 0,
+		}},
 	},
 	251: { // D11
-		{1.0, [5]float64{953, 1470, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{953, 1470, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{953, 1470, 0, 0, 0}, [5]float64{8.48, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{945, 1470, 0, 0, 0}, [5]float64{8.22, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{946, 1470, 0, 0, 0}, [5]float64{11.58, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{947, 1470, 0, 0, 0}, [5]float64{16.30, 15.30, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{947, 1473, 0, 0, 0}, [5]float64{22.95, 17.90, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{948, 1477, 0, 0, 0}, [5]float64{26.67, 24.51, 0.00, 0.00, 0.00}},
-		{2.0, [5]float64{949, 1478, 0, 0, 0}, [5]float64{31.00, 24.94, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{950, 1479, 0, 0, 0}, [5]float64{30.89, 26.03, 0.00, 0.00, 0.00}},
-		{81.0, [5]float64{950, 1479, 0, 0, 0}, [5]float64{29.12, 25.79, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{950, 1479, 0, 0, 0}, [5]float64{28.99, 22.86, 0.00, 0.00, 0.00}},
-		{19.0, [5]float64{949, 1480, 0, 0, 0}, [5]float64{18.08, 15.61, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{15.19, 11.98, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{9.92, 8.86, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{6.83, 5.17, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{4.19, 3.81, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{2.90, 2.10, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1479, 0, 0, 0}, [5]float64{1.24, 1.16, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1478, 0, 0, 0}, [5]float64{0.53, 0.29, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1478, 0, 0, 0}, [5]float64{0.00, 0.19, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{949, 1478, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{949, 1478, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 217, 0, 8, 217, 0, 10, 217, 68, 26, 216, 248, 210, 217, 232, 312, 216, 10, 320, 216, 0, 328, 216, 0,
+		}},
+		{1, []int{
+			2, 335, 0, 14, 335, 0, 16, 335, 122, 198, 337, 206, 318, 337, 2, 328, 337, 0,
+		}},
 	},
 	252: { // M0
-		{1.0, [5]float64{1732, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1732, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1732, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1784, 0, 0, 0, 0}, [5]float64{19.71, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1810, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1826, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1786, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1810, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1789, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1836, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1818, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1838, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1822, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1841, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1799, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1815, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1778, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1822, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1784, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1795, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1851, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1816, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1803, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{11.0, [5]float64{1837, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{14.0, [5]float64{1798, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{1834, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1790, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1832, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1818, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1838, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1826, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1785, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1803, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1795, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1828, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1802, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1795, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{9.0, [5]float64{1826, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1777, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1821, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1804, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{24.0, [5]float64{1812, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1787, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1797, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1782, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1796, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1844, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1810, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1787, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{5.0, [5]float64{1808, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1797, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1818, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{8.0, [5]float64{1765, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{7.0, [5]float64{1806, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{6.0, [5]float64{1791, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1802, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1799, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{10.0, [5]float64{1782, 0, 0, 0, 0}, [5]float64{31.00, 0.00, 0.00, 0.00, 0.00}},
-		{503.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{6.77, 0.00, 0.00, 0.00, 0.00}},
-		{20.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{4.28, 0.00, 0.00, 0.00, 0.00}},
-		{113.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{3.57, 0.00, 0.00, 0.00, 0.00}},
-		{13.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{2.44, 0.00, 0.00, 0.00, 0.00}},
-		{107.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{2.53, 0.00, 0.00, 0.00, 0.00}},
-		{12.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{1.33, 0.00, 0.00, 0.00, 0.00}},
-		{84.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{1.30, 0.00, 0.00, 0.00, 0.00}},
-		{4.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{0.98, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1783, 0, 0, 0, 0}, [5]float64{0.41, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1794, 0, 0, 0, 0}, [5]float64{0.70, 0.00, 0.00, 0.00, 0.00}},
-		{1.0, [5]float64{1794, 0, 0, 0, 0}, [5]float64{0.00, 0.00, 0.00, 0.00, 0.00}},
-		{3.0, [5]float64{1794, 0, 0, 0, 0}, [5]float64{0, 0, 0, 0, 0}},
+		{0, []int{
+			2, 395, 0, 10, 395, 0, 12, 395, 248, 14, 407, 158, 20, 413, 248, 514, 406, 248, 536, 421, 248, 672, 406, 248,
+			1718, 407, 34, 1944, 407, 29, 1970, 407, 20, 2184, 407, 20, 2208, 407, 11, 2376, 407, 10, 2390, 407, 3, 2392, 409, 6,
+			2394, 409, 0, 2400, 409, 0,
+		}},
 	},
+}
+
+// tonePoints rebuilds an effect's parts from its tones' knots (see fxTones): a
+// part at every knot of any of them, each tone at its straight line's value
+// there
+func tonePoints(tones []toneKnots) []fx2Point {
+	var times []int
+	for _, t := range tones {
+		for i := 0; i < len(t.knots); i += 3 {
+			k := t.knots[i]
+			j := 0
+			for j < len(times) && times[j] < k {
+				j++
+			}
+			if j < len(times) && times[j] == k {
+				continue
+			}
+			times = append(times, 0)
+			copy(times[j+1:], times[j:])
+			times[j] = k
+		}
+	}
+	p := make([]fx2Point, len(times))
+	for i, tm := range times {
+		prev := 0
+		if i > 0 {
+			prev = times[i-1]
+		}
+		p[i].ms = float64(float32(float64(tm-prev) / 2))
+		for _, t := range tones {
+			q := t.knots
+			c := len(q) / 3
+			var f, v float64
+			switch {
+			case tm <= q[0]:
+				f, v = float64(q[1]), float64(q[2])
+			case tm >= q[3*(c-1)]:
+				f, v = float64(q[3*(c-1)+1]), float64(q[3*(c-1)+2])
+			default:
+				j := 0
+				for q[3*(j+1)] <= tm {
+					j++
+				}
+				w := float64(tm-q[3*j]) / float64(q[3*(j+1)]-q[3*j])
+				f = float64(q[3*j+1]) + w*float64(q[3*(j+1)+1]-q[3*j+1])
+				v = float64(q[3*j+2]) + w*float64(q[3*(j+1)+2]-q[3*j+2])
+			}
+			p[i].freq[t.osc] = float64(float32(f * freqStepHz))
+			p[i].vol[t.osc] = float64(float32(v / 8))
+		}
+	}
+	return p
 }
 
 // contour2 plays a tone effect traced again: each point glided to in a
@@ -5015,11 +2330,6 @@ var effectNames = [...]string{
 }
 
 var effects = func() (e [len(effectNames)]sound) {
-	// the DTMF tones' two frequencies in freqStepHz steps: the chip's, measured
-	// on the second VoxProbe recording, which are a few hertz from the
-	// standard ones (1477Hz is 1468.75)
-	dtmfs := [12][2]int{{215, 304}, {159, 275}, {159, 304}, {159, 335}, {175, 275}, {175, 304},
-		{175, 335}, {194, 275}, {194, 304}, {194, 335}, {215, 275}, {215, 335}}
 	for i, name := range effectNames {
 		code := 200 + i
 		switch {
@@ -5027,12 +2337,10 @@ var effects = func() (e [len(effectNames)]sound) {
 			e[i] = c1(name)
 		case fxvPoints[code] != nil:
 			e[i] = contourVoiced(name, fxvPoints[code])
-		case fx2Points[code] != nil:
-			e[i] = toneNoise(contour2(name, fx2Points[code], code), code)
+		case fxTones[code] != nil:
+			e[i] = toneNoise(contour2(name, tonePoints(fxTones[code]), code), code)
 		case fxPoints[code] != nil:
 			e[i] = contour(name, fxPoints[code], code)
-		case code >= 240 && code <= 251:
-			e[i] = dtmf(name, float64(dtmfs[code-240][0])*freqStepHz, float64(dtmfs[code-240][1])*freqStepHz)
 		case code == 253:
 			e[i] = m1()
 		case code == 238:
@@ -5044,23 +2352,9 @@ var effects = func() (e [len(effectNames)]sound) {
 	return
 }()
 
-// the noise refitted at the chip's own rate. the noise sounds were fitted while
-// this library ran at 8192 samples a second; at chipRate the same values make
-// different noise (it is a frequency jittered every sample, so its spread, and
-// where it folds back around half the rate, move with the rate), and those
-// sounds matched both units 1 to 15 points worse. so each sound with noise was
-// fitted again at chipRate, with changes to the noise oscillators (4 and 5) in
-// all its parts: a scale on their frequencies, a change to their width
-// (distortion) and the balance of their levels, against both units of the
-// VoxRecord recording with the background taken out and clipped sounds left
-// out. the sound's overall level is held where it was (each sound is scored
-// against its own loudest, so a fit left free to change it made SE and others
-// louder against the vowels, and the connected groups, which nothing was fitted
-// to, worse). each is kept only where it matches both units better, by at least
-// 0.05dB or half a point, and doesn't match the second take (which nothing was
-// fitted to) worse: TS 28 to 54%, CH 67 to 83%, TT 29 to 45%, KE 62 to 72%, C9
-// 51 to 58% on unit B. HO, WH, FF, SO, SH, TH, R5, R8, A7, A9, B0, B1, B2, B5,
-// B8, C5, M0 and M1 (clipped on both units) keep theirs
+// the noise sounds refitted at the chip's own rate (the noise is a frequency
+// jittered every sample, so it moves with the rate): a scale on oscillators 4
+// and 5's frequencies, a change to their width (distortion) and their levels
 type noiseFit struct {
 	freqScale, distortion, db4, db5 float64
 }

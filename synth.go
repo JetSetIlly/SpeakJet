@@ -39,23 +39,11 @@ const freqStepHz = 4.3845
 func onGrid(hz float64) float64 { return math.Floor(hz/freqStepHz+0.5) * freqStepHz }
 
 // the chip's voicing fade: the level of the formant oscillators after each
-// voicing pulse, every voiceFadeStepMs from the pulse, in between in a
-// straight line, and after the last nothing (see envVoice in sample()).
-// measured from the waveforms of the third VoxProbe recording, where at pitch
-// 40 each pulse stands alone and about 24 of them were averaged, on 18 vowels,
-// nasals and liquids on two AtariVoxes. each pulse was fitted as three sines
-// starting together, times one envelope shared by every sound, through one
-// output filter (see chipRate); the envelope and the filter were solved for
-// along with each sound's frequencies and amplitudes. that leaves 1/470 of the
-// pulses' energy unexplained (-26.7dB), against 1/28 for the straight 8ms ramp
-// first used. the fade starts at full level, dips to about 0.7 within half a
-// millisecond and comes back to about 0.8 (the onset shapes the whole spectrum:
-// smoothing it into a flat start costs the single pulses 1.8dB), holds to 2ms,
-// falls almost in a straight line and is gone by 7.5ms. fitted to either unit
-// alone it fits the other within 0.2dB, and fitted the same way to pulses this
-// library makes it gives back this library's own envelope, so the method
-// doesn't shape it. Volume and Bend don't change it, and nor does Pitch from 25
-// to 60
+// voicing pulse, every voiceFadeStepMs, straight lines in between, nothing
+// after the last (see envVoice in synth.sample()). measured from single pulses
+// at pitch 40 on two units: full level, a dip to 0.7 within half a millisecond,
+// back to 0.8, held to 2ms, then a near straight fall to nothing by 7.5ms.
+// Volume, Bend and Pitch don't change it
 const voiceFadeStepMs = 0.25
 
 var voiceFade = [...]float64{
@@ -66,20 +54,10 @@ var voiceFade = [...]float64{
 	0.012, 0.000,
 }
 
-// how long the chip takes to bring a vowel, nasal, liquid or diphthong's
-// voicing up from silence: in a straight line, from nothing to full level. on
-// the VoxRecord recording, both units, the first three voicing periods of the
-// 37 sounds played alone stand at -17, -6.3 and -1.5dB against the rest
-// (medians), which 40ms gives to within 1.4dB; ramping the volumes alone gave
-// -8, -2.7 and 0, because the mixer's limit (maxMixer1) holds the sum of the
-// formants at full level long before the volumes get there. AW MM at eight
-// pitches from 60 to 250 takes about 30ms throughout on both units, so it is a
-// time rather than a number of periods. the voiced stops and fricatives start
-// as they did: the ramp on them made both units match them worse. the nasals
-// come up faster: measured from where they rise out of the recording's
-// background (which, being quieter sounds, they sit nearer to), both units have
-// them within 3dB of full level by the second period. 25ms fits them best (40ms
-// 90.7%, 25ms 91.4%)
+// how long the chip takes to bring voicing up from silence, in a straight line:
+// vowels, liquids and diphthongs onsetMs, nasals nasalOnsetMs. a time, not a
+// number of periods (the same at every pitch). voiced stops and fricatives have
+// none
 const (
 	onsetMs      = 40.0
 	nasalOnsetMs = 25.0
@@ -176,30 +154,14 @@ func lerp(a, b frame, t float64) frame {
 	return r
 }
 
-// the chip's output. it makes its samples at chipRate, not the manual's 8192 a
-// second: on both units of the VoxRecord recording every steady tone has a
-// mirror image at the rate less the tone (B7's 3915Hz at 4124Hz, 1dB down),
-// which puts the rate at 8040Hz on one unit and 8015Hz on the other (their
-// clocks differ by the same 0.3 percent as their pitches), the same as their
-// voicing ticks. each sample is held until the next, so the images repeat above
-// that, around each multiple of the rate, at the levels holding gives, up to
-// 23kHz on the recordings, and a smooth analogue low pass after the chip shapes
-// them all.
-//
-// that low pass is measured twice. below 4kHz the voicing pulses of the third
-// VoxProbe recording give it, level and phase, on both units: -1.2dB at 1kHz,
-// -2.8 at 1.5, -5.4 at 2, -8.9 at 2.5, -11.8 at 3 and -14.3 at 3.5kHz against
-// 500Hz, holding included (it agrees within 2 to 3dB with the tone sweeps of the
-// VoxRecord recording, -10.8 at 2.9 and -15.8 at 3.6kHz). above 4kHz the images
-// give it: 160 of them from 26 tone effects on both units, each against its own
-// tone, less what holding accounts for (within 2dB of each other): -18dB at
-// 5.5kHz, -23 at 7.5, -27 at 10.5, -33 at 15.5 and -38 at 23.5kHz. it includes
-// whatever the AtariVox and the recorder add.
-//
-// so here the chip's samples are held, each output sample is the average of
-// what is held over its time, and outputSOS (a filter at SampleRate, fitted to
-// both measurements, within 0.3dB RMS below 4kHz and 1.6dB above) is the low
-// pass. the level at 500Hz is the one the output had before
+// the chip's output. it makes its samples at chipRate (measured from the mirror
+// images of steady tones; the units' clocks differ by 0.3%), holds each until
+// the next, and an analogue low pass shapes the result, images and all. here
+// the samples are held the same way, each output sample is the average of what
+// is held over its time, and outputSOS is that low pass (measured from the
+// voicing pulses below 4kHz and from the images above: -5.4dB at 2kHz, -14 at
+// 3.5kHz, -18 at 5.5kHz, -38 at 23.5kHz), whatever the AtariVox and recorder
+// add included
 const chipRate = 8028.0
 
 var outputSOS = [3][6]float64{
@@ -248,12 +210,10 @@ type synth struct {
 	dcIn, dcOut float64
 }
 
-// the consonants' shaping (see soundEQ): eqBands peaking filters half an
-// octave apart, each made again whenever the gain asked of it changes, then the
-// overall gain. not when it has moved some step: compilers that fuse a multiply
-// and an add (arm64) and those that don't (x86) differ in a gliding gain's last
-// bit, which moved the sample a step was crossed on, and the filters carried
-// that on, 21 apart in the C library's pangram
+// the sounds' shaping (see soundEQ): eqBands peaking filters half an octave
+// apart, then an overall gain. a filter is made again whenever its gain changes
+// at all, not when it has moved some step, so that compilers that do and don't
+// fuse a multiply and an add give the same samples
 const (
 	eqBands = 10
 	eqQ     = 1.0
@@ -292,14 +252,9 @@ func newSynth() *synth {
 	return &synth{noise: 0x2545f491, skirtNoise: 0x9e3779b9, wideNoise: 0x85ebca6b, envAge: 1 << 30}
 }
 
-// the chip's output has a floor of noise under whatever it plays: on both units
-// of the VoxRecord recording a pure tone (the DTMF tones, B3, R3 and the rest)
-// sits on noise from 100Hz to 3kHz 40 to 55dB under it, above the recording's
-// background, which this library's clean tones left out, every band between the
-// tones counting as missing. here white noise follows the output's level (over
-// about 25ms) skirtDB under it: the effects of the VoxRecord recording 5.94 to
-// 4.57dB with their spectrogram match within a tenth of a point, and the speech
-// unchanged (it hides under the harmonics)
+// the chip's output has a floor of noise under whatever it plays, 40 to 55dB
+// under a pure tone. here white noise follows the output's level (over about
+// 25ms) skirtDB under it
 const (
 	skirtDB     = -24.0
 	skirtFollow = 0.995
