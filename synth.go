@@ -143,6 +143,11 @@ type frame struct {
 	pulsed      bool
 	pulseOffset float64
 	fadeScale   float64
+
+	// oscillators 1 to 3 that the voicing doesn't envelope: not restarted by
+	// its pulses nor faded after them (bit 0 is oscillator 1). the manual has
+	// the envelope control choose which oscillators it envelopes (see c1())
+	freeOsc int
 }
 
 // lerp returns the frame part way between a and b. the envelope control
@@ -243,9 +248,11 @@ func (s *synth) sample(f frame, master float64) float64 {
 		s.envAge = 0
 		// restart the formant oscillators with each pulse
 		if f.voiced {
-			s.phase[0] = f.phase0[0]
-			s.phase[1] = f.phase0[1]
-			s.phase[2] = f.phase0[2]
+			for i := range 3 {
+				if f.freeOsc>>i&1 == 0 {
+					s.phase[i] = f.phase0[i]
+				}
+			}
 		}
 	}
 	if f.wave == envVoice {
@@ -288,20 +295,25 @@ func (s *synth) sample(f frame, master float64) float64 {
 	}
 
 	// mixer 1: oscillators 1 to 3
-	var mix1, total float64
+	var mix1, free1, total float64
 	for i := range 3 {
 		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
 		s.phase[i] += fr / chipRate
 		s.phase[i] -= math.Floor(s.phase[i])
 		v := math.Min(f.vol[i], maxOscVolume)
 		total += v
-		mix1 += v * math.Sin(2*math.Pi*s.phase[i])
-	}
-	if total > maxMixer1 {
-		mix1 *= maxMixer1 / total
+		if f.freeOsc>>i&1 == 1 {
+			free1 += v * math.Sin(2*math.Pi*s.phase[i])
+		} else {
+			mix1 += v * math.Sin(2*math.Pi*s.phase[i])
+		}
 	}
 	if f.voiced {
 		mix1 *= env
+	}
+	mix1 += free1
+	if total > maxMixer1 {
+		mix1 *= maxMixer1 / total
 	}
 	// the voicing coming up from silence (see onsetMs)
 	if total == 0 {

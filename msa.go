@@ -67,6 +67,9 @@ type msa struct {
 	jumpNextFreq  bool
 	autoSilenced  bool
 
+	// the length of the pauses since the last sound, in ms (see closure())
+	pausedMs float64
+
 	segs     []segment
 	segPos   int
 	segStart frame
@@ -166,7 +169,9 @@ func (m *msa) firstTarget(code uint8) (frame, bool) {
 func lookup(code uint8) (sound, bool) {
 	switch {
 	case code >= 128 && code < 128+uint8(len(allophones)):
-		return allophones[code-128], true
+		s := allophones[code-128]
+		s.noSlow = code >= 182 // the voiceless consonants (see expand())
+		return s, true
 	case code >= 200 && int(code) < 200+len(effects):
 		s := effects[code-200]
 		s.noBend = code == 254 // M2 (see expand())
@@ -198,11 +203,17 @@ func (m *msa) expand(s sound) []segment {
 
 		// fast and slow, measured from the VoxProbe recording: fast plays OWIY
 		// and AXRR at 0.66 and 0.63 of their length, and slow at 1.42 and 1.31
-		// times
+		// times. slow doesn't lengthen the voiceless consonants: the vox_test
+		// recording has a slow SE 1.11 times and a slow TH 0.95 times its usual
+		// length, and in Man Goes Down (both AtariVoxes) Slow SE Slow SE is
+		// 200ms, Slow TT's burst 20ms and Slow Slow TH 50ms, where stretching
+		// them as the vowels are made them 290, 60 and 70ms. its vowels, DH and
+		// GO stretch as here. it takes that game's second and fourth phrases from
+		// 0.75 to 0.86 and 0.63 to 0.80 (both units, full band)
 		if m.fast {
 			scale *= fastScale
 		}
-		if m.slow {
+		if m.slow && !s.noSlow {
 			scale *= slowScale
 		}
 
@@ -235,7 +246,7 @@ func (m *msa) expand(s sound) []segment {
 			// a pulsed effect's gate keeps its distance from the voicing (see
 			// fxPulses)
 			t.pitch = math.Max(voiceHz(float64(m.pitch))+t.pulseOffset, 1)
-		} else if t.wave == envVoice {
+		} else if t.wave == envVoice && !s.ownPitch {
 			// a voiced effect follows the Pitch control: on the chip A1 and M2
 			// are voiced at 60.3, 87.9 and 149.5Hz at pitch 60, 88 and 150.
 			// their traced pitch is the chip's at the default pitch
@@ -292,6 +303,71 @@ func (m *msa) expand(s sound) []segment {
 	return segs
 }
 
+// a pause before a stop takes the place of that much of its closure: on both
+// AtariVoxes playing Man Goes Down, UX, pause 1, EK leaves 140ms between the UX
+// and EK's burst, where the pause (107ms) and EK's closure (105ms) one after
+// the other left 226ms, and TT, pause 1, BE starts BE's voicing as the pause
+// ends. the closure keeps minClosureMs, which gives the 140ms. after a sound
+// the closure is all there (AW TT on the fourth VoxProbe recording). the two
+// phrases go from 0.75 to 0.81 and 0.63 to 0.68 (both units, full band), and
+// with the change to Slow (see expand()) to 0.875
+const minClosureMs = 20.0
+
+func (m *msa) closure() {
+	if len(m.segs) < 2 {
+		return
+	}
+	keep := samples(minClosureMs)
+	c := &m.segs[0]
+	if c.samples <= keep {
+		return
+	}
+	c.samples = max(c.samples-samples(m.pausedMs), keep)
+	c.glide = min(c.glide, c.samples)
+}
+
+// the sounds played from the chip's frames (see vfPoints) were measured alone,
+// and their first and last frames are the voicing coming up from silence and
+// dying away. between two sounds the chip doesn't do that: in Man Goes Down,
+// OWWW ZZ is voiced throughout on both AtariVoxes, where those frames left a
+// gap of 25 to 35ms. so after a voiced sound the frames before the first at
+// framedJoin of the sound's loudest take its volumes, and before another sound
+// the frames after the last at framedJoin take that one's. the timing is
+// unchanged. "man goes down" 0.824 to 0.833 (both units, full band); nothing on
+// the VoxProbe or VoxRecord recordings joins these sounds to others, and none
+// of their scores moves
+const framedJoin = 0.7
+
+func frameVolume(f frame) float64 { return f.vol[0] + f.vol[1] + f.vol[2] }
+
+func (m *msa) join(s sound, more bool) sound {
+	// the parts are shared with the table the sound came from
+	s.parts = append([]part(nil), s.parts...)
+	loudest := 0.0
+	for _, p := range s.parts {
+		loudest = math.Max(loudest, frameVolume(p.target))
+	}
+	if m.current.voiced && frameVolume(m.current) > 0 {
+		j := 0
+		for j < len(s.parts)-1 && frameVolume(s.parts[j].target) < framedJoin*loudest {
+			j++
+		}
+		for i := 0; i < j; i++ {
+			copy(s.parts[i].target.vol[:3], s.parts[j].target.vol[:3])
+		}
+	}
+	if more {
+		j := len(s.parts) - 1
+		for j > 0 && frameVolume(s.parts[j].target) < framedJoin*loudest {
+			j--
+		}
+		for i := j + 1; i < len(s.parts); i++ {
+			copy(s.parts[i].target.vol[:3], s.parts[j].target.vol[:3])
+		}
+	}
+	return s
+}
+
 // silence ramps the volume down and holds silence. if towards is not nil the
 // formant frequencies glide to it while the volume ramps
 func (m *msa) silence(ms float64, towards *frame) []segment {
@@ -332,6 +408,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		// on the chip a pause stretches with the Speed control just as the
 		// sounds do: at speed 0 two pause 2s are 1845ms of silence
 		m.segs = m.silence(pauseMs[code]*m.speedFactor(), towards)
+		m.pausedMs += pauseMs[code] * m.speedFactor()
 
 	case code == 7:
 		m.fast = true
@@ -379,7 +456,15 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		if !ok {
 			return false
 		}
+		if s.framed {
+			next, ok := peek()
+			s = m.join(s, ok && next >= 128 && next < 200)
+		}
 		m.segs = m.expand(s)
+		if s.stop {
+			m.closure()
+		}
+		m.pausedMs = 0
 	}
 
 	m.segPos = 0
