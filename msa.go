@@ -187,7 +187,7 @@ func (m *msa) firstTarget(code uint8) (frame, bool) {
 func lookup(code uint8) (sound, bool) {
 	switch {
 	case code >= 128 && code < 128+uint8(len(allophones)):
-		s := allophones[code-128]
+		s := consonantShaping(allophones[code-128], int(code))
 		s.noSlow = code >= 182 // the voiceless consonants (see expand())
 		return s, true
 	case code >= 200 && int(code) < 200+len(effects):
@@ -196,6 +196,72 @@ func lookup(code uint8) (sound, bool) {
 		return s, true
 	}
 	return sound{}, false
+}
+
+// the consonants shaped further than the oscillators can. on both units of the
+// VoxRecord recording, measured at full band, each consonant's spectrum
+// differed from the chip's by much the same shape every time: taken that shape
+// away, what is left is no more than the two units differ from each other (GO
+// 5.4 to 0.7dB, ED 4.2 to 0.9, SE 5.2 to 1.3, against 1.5, 1.8 and 2.0 between
+// the units). so each is played through peaking filters half an octave apart
+// (see synth.eq()), their gains fitted to that recording, and the voiceless
+// ones whose hiss is broader on the chip than oscillators 4 and 5 make (SH's
+// runs flat from 100Hz to 2kHz, 15dB above here) get broadband noise as well,
+// at the level that fitted best of 0, 0.15, 0.3 and 0.6 of theirs. an overall
+// gain then puts each back at the level it had, which was fitted among the
+// vowels (louder, SE lost 3 to 5 points next to AW and in Man Goes Down). the
+// gains glide with the frames from one sound into the next.
+//
+// on the fourth VoxProbe recording, left out: GO 0.839 to 0.869 and 4.78 to
+// 2.61dB, ED 4.30 to 1.87dB, OD 2.53 to 1.34dB, ZZ 1.95 to 1.11dB, BO 0.775 to
+// 0.791 and 2.28 to 1.12dB, KO 0.850 to 0.870 (the mean of six noise sequences:
+// a hiss's match moves 2 to 4 points with the sequence alone), and BE EH and EH
+// DE a point closer. CH, SO, TT and OK fitted to nothing; EB, SH, TS and KE
+// came out worse there, and SE, its spectrum 5.4 to 2.0dB, lost 3 to 5 points
+// of spectrogram match on every recording, so they have none. the code, the
+// filters' gains, the broadband noise and the overall gain
+type consonantShape struct {
+	db           [eqBands]float64
+	wide, gainDB float64
+}
+
+var consonantEQ = map[int]consonantShape{
+	165: {[eqBands]float64{-6.4, -0.3, 6.2, -5.1, 3.7, -1.6, -1.5, -0.1, 1.3, 3.8}, 0.00, 1.19},   // JH
+	166: {[eqBands]float64{5.2, 0.5, -0.4, 0.6, -2.9, 0.8, 0.1, -0.8, 0.6, -3.8}, 0.00, 0.23},     // VV
+	167: {[eqBands]float64{1.9, -0.3, -0.6, 2.1, 0.4, -3.7, 0.4, -1.8, -1.1, 2.8}, 0.00, -0.45},   // ZZ
+	168: {[eqBands]float64{0.5, 0.2, -1.0, -0.2, 2.3, -2.6, -0.1, 2.8, -0.4, -1.5}, 0.00, -0.14},  // ZH
+	169: {[eqBands]float64{2.7, -0.9, -0.9, -1.2, 8.4, -5.4, -1.1, 1.4, -2.3, -0.5}, 0.00, -0.45}, // DH
+	170: {[eqBands]float64{-8.2, 3.3, 3.2, 2.2, -4.5, -3.2, 5.5, 0.1, 2.1, -0.5}, 0.00, 0.56},     // BE
+	171: {[eqBands]float64{2.0, 2.4, 0.3, -0.8, -1.7, 3.6, -0.3, -0.1, -2.2, -3.3}, 0.00, -0.97},  // BO
+	173: {[eqBands]float64{-0.5, 4.5, -3.5, 3.5, 3.9, -11.5, 15.0, -7.0, 3.1, -7.8}, 0.00, -2.81}, // OB
+	174: {[eqBands]float64{-5.7, -0.4, 7.0, -1.1, -3.7, 1.8, 0.4, -3.4, 0.5, 4.7}, 0.00, 1.38},    // DE
+	175: {[eqBands]float64{1.4, 0.6, -1.0, -1.1, 4.0, 0.8, -0.9, 1.0, -1.5, -3.4}, 0.00, -0.86},   // DO
+	176: {[eqBands]float64{-4.6, 0.6, 1.7, -4.4, 12.5, -3.6, 0.6, 3.7, -4.8, -1.7}, 0.00, 1.11},   // ED
+	177: {[eqBands]float64{-1.5, 0.8, -2.8, -1.4, 10.0, -0.8, -1.7, 1.2, -3.2, -0.5}, 0.00, 0.78}, // OD
+	178: {[eqBands]float64{-0.7, 0.6, -1.3, -2.4, 4.8, 6.8, -10.2, 3.2, -2.6, 1.7}, 0.00, 0.67},   // GE
+	179: {[eqBands]float64{-1.2, 1.0, -1.1, -2.1, 3.5, 14.4, -15.0, 7.0, -10.8, 4.4}, 0.00, 0.12}, // GO
+	180: {[eqBands]float64{-0.3, 1.1, -0.1, -0.7, 8.3, -3.4, -0.4, 2.7, -5.7, -1.5}, 0.00, -1.34}, // EG
+	181: {[eqBands]float64{1.2, 1.0, -0.5, 1.9, 4.9, -3.7, 0.3, 1.3, -7.0, 0.5}, 0.00, -1.73},     // OG
+	192: {[eqBands]float64{-0.8, 2.0, -3.6, -2.4, -2.1, -3.5, -5.0, 0.2, 4.1, 11.2}, 0.60, -6.18}, // TU
+	195: {[eqBands]float64{2.1, 2.8, -6.9, -3.0, 7.0, -2.7, 1.1, 2.7, 3.6, -6.7}, 0.30, -2.29},    // KO
+	196: {[eqBands]float64{1.6, 2.2, 1.3, -1.5, -1.7, -3.1, 5.1, -3.1, 4.6, -5.4}, 0.30, -1.01},   // EK
+}
+
+// consonantShaping sets a consonant's shaping on each of its parts (see
+// consonantEQ). the parts are copied, since the table's sound shares them
+func consonantShaping(s sound, code int) sound {
+	c, ok := consonantEQ[code]
+	if !ok {
+		return s
+	}
+	s.parts = append([]part(nil), s.parts...)
+	for i := range s.parts {
+		f := &s.parts[i].target
+		f.eq = c.db
+		f.wide = c.wide
+		f.eqGain = c.gainDB
+	}
+	return s
 }
 
 // how far Stress raises F2 and F3 (see expand()): about 85Hz on the chip, which

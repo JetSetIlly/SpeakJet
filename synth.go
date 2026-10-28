@@ -148,6 +148,14 @@ type frame struct {
 	// its pulses nor faded after them (bit 0 is oscillator 1). the manual has
 	// the envelope control choose which oscillators it envelopes (see c1())
 	freeOsc int
+
+	// the shaping of the consonants (see consonantEQ): the gain in dB of each
+	// of the eqBands peaking filters on the output, broadband noise riding on
+	// oscillators 4 and 5 (as a fraction of their volume), and an overall gain
+	// in dB
+	eq     [eqBands]float64
+	wide   float64
+	eqGain float64
 }
 
 // lerp returns the frame part way between a and b. the envelope control
@@ -160,6 +168,11 @@ func lerp(a, b frame, t float64) frame {
 	}
 	r.distortion = a.distortion + (b.distortion-a.distortion)*t
 	r.pitch = a.pitch + (b.pitch-a.pitch)*t
+	for i := range r.eq {
+		r.eq[i] = a.eq[i] + (b.eq[i]-a.eq[i])*t
+	}
+	r.wide = a.wide + (b.wide-a.wide)*t
+	r.eqGain = a.eqGain + (b.eqGain-a.eqGain)*t
 	return r
 }
 
@@ -215,6 +228,17 @@ type synth struct {
 	held     [2]float64
 	holdLeft int64
 
+	// the consonants' peaking filters (see consonantEQ): the gains their
+	// coefficients were made for, the coefficients (b0, b1, b2, a1, a2) and
+	// the last two inputs and outputs of each
+	eqDB    [eqBands]float64
+	eqCo    [eqBands][5]float64
+	eqSt    [eqBands][4]float64
+	eqReady bool
+
+	// the noise source of the consonants' broadband noise
+	wideNoise uint32
+
 	// the level the noise floor follows, and its own noise source (see
 	// skirtDB)
 	skirtLevel float64
@@ -224,8 +248,46 @@ type synth struct {
 	dcIn, dcOut float64
 }
 
+// the consonants' shaping (see consonantEQ): eqBands peaking filters half an
+// octave apart, each made again when the gain asked of it moves by more than
+// eqStepDB, then the overall gain
+const (
+	eqBands  = 10
+	eqQ      = 1.0
+	eqStepDB = 0.02
+)
+
+var eqHz = [eqBands]float64{180, 250, 355, 500, 710, 1000, 1410, 2000, 2830, 3600}
+
+func (s *synth) eq(f frame, x float64) float64 {
+	for k := range eqBands {
+		c := &s.eqCo[k]
+		if !s.eqReady || math.Abs(f.eq[k]-s.eqDB[k]) > eqStepDB {
+			s.eqDB[k] = f.eq[k]
+			a := math.Pow(10, s.eqDB[k]/40)
+			w := 2 * math.Pi * eqHz[k] / chipRate
+			al := math.Sin(w) / (2 * eqQ)
+			a0 := 1 + al/a
+			c[0] = (1 + al*a) / a0
+			c[1] = -2 * math.Cos(w) / a0
+			c[2] = (1 - al*a) / a0
+			c[3] = -2 * math.Cos(w) / a0
+			c[4] = (1 - al/a) / a0
+		}
+		z := &s.eqSt[k]
+		y := c[0]*x + c[1]*z[0] + c[2]*z[1] - c[3]*z[2] - c[4]*z[3]
+		z[1] = z[0]
+		z[0] = x
+		z[3] = z[2]
+		z[2] = y
+		x = y
+	}
+	s.eqReady = true
+	return x * math.Pow(10, f.eqGain/20)
+}
+
 func newSynth() *synth {
-	return &synth{noise: 0x2545f491, skirtNoise: 0x9e3779b9, envAge: 1 << 30}
+	return &synth{noise: 0x2545f491, skirtNoise: 0x9e3779b9, wideNoise: 0x85ebca6b, envAge: 1 << 30}
 }
 
 // the chip's output has a floor of noise under whatever it plays: on both units
@@ -370,6 +432,14 @@ func (s *synth) sample(f frame, master float64) float64 {
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])
 	}
+	// the consonants' broadband noise (see consonantEQ)
+	if f.wide > 0 {
+		s.wideNoise ^= s.wideNoise << 13
+		s.wideNoise ^= s.wideNoise >> 17
+		s.wideNoise ^= s.wideNoise << 5
+		mix2 += f.wide * (math.Min(f.vol[3], maxOscVolume) + math.Min(f.vol[4], maxOscVolume)) *
+			float64(int32(s.wideNoise)) / math.MaxInt32
+	}
 	if f.halfEnv {
 		mix2 *= 0.5 + 0.5*env
 	} else if f.noiseDepth > 0 {
@@ -378,6 +448,8 @@ func (s *synth) sample(f frame, master float64) float64 {
 
 	// mixer 5: summation and master volume
 	x := (mix1 + mix2) / (maxMixer1 + 2*maxOscVolume) * math.Min(master, maxMaster) / maxMaster
+
+	x = s.eq(f, x)
 
 	// the noise floor (see skirtDB)
 	s.skirtLevel = skirtFollow*s.skirtLevel + (1-skirtFollow)*math.Abs(x)
