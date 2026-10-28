@@ -199,10 +199,12 @@ func lookup(code uint8) (sound, bool) {
 			}
 		}
 		s = soundShaping(s, int(code))
+		s.copyLength = copyLength[code-128]
 		s.noSlow = code >= 182 // the voiceless consonants (see expand())
 		return s, true
 	case code >= 200 && int(code) < 200+len(effects):
-		s := soundShaping(effects[code-200], int(code))
+		s := soundShaping(sharpOnset(effects[code-200], int(code)), int(code))
+		s.copyLength = 1
 		s.noBend = code == 254 // M2 (see expand())
 		return s, true
 	}
@@ -335,6 +337,91 @@ var soundEQ = map[int]consonantShape{
 	250: {[eqBands]float64{-0.83, -1.71, -1.96, 3.01, 3.96, -8.87, -3.89, 5.1, 1.45, 0.13}, 0.00, 0.00},       // D10
 	251: {[eqBands]float64{-1.81, 1.94, 2.94, 2.69, 1.37, -4.02, -2.06, -1.33, 1.51, 0.13}, 0.00, 0.00},       // D11
 	252: {[eqBands]float64{-0.22, 0.52, 1.21, -1.12, 0.12, -2.37, -0.8, 1.93, -2.42, 2.06}, 0.00, 0.00},       // M0
+}
+
+// the chip starts most tones at once: on both units of the VoxRecord
+// recording D1, D5, B3 and R3 come up from the background to within 5dB in a
+// millisecond, where their traces (5ms frames) ramp up over 5 to 10ms. so the
+// effects below start sharply: the parts before the first whose summed volume
+// reaches the given fraction of the sound's loudest are silent, and that part
+// is reached at once (its glide 0), the sound's length unchanged. the fraction
+// is each effect's own, fitted on every recording of both units and kept only
+// where none came out worse; the rest (the buzzes, the C series' gradual
+// starts, R1) keep their ramps. the VoxRecord effects 0.936 to 0.819
+var sharpOnsets = map[int]float64{
+	201: 0.5,   // R1
+	202: 0.125, // R2
+	203: 0.5,   // R3
+	204: 0.2,   // R4
+	205: 0.1,   // R5
+	206: 0.3,   // R6
+	207: 0.2,   // R7
+	208: 0.2,   // R8
+	211: 0.05,  // A1
+	212: 0.5,   // A2
+	213: 0.7,   // A3
+	214: 0.7,   // A4
+	216: 0.3,   // A6
+	217: 0.2,   // A7
+	218: 0.05,  // A8
+	219: 0.2,   // A9
+	220: 0.2,   // B0
+	221: 0.7,   // B1
+	222: 0.5,   // B2
+	223: 0.7,   // B3
+	224: 0.5,   // B4
+	225: 0.7,   // B5
+	226: 0.3,   // B6
+	227: 0.5,   // B7
+	228: 0.2,   // B8
+	229: 0.3,   // B9
+	235: 0.05,  // C5
+	236: 0.025, // C6
+	239: 0.5,   // C9
+	240: 0.2,   // D0
+	242: 0.7,   // D2
+	243: 0.475, // D3
+	244: 0.05,  // D4
+	245: 0.025, // D5
+	246: 0.05,  // D6
+	247: 0.2,   // D7
+	248: 0.5,   // D8
+	249: 0.7,   // D9
+	250: 0.1,   // D10
+	251: 0.2,   // D11
+	254: 0.7,   // M2
+}
+
+// sharpOnset starts an effect sharply (see sharpOnsets). the parts are copied,
+// since the table's sound shares them
+func sharpOnset(s sound, code int) sound {
+	fraction, ok := sharpOnsets[code]
+	if !ok {
+		return s
+	}
+	s.parts = append([]part(nil), s.parts...)
+	loudest := 0.0
+	for _, p := range s.parts {
+		v := 0.0
+		for j := 0; j < 5; j++ {
+			v += p.target.vol[j]
+		}
+		loudest = math.Max(loudest, v)
+	}
+	for i := range s.parts {
+		v := 0.0
+		for j := 0; j < 5; j++ {
+			v += s.parts[i].target.vol[j]
+		}
+		s.parts[i].glideMs = 0
+		if v >= fraction*loudest {
+			break
+		}
+		for j := 0; j < 5; j++ {
+			s.parts[i].target.vol[j] = 0
+		}
+	}
+	return s
 }
 
 // soundShaping sets a sound's shaping on each of its parts (see soundEQ). the
@@ -473,7 +560,7 @@ func (m *msa) expand(s sound) []segment {
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
 
-		copyMs := p.ms * copyScale
+		copyMs := p.ms * copyScale * s.copyLength
 		copyGlide := p.glideMs * copyScale
 		if p.glideMs == autoGlide {
 			copyGlide = math.Min(math.Max(copyMs*0.35, 20), 50)
