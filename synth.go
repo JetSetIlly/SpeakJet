@@ -249,12 +249,14 @@ type synth struct {
 }
 
 // the consonants' shaping (see consonantEQ): eqBands peaking filters half an
-// octave apart, each made again when the gain asked of it moves by more than
-// eqStepDB, then the overall gain
+// octave apart, each made again whenever the gain asked of it changes, then the
+// overall gain. not when it has moved some step: compilers that fuse a multiply
+// and an add (arm64) and those that don't (x86) differ in a gliding gain's last
+// bit, which moved the sample a step was crossed on, and the filters carried
+// that on, 21 apart in the C library's pangram
 const (
-	eqBands  = 10
-	eqQ      = 1.0
-	eqStepDB = 0.02
+	eqBands = 10
+	eqQ     = 1.0
 )
 
 var eqHz = [eqBands]float64{180, 250, 355, 500, 710, 1000, 1410, 2000, 2830, 3600}
@@ -262,7 +264,7 @@ var eqHz = [eqBands]float64{180, 250, 355, 500, 710, 1000, 1410, 2000, 2830, 360
 func (s *synth) eq(f frame, x float64) float64 {
 	for k := range eqBands {
 		c := &s.eqCo[k]
-		if !s.eqReady || math.Abs(f.eq[k]-s.eqDB[k]) > eqStepDB {
+		if !s.eqReady || f.eq[k] != s.eqDB[k] {
 			s.eqDB[k] = f.eq[k]
 			a := math.Pow(10, s.eqDB[k]/40)
 			w := 2 * math.Pi * eqHz[k] / chipRate
