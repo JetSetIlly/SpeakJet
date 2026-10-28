@@ -67,6 +67,9 @@ type msa struct {
 	jumpNextFreq  bool
 	autoSilenced  bool
 
+	// the length of the pauses since the last sound, in ms (see closure())
+	pausedMs float64
+
 	segs     []segment
 	segPos   int
 	segStart frame
@@ -109,6 +112,24 @@ func (m *msa) bendHz() float64 {
 		return 10 * freqStepHz * float64(m.bend-defaultBend)
 	}
 	return freqStepHz * float64(10*m.bend-45)
+}
+
+// a tone Bend took under nothing (see expand())
+const (
+	wrapHz     = 5680.0
+	wrapMinVol = 8.0
+)
+
+// foldHz is a frequency played at the chip's rate, folded under half of it
+func foldHz(hz float64) float64 {
+	hz = math.Mod(hz, chipRate)
+	if hz < 0 {
+		hz += chipRate
+	}
+	if hz > chipRate/2 {
+		return chipRate - hz
+	}
+	return hz
 }
 
 // the voicing frequency for a Pitch setting. the chip counts each voicing
@@ -166,11 +187,81 @@ func (m *msa) firstTarget(code uint8) (frame, bool) {
 func lookup(code uint8) (sound, bool) {
 	switch {
 	case code >= 128 && code < 128+uint8(len(allophones)):
-		return allophones[code-128], true
+		s := consonantShaping(allophones[code-128], int(code))
+		s.noSlow = code >= 182 // the voiceless consonants (see expand())
+		return s, true
 	case code >= 200 && int(code) < 200+len(effects):
-		return effects[code-200], true
+		s := effects[code-200]
+		s.noBend = code == 254 // M2 (see expand())
+		return s, true
 	}
 	return sound{}, false
+}
+
+// the consonants shaped further than the oscillators can. on both units of the
+// VoxRecord recording, measured at full band, each consonant's spectrum
+// differed from the chip's by much the same shape every time: taken that shape
+// away, what is left is no more than the two units differ from each other (GO
+// 5.4 to 0.7dB, ED 4.2 to 0.9, SE 5.2 to 1.3, against 1.5, 1.8 and 2.0 between
+// the units). so each is played through peaking filters half an octave apart
+// (see synth.eq()), their gains fitted to that recording, and the voiceless
+// ones whose hiss is broader on the chip than oscillators 4 and 5 make (SH's
+// runs flat from 100Hz to 2kHz, 15dB above here) get broadband noise as well,
+// at the level that fitted best of 0, 0.15, 0.3 and 0.6 of theirs. an overall
+// gain then puts each back at the level it had, which was fitted among the
+// vowels (louder, SE lost 3 to 5 points next to AW and in Man Goes Down). the
+// gains glide with the frames from one sound into the next.
+//
+// on the fourth VoxProbe recording, left out: GO 0.839 to 0.869 and 4.78 to
+// 2.61dB, ED 4.30 to 1.87dB, OD 2.53 to 1.34dB, ZZ 1.95 to 1.11dB, BO 0.775 to
+// 0.791 and 2.28 to 1.12dB, KO 0.850 to 0.870 (the mean of six noise sequences:
+// a hiss's match moves 2 to 4 points with the sequence alone), and BE EH and EH
+// DE a point closer. CH, SO, TT and OK fitted to nothing; EB, SH, TS and KE
+// came out worse there, and SE, its spectrum 5.4 to 2.0dB, lost 3 to 5 points
+// of spectrogram match on every recording, so they have none. the code, the
+// filters' gains, the broadband noise and the overall gain
+type consonantShape struct {
+	db           [eqBands]float64
+	wide, gainDB float64
+}
+
+var consonantEQ = map[int]consonantShape{
+	165: {[eqBands]float64{-6.4, -0.3, 6.2, -5.1, 3.7, -1.6, -1.5, -0.1, 1.3, 3.8}, 0.00, 1.19},   // JH
+	166: {[eqBands]float64{5.2, 0.5, -0.4, 0.6, -2.9, 0.8, 0.1, -0.8, 0.6, -3.8}, 0.00, 0.23},     // VV
+	167: {[eqBands]float64{1.9, -0.3, -0.6, 2.1, 0.4, -3.7, 0.4, -1.8, -1.1, 2.8}, 0.00, -0.45},   // ZZ
+	168: {[eqBands]float64{0.5, 0.2, -1.0, -0.2, 2.3, -2.6, -0.1, 2.8, -0.4, -1.5}, 0.00, -0.14},  // ZH
+	169: {[eqBands]float64{2.7, -0.9, -0.9, -1.2, 8.4, -5.4, -1.1, 1.4, -2.3, -0.5}, 0.00, -0.45}, // DH
+	170: {[eqBands]float64{-8.2, 3.3, 3.2, 2.2, -4.5, -3.2, 5.5, 0.1, 2.1, -0.5}, 0.00, 0.56},     // BE
+	171: {[eqBands]float64{2.0, 2.4, 0.3, -0.8, -1.7, 3.6, -0.3, -0.1, -2.2, -3.3}, 0.00, -0.97},  // BO
+	173: {[eqBands]float64{-0.5, 4.5, -3.5, 3.5, 3.9, -11.5, 15.0, -7.0, 3.1, -7.8}, 0.00, -2.81}, // OB
+	174: {[eqBands]float64{-5.7, -0.4, 7.0, -1.1, -3.7, 1.8, 0.4, -3.4, 0.5, 4.7}, 0.00, 1.38},    // DE
+	175: {[eqBands]float64{1.4, 0.6, -1.0, -1.1, 4.0, 0.8, -0.9, 1.0, -1.5, -3.4}, 0.00, -0.86},   // DO
+	176: {[eqBands]float64{-4.6, 0.6, 1.7, -4.4, 12.5, -3.6, 0.6, 3.7, -4.8, -1.7}, 0.00, 1.11},   // ED
+	177: {[eqBands]float64{-1.5, 0.8, -2.8, -1.4, 10.0, -0.8, -1.7, 1.2, -3.2, -0.5}, 0.00, 0.78}, // OD
+	178: {[eqBands]float64{-0.7, 0.6, -1.3, -2.4, 4.8, 6.8, -10.2, 3.2, -2.6, 1.7}, 0.00, 0.67},   // GE
+	179: {[eqBands]float64{-1.2, 1.0, -1.1, -2.1, 3.5, 14.4, -15.0, 7.0, -10.8, 4.4}, 0.00, 0.12}, // GO
+	180: {[eqBands]float64{-0.3, 1.1, -0.1, -0.7, 8.3, -3.4, -0.4, 2.7, -5.7, -1.5}, 0.00, -1.34}, // EG
+	181: {[eqBands]float64{1.2, 1.0, -0.5, 1.9, 4.9, -3.7, 0.3, 1.3, -7.0, 0.5}, 0.00, -1.73},     // OG
+	192: {[eqBands]float64{-0.8, 2.0, -3.6, -2.4, -2.1, -3.5, -5.0, 0.2, 4.1, 11.2}, 0.60, -6.18}, // TU
+	195: {[eqBands]float64{2.1, 2.8, -6.9, -3.0, 7.0, -2.7, 1.1, 2.7, 3.6, -6.7}, 0.30, -2.29},    // KO
+	196: {[eqBands]float64{1.6, 2.2, 1.3, -1.5, -1.7, -3.1, 5.1, -3.1, 4.6, -5.4}, 0.30, -1.01},   // EK
+}
+
+// consonantShaping sets a consonant's shaping on each of its parts (see
+// consonantEQ). the parts are copied, since the table's sound shares them
+func consonantShaping(s sound, code int) sound {
+	c, ok := consonantEQ[code]
+	if !ok {
+		return s
+	}
+	s.parts = append([]part(nil), s.parts...)
+	for i := range s.parts {
+		f := &s.parts[i].target
+		f.eq = c.db
+		f.wide = c.wide
+		f.eqGain = c.gainDB
+	}
+	return s
 }
 
 // how far Stress raises F2 and F3 (see expand()): about 85Hz on the chip, which
@@ -196,11 +287,17 @@ func (m *msa) expand(s sound) []segment {
 
 		// fast and slow, measured from the VoxProbe recording: fast plays OWIY
 		// and AXRR at 0.66 and 0.63 of their length, and slow at 1.42 and 1.31
-		// times
+		// times. slow doesn't lengthen the voiceless consonants: the vox_test
+		// recording has a slow SE 1.11 times and a slow TH 0.95 times its usual
+		// length, and in Man Goes Down (both AtariVoxes) Slow SE Slow SE is
+		// 200ms, Slow TT's burst 20ms and Slow Slow TH 50ms, where stretching
+		// them as the vowels are made them 290, 60 and 70ms. its vowels, DH and
+		// GO stretch as here. it takes that game's second and fourth phrases from
+		// 0.75 to 0.86 and 0.63 to 0.80 (both units, full band)
 		if m.fast {
 			scale *= fastScale
 		}
-		if m.slow {
+		if m.slow && !s.noSlow {
 			scale *= slowScale
 		}
 
@@ -214,6 +311,7 @@ func (m *msa) expand(s sound) []segment {
 	}
 
 	bendHz := m.bendHz()
+	var wrapped [3]bool
 
 	var segs, copies []segment
 	for _, p := range s.parts {
@@ -229,29 +327,59 @@ func (m *msa) expand(s sound) []segment {
 			t.pitch = voiceHz(float64(m.pitch))
 			t.freq[1] += stress
 			t.freq[2] += stress
-		} else if t.wave == envVoice {
+		} else if t.pulsed {
+			// a pulsed effect's gate keeps its distance from the voicing (see
+			// fxPulses)
+			t.pitch = math.Max(voiceHz(float64(m.pitch))+t.pulseOffset, 1)
+		} else if t.wave == envVoice && !s.ownPitch {
 			// a voiced effect follows the Pitch control: on the chip A1 and M2
 			// are voiced at 60.3, 87.9 and 149.5Hz at pitch 60, 88 and 150.
 			// their traced pitch is the chip's at the default pitch
 			t.pitch *= voiceHz(float64(m.pitch)) / voiceHz(defaultPitch)
 		}
-		for j := range 3 {
-			if t.freq[j] > 0 {
-				t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+		// M2 doesn't follow Bend: on both units of the fourth VoxProbe recording
+		// it is the same at bend 0 and bend 15, its formants within half a hertz
+		// of each other over its whole length
+		// C8's and C9's gate keeps time with Speed (see cNoise)
+		if s.speedGate {
+			t.pitch /= scale
+		}
+		// a tone Bend takes under nothing wraps round: on both units of the fourth
+		// VoxProbe recording, at bend 0 A1's third formant, which starts at 120Hz,
+		// isn't 197Hz lower but mirrored, a line falling from 2.4kHz as the formant
+		// rises, reaching nothing and rising again as the formant passes 2.5kHz, and
+		// its first formant is a steady line near 2.4kHz. both are the tone wrapHz
+		// higher, played at the chip's rate (which folds it under half that rate),
+		// and it stays there as the effect goes on. a tone of an effect quieter than
+		// wrapMinVol is one its trace couldn't read, its frequency borrowed from a
+		// neighbour (see contour()), and doesn't wrap: wrapping those put a line near
+		// 2.4kHz into C0, C3 and C7 at bend 0 that neither unit has
+		if !s.noBend {
+			for j := range 3 {
+				if t.freq[j] > 0 {
+					if !s.speech && t.vol[j] > wrapMinVol && t.freq[j]+bendHz < 0 {
+						wrapped[j] = true
+					}
+					if wrapped[j] {
+						t.freq[j] = foldHz(t.freq[j] + bendHz + wrapHz)
+					} else {
+						t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+					}
+				}
 			}
 		}
 		// Bend moves an effect's noise as well: on both units of the fourth
 		// VoxProbe recording C8's and C9's noise moves about 200Hz down at bend 0
-		// and 440Hz up at bend 15, as their tones do. the effects at bends 0 and
-		// 15 match both units better with it (4.30 to 4.25dB on one, 4.28 to
-		// 4.23dB on the other). whether the hiss of speech moves too isn't
-		// measured, so it doesn't here
+		// and 440Hz up at bend 15, as their tones do. it moves as a block, its
+		// width unchanged: at bend 15 nothing is left under 560Hz within 20dB,
+		// where moving the oscillators, whose spread is in proportion to their
+		// frequency, widened it and left the noise reaching down to 300Hz. so the
+		// Bend is added after the spread (see sample()): C8 and C9 at bend 15 10.0
+		// to 8.8 and 10.0 to 7.5dB, and on the first VoxProbe recording, left
+		// out, C8 at bend 0 3.2 to 3.0 and at bend 15 9.8 to 8.6dB. whether the
+		// hiss of speech moves too isn't measured, so it doesn't here
 		if !s.speech {
-			for j := 3; j < 5; j++ {
-				if t.freq[j] > 0 {
-					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
-				}
-			}
+			t.noiseShift = bendHz
 		}
 		segs = append(segs, segment{samples: samples(ms), glide: samples(glide), target: t})
 
@@ -279,6 +407,71 @@ func (m *msa) expand(s sound) []segment {
 	m.repeat = 0
 
 	return segs
+}
+
+// a pause before a stop takes the place of that much of its closure: on both
+// AtariVoxes playing Man Goes Down, UX, pause 1, EK leaves 140ms between the UX
+// and EK's burst, where the pause (107ms) and EK's closure (105ms) one after
+// the other left 226ms, and TT, pause 1, BE starts BE's voicing as the pause
+// ends. the closure keeps minClosureMs, which gives the 140ms. after a sound
+// the closure is all there (AW TT on the fourth VoxProbe recording). the two
+// phrases go from 0.75 to 0.81 and 0.63 to 0.68 (both units, full band), and
+// with the change to Slow (see expand()) to 0.875
+const minClosureMs = 20.0
+
+func (m *msa) closure() {
+	if len(m.segs) < 2 {
+		return
+	}
+	keep := samples(minClosureMs)
+	c := &m.segs[0]
+	if c.samples <= keep {
+		return
+	}
+	c.samples = max(c.samples-samples(m.pausedMs), keep)
+	c.glide = min(c.glide, c.samples)
+}
+
+// the sounds played from the chip's frames (see vfPoints) were measured alone,
+// and their first and last frames are the voicing coming up from silence and
+// dying away. between two sounds the chip doesn't do that: in Man Goes Down,
+// OWWW ZZ is voiced throughout on both AtariVoxes, where those frames left a
+// gap of 25 to 35ms. so after a voiced sound the frames before the first at
+// framedJoin of the sound's loudest take its volumes, and before another sound
+// the frames after the last at framedJoin take that one's. the timing is
+// unchanged. "man goes down" 0.824 to 0.833 (both units, full band); nothing on
+// the VoxProbe or VoxRecord recordings joins these sounds to others, and none
+// of their scores moves
+const framedJoin = 0.7
+
+func frameVolume(f frame) float64 { return f.vol[0] + f.vol[1] + f.vol[2] }
+
+func (m *msa) join(s sound, more bool) sound {
+	// the parts are shared with the table the sound came from
+	s.parts = append([]part(nil), s.parts...)
+	loudest := 0.0
+	for _, p := range s.parts {
+		loudest = math.Max(loudest, frameVolume(p.target))
+	}
+	if m.current.voiced && frameVolume(m.current) > 0 {
+		j := 0
+		for j < len(s.parts)-1 && frameVolume(s.parts[j].target) < framedJoin*loudest {
+			j++
+		}
+		for i := 0; i < j; i++ {
+			copy(s.parts[i].target.vol[:3], s.parts[j].target.vol[:3])
+		}
+	}
+	if more {
+		j := len(s.parts) - 1
+		for j > 0 && frameVolume(s.parts[j].target) < framedJoin*loudest {
+			j--
+		}
+		for i := j + 1; i < len(s.parts); i++ {
+			copy(s.parts[i].target.vol[:3], s.parts[j].target.vol[:3])
+		}
+	}
+	return s
 }
 
 // silence ramps the volume down and holds silence. if towards is not nil the
@@ -321,6 +514,7 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		// on the chip a pause stretches with the Speed control just as the
 		// sounds do: at speed 0 two pause 2s are 1845ms of silence
 		m.segs = m.silence(pauseMs[code]*m.speedFactor(), towards)
+		m.pausedMs += pauseMs[code] * m.speedFactor()
 
 	case code == 7:
 		m.fast = true
@@ -368,7 +562,15 @@ func (m *msa) execute(code uint8, data uint8, peek func() (uint8, bool)) bool {
 		if !ok {
 			return false
 		}
+		if s.framed {
+			next, ok := peek()
+			s = m.join(s, ok && next >= 128 && next < 200)
+		}
 		m.segs = m.expand(s)
+		if s.stop {
+			m.closure()
+		}
+		m.pausedMs = 0
 	}
 
 	m.segPos = 0
