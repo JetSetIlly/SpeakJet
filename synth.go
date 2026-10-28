@@ -149,7 +149,7 @@ type frame struct {
 	// the envelope control choose which oscillators it envelopes (see c1())
 	freeOsc int
 
-	// the shaping of the consonants (see consonantEQ): the gain in dB of each
+	// the shaping of the consonants (see soundEQ): the gain in dB of each
 	// of the eqBands peaking filters on the output, broadband noise riding on
 	// oscillators 4 and 5 (as a fraction of their volume), and an overall gain
 	// in dB
@@ -228,7 +228,7 @@ type synth struct {
 	held     [2]float64
 	holdLeft int64
 
-	// the consonants' peaking filters (see consonantEQ): the gains their
+	// the consonants' peaking filters (see soundEQ): the gains their
 	// coefficients were made for, the coefficients (b0, b1, b2, a1, a2) and
 	// the last two inputs and outputs of each
 	eqDB    [eqBands]float64
@@ -248,7 +248,7 @@ type synth struct {
 	dcIn, dcOut float64
 }
 
-// the consonants' shaping (see consonantEQ): eqBands peaking filters half an
+// the consonants' shaping (see soundEQ): eqBands peaking filters half an
 // octave apart, each made again whenever the gain asked of it changes, then the
 // overall gain. not when it has moved some step: compilers that fuse a multiply
 // and an add (arm64) and those that don't (x86) differ in a gliding gain's last
@@ -434,7 +434,7 @@ func (s *synth) sample(f frame, master float64) float64 {
 		s.phase[i] -= math.Floor(s.phase[i])
 		mix2 += math.Min(f.vol[i], maxOscVolume) * math.Sin(2*math.Pi*s.phase[i])
 	}
-	// the consonants' broadband noise (see consonantEQ)
+	// the consonants' broadband noise (see soundEQ)
 	if f.wide > 0 {
 		s.wideNoise ^= s.wideNoise << 13
 		s.wideNoise ^= s.wideNoise >> 17

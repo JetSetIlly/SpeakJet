@@ -130,6 +130,58 @@ var allophoneGainDB = [...]float64{
 	-2.1, -3.3, -26.4, 1.5, -3.0, 2.5, -3.8, 6.4, 5.9,
 }
 
+// REFIT-BEGIN
+// each allophone's length and level refitted on every recording of both
+// AtariVoxes (VoxRecord's sounds alone and its connected groups, the fourth
+// VoxProbe, Man Goes Down), the library given each recording's own background
+// and both measured by the same rule: length, level over time, the
+// time-frequency picture after alignment, timing inside the sound, sideways
+// shifts of the spectrum, the whole-sound spectrum and pitch, each against how
+// closely the two units agree with each other. each sound's fit was kept only
+// where no kind of recording came out worse.
+//
+// refitLength multiplies the length above. finalLength multiplies it again
+// when the sound is the last before a pause or the end and isn't repeated: on
+// the chip a vowel played last is longer than the same vowel inside a phrase
+// (IY 1.25, AW 1.25, EH 1.18 times) and TT and FF shorter (0.64, 0.79), which
+// no one length fitted both ways (IY alone wanted 1.125 times, Man Goes Down
+// and the VoxProbe groups shorter). refitGainDB is in dB on the sound's
+// level, fitted where sounds sit next to each other
+var refitLength = [...]float64{
+	1, 1, 1.4, 1.05, 1.4875, 1.4, 1, 1.2375, 1,
+	1.2, 1.2, 1, 1, 0.95, 1.0375, 0.8875, 0.9625, 1,
+	1.0625, 1.1, 1.1375, 1, 1.0875, 1, 1.025, 1.0625, 1,
+	1.1, 1, 1, 1.05, 1.0625, 1, 1.05, 1, 1.0125,
+	1.025, 1.025, 0.9875, 0.9375, 1.175, 1, 1, 0.975, 1.075,
+	1, 0.9625, 1, 0.8375, 0.8875, 1.0875, 1, 1, 0.8125,
+	1.1625, 1, 1, 1, 1, 0.875, 0.825, 1, 0.725,
+	1, 0.9625, 0.825, 1.0375, 0.775, 1.0375, 1.1, 1.0125, 1.0375,
+}
+
+var finalLength = [...]float64{
+	1.25, 1.175, 1, 1.175, 1, 1, 1, 1, 1.25,
+	1, 1, 1.15, 1, 1, 0.9, 1, 1, 1,
+	1, 1.05, 0.9875, 1.1375, 1, 1, 1, 0.9125, 1,
+	1, 1.0375, 1.2375, 0.925, 0.975, 1.0375, 1, 1.025, 1.0625,
+	1, 1, 1.25, 1, 1, 1, 1, 1, 1,
+	1, 0.975, 0.8875, 1.2625, 1.2, 1, 1.075, 1.2125, 1,
+	1, 1, 1, 1, 0.7875, 0.9625, 1, 1, 1,
+	0.6375, 1.05, 1, 1, 1.3, 1, 0.8, 1, 0.925,
+}
+
+var refitGainDB = [...]float64{
+	2.4375, 0, 0, 0, 0, 0, 0, 3.1875, 0,
+	0, 0, 0, -2.0625, -6.375, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 4.3125, 0, 0, 0, 0, 0,
+	0, -3, 0, 0, 0, 0, 0, 0, 0,
+	0, 5.8125, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, -4.875, 0, 0, 0,
+}
+
+// REFIT-END
+
 // VF-BEGIN
 // some voiced sounds are played as the chip plays them, frame by frame. at the
 // default pitch each voicing pulse of the VoxRecord recording stands alone (the
