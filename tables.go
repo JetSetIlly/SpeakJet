@@ -34,8 +34,13 @@ type sound struct {
 	// Slow doesn't lengthen the sound (see expand())
 	noSlow bool
 
-	// the copies' length when repeated, against the manual's (see copyLength)
-	copyLength float64
+	// the copies' length when repeated, against the manual's: the second play
+	// and the copies after it (see copy1Length)
+	copy1Length float64
+	copyLength  float64
+
+	// a multiple of the voicing pitch (see voicingPitch), 0 for none
+	pitchScale float64
 
 	// a voiced effect whose pitch is its own, not moved by the Pitch control
 	// (see c1())
@@ -67,14 +72,14 @@ const (
 // units, alone and in connected groups. the framed sounds (see vfPoints) are
 // the measured length already, so theirs is near 1
 var allophoneLength = [...]float64{
-	1.4, 1, 1.96, 1.47, 2.0825, 1.96, 1.4, 1.7325, 1.4,
+	1.4, 0.95, 1.96, 1.47, 2.0825, 1.96, 1.4, 1.7325, 1.4,
 	1.68, 1.68, 1.4, 1.4, 1.33, 1.0375, 1.2425, 1.3475, 1.3825,
 	1.0625, 1.54, 1.5925, 0.9375, 1.177734, 1, 1.025, 1.0492, 1.169697,
 	1.254, 0.875, 0.921081, 1.05, 1.0625, 1, 1.05, 1, 1.0125,
-	1.025, 0.890315, 0.8295, 0.8906, 1.175, 1, 1.63, 0.975, 2.87025,
-	3.27, 1.3475, 1, 0.8375, 0.8875, 1.0875, 1, 1, 0.8328,
-	2.800463, 1.17, 1.12125, 1.11, 1.49, 2.45, 1.862719, 1.17, 1.28325,
-	2.07, 2.67575, 0.922059, 2.5315, 1.085, 2.49, 2.706, 1.4175, 1.37984,
+	1.025, 0.890315, 0.8295, 0.97966, 1.175, 0.8625, 1.63, 0.975, 2.87025,
+	2.738625, 1.3475, 1, 0.952656, 0.8875, 1.0875, 1, 1.075, 0.8328,
+	2.800463, 1.17, 1.12125, 1.11, 1.49, 2.45, 1.862719, 1.038375, 1.28325,
+	2.07, 2.67575, 0.922059, 2.658075, 1.085, 2.49, 2.706, 1.4175, 1.37984,
 }
 
 // how much louder (in dB) the chip plays each allophone than its oscillator
@@ -92,32 +97,50 @@ var allophoneGainDB = [...]float64{
 }
 
 // finalLength multiplies an allophone's length when it is the last before a
-// pause or the end and isn't repeated: on the chip a vowel played last is
-// longer than inside a phrase (IY and AW 1.25 times) and TT and FF shorter
-// (0.64, 0.79)
+// pause, a command or the end and isn't repeated: on the chip a vowel played
+// last is longer than inside a phrase (IY and AW 1.25 times) and TT and FF
+// shorter (0.64, 0.79). a command counts as on both units of the fifth
+// VoxProbe: AW and IY before a Pitch or Delay are as long as before a pause,
+// and the same length whatever the pause, and whether or not anything is
+// waiting in the buffer
 var finalLength = [...]float64{
 	1.25, 1.175, 1, 1.175, 1, 1, 1, 1, 1.25,
 	1, 1, 1.15, 1, 1, 0.9, 1.025, 0.9375, 1,
 	1, 1.05, 0.9875, 1.1375, 1, 1, 1, 0.9125, 1,
-	1, 1.1931, 1.2375, 0.925, 0.975, 1.0375, 1, 1.025, 1.0625,
-	1, 1, 1.2656, 1, 1, 1, 1, 1, 1,
-	1, 0.975, 0.8875, 1.2625, 1.2, 1, 1.075, 1.2125, 1,
+	1, 1.1931, 1.515937, 0.925, 0.975, 1.0375, 0.8875, 1.025, 1.0625,
+	1, 1, 1.2656, 1, 1, 1.159, 1, 1, 1,
+	1, 0.975, 0.8875, 1.357187, 1.2, 1, 1.075, 1.2125, 1.0875,
 	1, 1, 1, 1, 0.7875, 0.9625, 1, 1, 1,
 	0.6375, 1.05, 1, 1, 1.3, 1, 0.8, 1, 0.925,
 }
 
 // the copies after the first, when a sound is repeated, as a multiple of the
-// manual's length (see expand()): on the chip many are shorter than the manual
-// says (DO 0.7 times, ZZ 0.69, EB 0.51)
+// manual's length (see expand()): the second play of a sound, copy1Length, and
+// the copies after it, copyLength. on both units of the fifth VoxProbe the
+// second play runs longer than the rest (AW 72ms then 70, SE 82 then 70, BE 60
+// then 70) and most copies are the manual's 70ms; a stop's copies keep their
+// burst and release and put the rest of their time into the closure (EB: a
+// burst every 45ms)
+var copy1Length = [...]float64{
+	1.1, 0.7, 1, 1, 1, 1, 1.5, 1, 1.25,
+	1, 1, 1, 1, 1, 0.75, 0.9875, 0.9065, 1,
+	0.75, 1, 1, 1.0625, 0.65, 0.9625, 1, 0.9125, 1.0931,
+	0.8625, 1.075, 0.7088, 0.931875, 0.9625, 0.5655, 0.9125, 1.05, 0.925,
+	0.9375, 0.9375, 1, 0.6359, 0.975, 0.7625, 1.346, 0.825, 4.5,
+	0.8, 1.25, 0.78, 0.95, 0.97625, 0.867188, 0.9875, 0.7, 0.8125,
+	1, 1, 1, 1, 1, 1.165, 1, 1, 1,
+	0.75, 1, 1, 1, 1, 1, 1, 1, 1,
+}
+
 var copyLength = [...]float64{
-	1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 0.9875, 0.925, 1,
-	0.75, 1, 1, 1.0625, 1, 0.9625, 1, 0.9125, 1,
-	0.8625, 1.075, 1, 0.8875, 0.9625, 1.0875, 0.9125, 1.05, 0.925,
-	0.9375, 0.9375, 1, 0.6875, 0.975, 0.7625, 0.7625, 0.825, 0.5125,
-	0.8, 1, 0.7, 1, 1.1, 0.925, 0.9875, 1, 0.8125,
-	1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 0.7, 1, 1, 1, 1, 1.125, 1, 1.075,
+	1, 1, 1, 1, 1, 0.75, 0.9875, 0.93425, 1,
+	0.75, 1, 1, 1.0625, 0.65, 0.9625, 1, 0.9125, 1.1925,
+	0.8625, 1.075, 1.215, 0.931875, 0.9625, 1.098375, 0.9125, 1.05, 0.925,
+	0.9375, 0.9375, 1, 0.6875, 0.975, 0.7625, 1.346, 0.825, 4,
+	0.8, 0.875, 0.675, 0.95, 0.97625, 0.867188, 0.9875, 0.7, 0.8125,
+	1, 1, 1, 1, 1, 1.835, 1, 1, 1,
+	1.125, 1, 1, 1, 1, 1, 1, 1, 1,
 }
 
 // REFIT-END
@@ -698,13 +721,15 @@ func affricate(name string, st stop, fric frame, fricMs float64) sound {
 }
 
 // the noise frames of the voiceless fricatives, fitted as whole sounds to both
-// units: the chip's hiss is narrow bands (SE and SO at 3 to 4kHz, SH at 2.5 to
-// 3.2kHz, HE and HO around 1 to 1.5kHz, WH at 0.6 to 0.9kHz). their levels are
-// set by allophoneGainDB
+// units: SO's hiss is a band at 3 to 4kHz, HE and HO's around 1 to 1.5kHz, WH's
+// at 0.6 to 0.9kHz. SE and SH are broad: SE from 2 to 5kHz strongest at the
+// oscillators' top, SH from 1.5 to 4kHz (and its image to 6.5kHz), a wide
+// spread every sample where a narrow one made a line. their levels are set by
+// allophoneGainDB
 var (
-	frSE = noiseFrame(lAlveolar, 3629.7, 2609.1, 25.87, 5.78, 33.4)
+	frSE = noiseFrame(lAlveolar, maxFrequency, 2491.4, 35.96, 3.36, 41.0)
 	frSO = noiseFrame(lAlveolarBak, 2953.5, 3580, 17.5, 30.41, 27.3)
-	frSH = noiseFrame(lPalatal, 3605.7, 2502.8, 17.72, 22.59, 44.4)
+	frSH = noiseFrame(lPalatal, 3662.7, 2581.1, 14.17, 22.8, 77.5)
 	frZH = hush(voicedNoiseFrame(formants{260, 1800, 2500}, 14, 2400, 3200, 14, 10, 200), fricativeDB)
 )
 
@@ -1438,13 +1463,26 @@ func fxFrame(p fxPoint, code int) frame {
 	return f
 }
 
-// C8 and C9 are noise from about 400Hz to 2.8kHz, gated by a saw (see
-// noiseDepth) about 15dB deep every 19ms: oscillators 4 and 5 spread wide, each
-// random value held 0.75ms (a band with edges, as on the chip), at these levels
-// in dB every 5ms. the gate keeps time with Speed, not Pitch
+// C8 and C9 are a narrow band of noise swept by the envelope oscillator: on
+// both units its middle climbs from about 650Hz to 3kHz over the first 0.42 of
+// each period (19.5ms at the default speed) and falls back over the rest,
+// sweepDB quieter at the top, about a tenth of its frequency wide (measured
+// every millisecond, the period folded). the levels are fitted to the M score
+const (
+	sweepLoHz   = 650.0
+	sweepHiHz   = 3000.0
+	sweepPeak   = 0.42
+	sweepDB     = 8.0
+	sweepSpread = 35.0 / 255.0 * 1.5
+)
+
+// C8 and C9 are a band of noise swept up and down every 19.5ms (see
+// sweepLoHz), each random value held 0.75ms (a band with edges, as on the
+// chip), at these levels in dB every 5ms (C8 is 80ms on both units). the sweep
+// keeps time with Speed, not Pitch
 var c8DB = []float64{
-	-16.2, -11.8, -9.5, -5.5, -1.1, -0.5, -0.4, -0.3, -0.1, -0.3,
-	-0.2, -0.1, -0.3, -0.5, -0.5, -0.2, -0.9, -1.3, -1.8, -5.2,
+	-16.2, -11.8, -9.5, -5.5, -1.1, -0.5, -0.2, -0.1, -0.3, -0.5,
+	-0.5, -0.2, -0.9, -1.3, -1.8, -5.2,
 }
 
 var c9DB = []float64{
@@ -1457,7 +1495,7 @@ func cNoise(name string, db []float64) sound {
 	f.noiseHoldMs = 0.75
 	f.pitch = 52
 	f.wave = envSaw
-	f.noiseDepth = 0.826
+	f.sweep = true
 	s := effect(name)
 	s.speedGate = true
 	for i, d := range db {
@@ -2368,7 +2406,6 @@ var noiseRateFit = map[int]noiseFit{
 	174: {0.9881, -26.6, -1.23, 1.34},
 	182: {0.9778, 4.5, 0.80, -1.31},
 	183: {1.0414, -17.3, 0.07, 2.65},
-	187: {1.0507, -14.3, 3.45, -0.95},
 	191: {1.0258, 9.5, -2.09, 1.07},
 	192: {0.9785, -13.6, 1.15, -0.49},
 	193: {1.0706, -13.3, 10.28, -7.08},

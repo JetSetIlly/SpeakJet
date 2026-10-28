@@ -25,8 +25,9 @@ var manualMs = map[uint8]float64{
 }
 
 // the allophones' parts add up to the manual's length (the chip's longer
-// lengths come from sound.length). most of the sound effects are traced from a
-// recording of the chip and have its lengths instead, so for them only check
+// lengths come from sound.length). most of the sound effects, and the
+// allophones played from the chip's own frames (see vfPoints), are traced from
+// recordings of the chip and have its lengths instead, so for them only check
 // that they exist
 func TestDurations(t *testing.T) {
 	for code, want := range manualMs {
@@ -35,7 +36,7 @@ func TestDurations(t *testing.T) {
 			t.Errorf("code %d: no sound", code)
 			continue
 		}
-		if code >= 200 {
+		if code >= 200 || s.framed {
 			if s.ms() <= 0 {
 				t.Errorf("code %d (%s): no length", code, s.name)
 			}
@@ -54,7 +55,7 @@ func render(sj *SpeakJet) []float32 {
 	for range 10000 {
 		sounding := sj.Render(buf)
 		out = append(out, buf...)
-		if !sounding && sj.buffered.Load() == 0 {
+		if !sounding && sj.buffered == 0 {
 			break
 		}
 	}
@@ -101,8 +102,8 @@ func TestBuffer(t *testing.T) {
 
 	// draining the buffer clears the status line
 	render(sj)
-	if sj.BufferHalfFull() || sj.buffered.Load() != 0 {
-		t.Errorf("buffer not empty after rendering: %d bytes", sj.buffered.Load())
+	if sj.BufferHalfFull() || sj.buffered != 0 {
+		t.Errorf("buffer not empty after rendering: %d bytes", sj.buffered)
 	}
 }
 

@@ -115,6 +115,9 @@ type frame struct {
 	// one every sample (see cNoise())
 	noiseHoldMs float64
 
+	// oscillators 4 and 5 are C8's and C9's swept band (see sweepLoHz)
+	sweep bool
+
 	// a gated effect that pulses as the voicing does (see fxPulse): its rate is
 	// pulseOffset hertz from the voicing, and its pulses fade along voiceFade
 	// stretched fadeScale times (0 is 1)
@@ -208,6 +211,9 @@ type synth struct {
 
 	// dc blocker state
 	dcIn, dcOut float64
+
+	// restart the voicing at the next sample (see kickHz)
+	kick bool
 }
 
 // the sounds' shaping (see soundEQ): eqBands peaking filters half an octave
@@ -270,6 +276,19 @@ func (s *synth) random() float64 {
 // sample produces the next output sample, in the range -1 to 1. master is the
 // master volume (0 to 127)
 func (s *synth) sample(f frame, master float64) float64 {
+	if s.kick {
+		s.kick = false
+		if f.voiced {
+			s.envPhase = 0
+			s.envAge = 0
+			for i := range 3 {
+				if f.freeOsc>>i&1 == 0 {
+					s.phase[i] = f.phase0[i]
+				}
+			}
+			s.onsetAge = 1 << 20
+		}
+	}
 	// envelope oscillator
 	// envelope oscillator: a voicing pulse at the end of each period
 	env := 1.0
@@ -373,6 +392,11 @@ func (s *synth) sample(f frame, master float64) float64 {
 			s.holdLeft = int64(f.noiseHoldMs*chipRate/1000 + 0.5)
 		}
 	}
+	// where C8's and C9's band is in the envelope's period (see sweepLoHz)
+	sweepT := (1 - s.envPhase) / (1 - sweepPeak)
+	if s.envPhase < sweepPeak {
+		sweepT = s.envPhase / sweepPeak
+	}
 	for i := 3; i < 5; i++ {
 		fr := math.Min(onGrid(f.freq[i]), maxFrequency)
 		var r float64
@@ -382,6 +406,9 @@ func (s *synth) sample(f frame, master float64) float64 {
 			r = s.random()
 		}
 		hz := fr*(1+spread*r) + f.noiseShift
+		if f.sweep {
+			hz = sweepLoHz*math.Pow(sweepHiHz/sweepLoHz, sweepT)*(1+sweepSpread*r) + f.noiseShift
+		}
 		if spread == 0 {
 			hz = math.Max(math.Min(hz, maxFrequency), 0)
 		}
@@ -399,6 +426,8 @@ func (s *synth) sample(f frame, master float64) float64 {
 	}
 	if f.halfEnv {
 		mix2 *= 0.5 + 0.5*env
+	} else if f.sweep {
+		mix2 *= math.Pow(10, -sweepDB*sweepT/20)
 	} else if f.noiseDepth > 0 {
 		mix2 *= 1 - f.noiseDepth*(1-env)
 	}
