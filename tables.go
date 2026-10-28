@@ -41,6 +41,9 @@ type sound struct {
 	// the sound is played from the chip's own frames (see vfPoints)
 	framed bool
 
+	// the sound's gate keeps time with the Speed control (see cNoise)
+	speedGate bool
+
 	// the sound is a stop, its first part the closure (see plosive() and
 	// msa.closure())
 	stop bool
@@ -1240,8 +1243,12 @@ func dtmf(name string, low, high float64) sound {
 // 7.4 to 1.3dB, and on the first VoxProbe recording, which nothing here was
 // fitted to, 36 to 91% and 7.3 to 1.1dB. at bend 0 the chip plays something
 // else: the second formant moves 197Hz down as it should, but the third is
-// mirrored, falling as 2.5kHz less its rise, and a line holds near 2.4kHz; that
-// isn't modelled (31 to 21% there, 6.4 to 3.5dB)
+// mirrored, falling as 2.5kHz less its rise, and a line holds near
+// 2.4kHz. both are a frequency Bend took under nothing (see expand()): the
+// third formant starts at 120Hz, and the steady line is the first, which read
+// 207Hz off the harmonics but goes under at bend 0 too, so it is put at 175Hz,
+// the lowest that does: every A1 item 91.0 to 94.5% and 1.63 to 1.33dB, bend 0
+// 59 to 82% and 3.8 to 2.3dB
 const (
 	fxTone = iota
 	fxNoise
@@ -1480,44 +1487,44 @@ var fxPoints = map[int][]fxPoint{
 		{395, fxTone, 0, -60.0, [3]int{239, 991, 157}, [3]float64{0, -13.0, -60.0}},
 	},
 	211: { // A1
-		{15, fxBuzz, 87, -60.0, [3]int{207, 720, 120}, [3]float64{0, 15.0, -3.0}},
-		{35, fxBuzz, 87, -16.1, [3]int{207, 720, 120}, [3]float64{0, 15.0, -3.0}},
-		{60, fxBuzz, 87, 4.7, [3]int{207, 750, 172}, [3]float64{0, -5.3, -3.0}},
-		{85, fxBuzz, 87, 18.2, [3]int{207, 780, 224}, [3]float64{0, -16.7, -3.0}},
-		{110, fxBuzz, 87, 13.5, [3]int{207, 809, 293}, [3]float64{0, -9.0, 0.7}},
-		{135, fxBuzz, 87, 7.9, [3]int{207, 838, 362}, [3]float64{0, -9.1, 0.4}},
-		{160, fxBuzz, 87, 7.9, [3]int{207, 868, 428}, [3]float64{0, -4.3, 3.6}},
-		{185, fxBuzz, 87, 5.7, [3]int{207, 898, 495}, [3]float64{0, -2.9, -1.0}},
-		{210, fxBuzz, 87, 7.6, [3]int{207, 929, 567}, [3]float64{0, -10.8, -6.4}},
-		{235, fxBuzz, 87, 6.7, [3]int{207, 960, 640}, [3]float64{0, -1.2, -6.9}},
-		{260, fxBuzz, 87, 8.4, [3]int{207, 992, 709}, [3]float64{0, -11.9, -3.9}},
-		{285, fxBuzz, 87, 8.5, [3]int{207, 1024, 778}, [3]float64{0, -3.0, -3.0}},
-		{310, fxBuzz, 87, 7.4, [3]int{207, 1048, 861}, [3]float64{0, -3.0, -3.0}},
-		{335, fxBuzz, 87, 7.7, [3]int{207, 1072, 945}, [3]float64{0, -3.0, -3.0}},
-		{360, fxBuzz, 87, 7.3, [3]int{207, 1096, 1028}, [3]float64{0, -3.0, -3.0}},
-		{385, fxBuzz, 87, 6.6, [3]int{207, 1120, 1111}, [3]float64{0, -3.0, -3.0}},
-		{410, fxBuzz, 87, 7.6, [3]int{207, 1144, 1194}, [3]float64{0, -3.0, -3.0}},
-		{435, fxBuzz, 87, 6.9, [3]int{207, 1168, 1278}, [3]float64{0, -3.0, -3.0}},
-		{460, fxBuzz, 87, 7.1, [3]int{207, 1191, 1361}, [3]float64{0, -3.0, -3.0}},
-		{485, fxBuzz, 87, 2.9, [3]int{207, 1215, 1445}, [3]float64{0, -3.0, -3.0}},
-		{510, fxBuzz, 87, 2.3, [3]int{207, 1239, 1525}, [3]float64{0, -3.4, -7.7}},
-		{535, fxBuzz, 87, 1.5, [3]int{207, 1263, 1605}, [3]float64{0, -2.6, -1.4}},
-		{560, fxBuzz, 87, 2.7, [3]int{207, 1295, 1689}, [3]float64{0, -7.5, -6.1}},
-		{585, fxBuzz, 87, 3.9, [3]int{207, 1327, 1773}, [3]float64{0, -3.5, -7.6}},
-		{610, fxBuzz, 87, 2.0, [3]int{207, 1357, 1858}, [3]float64{0, -3.6, -0.3}},
-		{635, fxBuzz, 87, 4.8, [3]int{207, 1388, 1943}, [3]float64{0, -9.4, -11.3}},
-		{660, fxBuzz, 87, 2.6, [3]int{207, 1418, 2027}, [3]float64{0, -1.1, -1.2}},
-		{685, fxBuzz, 87, 1.7, [3]int{207, 1449, 2112}, [3]float64{0, -5.7, -4.7}},
-		{710, fxBuzz, 87, 3.3, [3]int{207, 1473, 2192}, [3]float64{0, -5.5, -8.1}},
-		{735, fxBuzz, 87, 2.6, [3]int{207, 1498, 2272}, [3]float64{0, -5.5, -1.1}},
-		{760, fxBuzz, 87, 5.4, [3]int{207, 1516, 2347}, [3]float64{0, -7.2, -12.6}},
-		{785, fxBuzz, 87, 2.8, [3]int{207, 1535, 2422}, [3]float64{0, -3.9, 2.8}},
-		{810, fxBuzz, 87, 3.5, [3]int{207, 1554, 2497}, [3]float64{0, -6.5, -9.0}},
-		{835, fxBuzz, 87, 2.8, [3]int{207, 1573, 2573}, [3]float64{0, -4.2, -2.2}},
-		{860, fxBuzz, 87, 2.1, [3]int{207, 1591, 2648}, [3]float64{0, -5.8, -2.7}},
-		{885, fxBuzz, 87, 5.2, [3]int{207, 1610, 2723}, [3]float64{0, -6.8, -12.4}},
-		{910, fxBuzz, 87, 7.9, [3]int{207, 1627, 2797}, [3]float64{0, -10.4, -7.8}},
-		{975, fxBuzz, 87, 6.0, [3]int{207, 1668, 2984}, [3]float64{0, -3.0, -3.0}},
+		{15, fxBuzz, 87, -60.0, [3]int{175, 720, 120}, [3]float64{0, 15.0, -3.0}},
+		{35, fxBuzz, 87, -16.1, [3]int{175, 720, 120}, [3]float64{0, 15.0, -3.0}},
+		{60, fxBuzz, 87, 4.7, [3]int{175, 750, 172}, [3]float64{0, -5.3, -3.0}},
+		{85, fxBuzz, 87, 18.2, [3]int{175, 780, 224}, [3]float64{0, -16.7, -3.0}},
+		{110, fxBuzz, 87, 13.5, [3]int{175, 809, 293}, [3]float64{0, -9.0, 0.7}},
+		{135, fxBuzz, 87, 7.9, [3]int{175, 838, 362}, [3]float64{0, -9.1, 0.4}},
+		{160, fxBuzz, 87, 7.9, [3]int{175, 868, 428}, [3]float64{0, -4.3, 3.6}},
+		{185, fxBuzz, 87, 5.7, [3]int{175, 898, 495}, [3]float64{0, -2.9, -1.0}},
+		{210, fxBuzz, 87, 7.6, [3]int{175, 929, 567}, [3]float64{0, -10.8, -6.4}},
+		{235, fxBuzz, 87, 6.7, [3]int{175, 960, 640}, [3]float64{0, -1.2, -6.9}},
+		{260, fxBuzz, 87, 8.4, [3]int{175, 992, 709}, [3]float64{0, -11.9, -3.9}},
+		{285, fxBuzz, 87, 8.5, [3]int{175, 1024, 778}, [3]float64{0, -3.0, -3.0}},
+		{310, fxBuzz, 87, 7.4, [3]int{175, 1048, 861}, [3]float64{0, -3.0, -3.0}},
+		{335, fxBuzz, 87, 7.7, [3]int{175, 1072, 945}, [3]float64{0, -3.0, -3.0}},
+		{360, fxBuzz, 87, 7.3, [3]int{175, 1096, 1028}, [3]float64{0, -3.0, -3.0}},
+		{385, fxBuzz, 87, 6.6, [3]int{175, 1120, 1111}, [3]float64{0, -3.0, -3.0}},
+		{410, fxBuzz, 87, 7.6, [3]int{175, 1144, 1194}, [3]float64{0, -3.0, -3.0}},
+		{435, fxBuzz, 87, 6.9, [3]int{175, 1168, 1278}, [3]float64{0, -3.0, -3.0}},
+		{460, fxBuzz, 87, 7.1, [3]int{175, 1191, 1361}, [3]float64{0, -3.0, -3.0}},
+		{485, fxBuzz, 87, 2.9, [3]int{175, 1215, 1445}, [3]float64{0, -3.0, -3.0}},
+		{510, fxBuzz, 87, 2.3, [3]int{175, 1239, 1525}, [3]float64{0, -3.4, -7.7}},
+		{535, fxBuzz, 87, 1.5, [3]int{175, 1263, 1605}, [3]float64{0, -2.6, -1.4}},
+		{560, fxBuzz, 87, 2.7, [3]int{175, 1295, 1689}, [3]float64{0, -7.5, -6.1}},
+		{585, fxBuzz, 87, 3.9, [3]int{175, 1327, 1773}, [3]float64{0, -3.5, -7.6}},
+		{610, fxBuzz, 87, 2.0, [3]int{175, 1357, 1858}, [3]float64{0, -3.6, -0.3}},
+		{635, fxBuzz, 87, 4.8, [3]int{175, 1388, 1943}, [3]float64{0, -9.4, -11.3}},
+		{660, fxBuzz, 87, 2.6, [3]int{175, 1418, 2027}, [3]float64{0, -1.1, -1.2}},
+		{685, fxBuzz, 87, 1.7, [3]int{175, 1449, 2112}, [3]float64{0, -5.7, -4.7}},
+		{710, fxBuzz, 87, 3.3, [3]int{175, 1473, 2192}, [3]float64{0, -5.5, -8.1}},
+		{735, fxBuzz, 87, 2.6, [3]int{175, 1498, 2272}, [3]float64{0, -5.5, -1.1}},
+		{760, fxBuzz, 87, 5.4, [3]int{175, 1516, 2347}, [3]float64{0, -7.2, -12.6}},
+		{785, fxBuzz, 87, 2.8, [3]int{175, 1535, 2422}, [3]float64{0, -3.9, 2.8}},
+		{810, fxBuzz, 87, 3.5, [3]int{175, 1554, 2497}, [3]float64{0, -6.5, -9.0}},
+		{835, fxBuzz, 87, 2.8, [3]int{175, 1573, 2573}, [3]float64{0, -4.2, -2.2}},
+		{860, fxBuzz, 87, 2.1, [3]int{175, 1591, 2648}, [3]float64{0, -5.8, -2.7}},
+		{885, fxBuzz, 87, 5.2, [3]int{175, 1610, 2723}, [3]float64{0, -6.8, -12.4}},
+		{910, fxBuzz, 87, 7.9, [3]int{175, 1627, 2797}, [3]float64{0, -10.4, -7.8}},
+		{975, fxBuzz, 87, 6.0, [3]int{175, 1668, 2984}, [3]float64{0, -3.0, -3.0}},
 	},
 	212: { // A2
 		{5, fxBuzz, 128, -60.0, [3]int{165, 1996, 1996}, [3]float64{0, -0.0, -35.8}},
@@ -2369,16 +2376,16 @@ var fxPoints = map[int][]fxPoint{
 // too, but plays closer to the recording ungated). C8 and C9 are gated noise
 // (see cNoise). the
 // envelope shape for each is the one that brought it closest to the recording.
-// effects not listed aren't gated
+// effects not listed aren't gated. C0, C2, C3, C4 and C6 have since been found
+// to pulse with the voicing instead (see fxPulses), which takes the place of
+// their gates here
 type fxGate struct {
 	hz   int
 	wave envelopeWave
 }
 
 var fxGates = map[int]fxGate{
-	230: {85, envSquare},
 	232: {66, envSine},
-	233: {59, envSaw},
 	234: {87, envSine},
 	236: {125, envSaw},
 }
@@ -2401,10 +2408,9 @@ var fxGates = map[int]fxGate{
 // pitch, at pitch 60 and at bend 0, and checked at pitch 150, at speeds 90 and
 // 127 and at bend 15, which were left out: C2 73 to 77% and 2.5 to 2.2dB on
 // those, C4 65 to 71% and 4.0 to 3.6dB, C6 65 to 67% and 3.0 to 2.1dB. C0 and
-// C3 keep their gates: played this way C0 came out flat on the ones left out
-// and worse on the VoxRecord recording, which gates it at 85Hz where the fourth
-// VoxProbe recording has 82Hz at the same pitch, and C3 came out worse on the
-// ones left out.
+// C3 came out worse played this way (on the 4kHz comparison of the time); C3
+// pulses at a moving distance, and C0, measured full band, closer and with a
+// shorter fade (below).
 //
 // R8 and R9 pulse too. their low tone, near 650Hz, is restarted at half its
 // frequency: on both units of the fourth VoxProbe recording its lines are 306,
@@ -2420,17 +2426,39 @@ var fxGates = map[int]fxGate{
 // fitted at pitch 60, at bend 0 and on the VoxRecord recording: on pitch 150,
 // bend 15 and the speeds, left out, R8 61 to 77% and 4.9 to 2.8dB, R9 34 to 67%
 // and 7.1 to 3.2dB. a rate rising 0.86Hz to each hertz of the voicing, which
-// pitch 150 suggests, made R8 worse
+// pitch 150 suggests, made R8 worse.
+//
+// C3 pulses too, but its pulses slow down as it plays: on every C3 of both
+// units of the fourth VoxProbe recording and of the VoxRecord recording they
+// come 15, 15, 16, 16, 17, 19, 19, 22 and 22ms apart at the default pitch, 5 to
+// 6ms long each at every pitch. at speed 90 the slowing is drawn out and at
+// speed 127 squeezed, so it follows the trace, not the clock, and at pitch 60
+// and 150 the gaps (24 to 50ms and 8 to 12ms) are the voicing less a distance
+// growing from about 20 to 42Hz along it, as at the default pitch. so its
+// distance falls by drift hertz for each millisecond of the trace. fitted on
+// every C3: 66.9 to 77.2% and 4.06 to 2.67dB, pitch 60 50 to 72%, speed 127 65
+// to 79%, its old steady 59Hz gate at pitch 60 having pulsed nearly twice as
+// fast as the chip.
+//
+// C0 pulses as well. its gate is the voicing less 4 to 6Hz at all three pitches
+// (every 18.1, 12.3 and 7.0ms at pitch 60, 88 and 150, on both units), where it
+// had a steady 85Hz gate. a steady distance on that gate made it worse, its
+// square pulses too long at low pitch; pulses fading at 0.66 of the voicing's
+// fade, with its noise (see fxNoiseFloors) 6dB quieter, fitted on every C0 of both
+// recordings: 76.2 to 79.8% and 2.15 to 2.43dB, pitch 60 73 to 80%, bend 0 76
+// to 83%, bend 15 72 to 78%, pitch 150 82 to 79%
 type fxPulse struct {
-	offsetHz, fade float64
+	offsetHz, fade, drift float64
 }
 
 var fxPulses = map[int]fxPulse{
-	232: {-20.5, 1.0},
-	234: {0.2, 1.0},
-	236: {42.7, 1.6},
-	208: {0, 0.7},
-	209: {0, 0.7},
+	232: {-20.5, 1.0, 0},
+	234: {0.2, 1.0, 0},
+	236: {42.7, 1.6, 0},
+	208: {0, 0.7, 0},
+	209: {0, 0.7, 0},
+	233: {-13.0, 1.075, 0.14},
+	230: {-4.0, 0.6625, 0},
 }
 
 // the noise under some of the traced effects. on both units of the VoxRecord
@@ -2459,7 +2487,7 @@ type fxNoiseFloor struct {
 }
 
 var fxNoiseFloors = map[int]fxNoiseFloor{
-	230: {2361.6, 2282.7, 27.5, 0.371, -12.86},
+	230: {2361.6, 2282.7, 27.5, 0.371, -18.86},
 	231: {1810.5, 2003.4, 147.2, 0.324, -1.82},
 	232: {1935.8, 1748.1, 54.8, 0.4, -15.15},
 	234: {1704.5, 3553.6, 228.3, 1.0, -12.64},
@@ -2529,11 +2557,11 @@ func fxFrame(p fxPoint, code int) frame {
 			f.wave = envVoice
 			f.voiced = true
 		} else if pl, ok := fxPulses[code]; ok {
-			f.pitch = voiceHz(defaultPitch) + pl.offsetHz
+			f.pulseOffset = pl.offsetHz - pl.drift*float64(p.ms)
+			f.pitch = voiceHz(defaultPitch) + f.pulseOffset
 			f.wave = envVoice
 			f.voiced = true
 			f.pulsed = true
-			f.pulseOffset = pl.offsetHz
 			f.fadeScale = pl.fade
 		} else if gt, ok := fxGates[code]; ok {
 			f.pitch = float64(gt.hz)
@@ -2581,7 +2609,13 @@ func fxFrame(p fxPoint, code int) frame {
 // scored over four noise sequences rather than one (the noise carries on from
 // the sounds before), C8 and C9 go from 49 to 55% and 2.8 to 2.3dB there, 52 to
 // 56% and 2.8 to 2.5dB on the VoxRecord recording, and at bend 15, left out of
-// the fit, from 37 to 62% and 8.3 to 4.4dB
+// the fit, from 37 to 62% and 8.3 to 4.4dB.
+//
+// the gate keeps time with Speed, not Pitch: on both units of the fourth
+// VoxProbe recording C8's gate comes every 19.1ms at the default speed, 32.7 at
+// speed 90 and 11.2 at speed 127 (1.71 and 0.59 times, where Speed stretches
+// the sound 1.75 and 0.59 times), and every 18.9 to 19.2ms at pitch 60 and 150
+// and both bends. C8 at speed 90 62 to 68%, at speed 127 85 to 86%
 var c8DB = []float64{
 	-16.2, -11.8, -9.5, -5.5, -1.1, -0.5, -0.4, -0.3, -0.1, -0.3,
 	-0.2, -0.1, -0.3, -0.5, -0.5, -0.2, -0.9, -1.3, -1.8, -5.2,
@@ -2599,6 +2633,7 @@ func cNoise(name string, db []float64) sound {
 	f.wave = envSaw
 	f.noiseDepth = 0.826
 	s := effect(name)
+	s.speedGate = true
 	for i, d := range db {
 		f.vol[3] = 20 * math.Pow(10, d/20)
 		f.vol[4] = f.vol[3]

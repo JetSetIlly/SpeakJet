@@ -114,6 +114,24 @@ func (m *msa) bendHz() float64 {
 	return freqStepHz * float64(10*m.bend-45)
 }
 
+// a tone Bend took under nothing (see expand())
+const (
+	wrapHz     = 5680.0
+	wrapMinVol = 8.0
+)
+
+// foldHz is a frequency played at the chip's rate, folded under half of it
+func foldHz(hz float64) float64 {
+	hz = math.Mod(hz, chipRate)
+	if hz < 0 {
+		hz += chipRate
+	}
+	if hz > chipRate/2 {
+		return chipRate - hz
+	}
+	return hz
+}
+
 // the voicing frequency for a Pitch setting. the chip counts each voicing
 // period in whole ticks of a VOICE_TICK_HZ clock: 8000 / Pitch ticks (dividing
 // in whole numbers) and one more. on the second VoxProbe recording, which plays
@@ -227,6 +245,7 @@ func (m *msa) expand(s sound) []segment {
 	}
 
 	bendHz := m.bendHz()
+	var wrapped [3]bool
 
 	var segs, copies []segment
 	for _, p := range s.parts {
@@ -255,10 +274,31 @@ func (m *msa) expand(s sound) []segment {
 		// M2 doesn't follow Bend: on both units of the fourth VoxProbe recording
 		// it is the same at bend 0 and bend 15, its formants within half a hertz
 		// of each other over its whole length
+		// C8's and C9's gate keeps time with Speed (see cNoise)
+		if s.speedGate {
+			t.pitch /= scale
+		}
+		// a tone Bend takes under nothing wraps round: on both units of the fourth
+		// VoxProbe recording, at bend 0 A1's third formant, which starts at 120Hz,
+		// isn't 197Hz lower but mirrored, a line falling from 2.4kHz as the formant
+		// rises, reaching nothing and rising again as the formant passes 2.5kHz, and
+		// its first formant is a steady line near 2.4kHz. both are the tone wrapHz
+		// higher, played at the chip's rate (which folds it under half that rate),
+		// and it stays there as the effect goes on. a tone of an effect quieter than
+		// wrapMinVol is one its trace couldn't read, its frequency borrowed from a
+		// neighbour (see contour()), and doesn't wrap: wrapping those put a line near
+		// 2.4kHz into C0, C3 and C7 at bend 0 that neither unit has
 		if !s.noBend {
 			for j := range 3 {
 				if t.freq[j] > 0 {
-					t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+					if !s.speech && t.vol[j] > wrapMinVol && t.freq[j]+bendHz < 0 {
+						wrapped[j] = true
+					}
+					if wrapped[j] {
+						t.freq[j] = foldHz(t.freq[j] + bendHz + wrapHz)
+					} else {
+						t.freq[j] = math.Max(t.freq[j]+bendHz, 0)
+					}
 				}
 			}
 		}

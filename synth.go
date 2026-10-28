@@ -215,13 +215,31 @@ type synth struct {
 	held     [2]float64
 	holdLeft int64
 
+	// the level the noise floor follows, and its own noise source (see
+	// skirtDB)
+	skirtLevel float64
+	skirtNoise uint32
+
 	// dc blocker state
 	dcIn, dcOut float64
 }
 
 func newSynth() *synth {
-	return &synth{noise: 0x2545f491, envAge: 1 << 30}
+	return &synth{noise: 0x2545f491, skirtNoise: 0x9e3779b9, envAge: 1 << 30}
 }
+
+// the chip's output has a floor of noise under whatever it plays: on both units
+// of the VoxRecord recording a pure tone (the DTMF tones, B3, R3 and the rest)
+// sits on noise from 100Hz to 3kHz 40 to 55dB under it, above the recording's
+// background, which this library's clean tones left out, every band between the
+// tones counting as missing. here white noise follows the output's level (over
+// about 25ms) skirtDB under it: the effects of the VoxRecord recording 5.94 to
+// 4.57dB with their spectrogram match within a tenth of a point, and the speech
+// unchanged (it hides under the harmonics)
+const (
+	skirtDB     = -24.0
+	skirtFollow = 0.995
+)
 
 func (s *synth) random() float64 {
 	s.noise ^= s.noise << 13
@@ -360,6 +378,13 @@ func (s *synth) sample(f frame, master float64) float64 {
 
 	// mixer 5: summation and master volume
 	x := (mix1 + mix2) / (maxMixer1 + 2*maxOscVolume) * math.Min(master, maxMaster) / maxMaster
+
+	// the noise floor (see skirtDB)
+	s.skirtLevel = skirtFollow*s.skirtLevel + (1-skirtFollow)*math.Abs(x)
+	s.skirtNoise ^= s.skirtNoise << 13
+	s.skirtNoise ^= s.skirtNoise >> 17
+	s.skirtNoise ^= s.skirtNoise << 5
+	x += math.Pow(10, skirtDB/20) * s.skirtLevel * float64(int32(s.skirtNoise)) / math.MaxInt32
 
 	// dc blocker
 	y := x - s.dcIn + 0.995*s.dcOut
