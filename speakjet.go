@@ -338,7 +338,9 @@ func log(x float64) float64 {
 }
 
 func (sj *SpeakJet) volumeGain() float64 {
-	db := [5]float64{-3.3, -1.3, -0.6, 0.0, 2.5}
+	// measured on both units at Pitch 20 (VoxProbe 6): Volume 16 is 15 dB
+	// under 32, and from 32 up the level barely moves
+	db := [5]float64{-15.5, -1.3, -1.1, 0.0, 2.2}
 	at := [5]float64{16, 32, 64, 96, 127}
 	v := float64(sj.volume)
 	if v <= 0 {
