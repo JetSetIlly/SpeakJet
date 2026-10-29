@@ -779,7 +779,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		if s.flags&fxPulsed != 0 {
 			env *= 0.6
 		}
-		v += env * sum / 128.0 * float64(f.lv)
+		v -= env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
 		sj.venv = env
 		if nf == 2 {
 			v += float64(f.a[2]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[2])
