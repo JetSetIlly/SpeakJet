@@ -85,7 +85,8 @@ const (
 	fxBump     = 8
 	fxExpDecay = 16
 	fxNSweep   = 32
-	fxPulsed   = 64 // the plain tones pulse with the voice's envelope at Pitch
+	fxPulsed   = 64  // the plain tones pulse with the voice's envelope at Pitch
+	fxFade     = 128 // the level falls straight to nothing over the part (the tones' measured ending)
 )
 
 // the tables' units: frequencies in 16 Hz steps, lengths in 5 ms, so every
@@ -815,6 +816,9 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	if s.flags&fxDecay != 0 {
 		v *= exp(-decayDB * t / 20.0 * math.Ln10)
+	}
+	if s.flags&fxFade != 0 {
+		v *= 1.0 - t
 	}
 	if s.flags&fxBump != 0 {
 		v *= sin2pi(0.5 * t)
