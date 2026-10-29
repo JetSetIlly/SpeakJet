@@ -38,7 +38,8 @@ const (
 	quant        = 0.0   // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
 	decayDB      = 35.0  // an fxDecay part falls this many dB
 	transitionMs = 25.0  // the voice moves to a new sound's target over this
-	closureMs    = 30.0  // silence before a stop's burst
+	closureMs    = 30.0  // the closure before a stop's burst
+	gateDepth    = 0.4   // an effect's gate: its off half's level, a factor
 	overlapMs    = 15.0  // a sound followed at once by another is cut short by this
 	overlapVMs   = 30.0  // more when both are voiced
 	speedA       = 162.0 // length factor (speedA - Speed) / speedB
@@ -827,7 +828,7 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 
 	if s.gate > 0 && sj.tick%s.gate >= s.gate/2 {
-		v = 0.0
+		v *= gateDepth // measured on C8 and C9, both units: the gate's off half is 8 dB down, not silent
 	}
 	if s.flags&fxDecay != 0 {
 		v *= exp(-decayDB * t / 20.0 * math.Ln10)
