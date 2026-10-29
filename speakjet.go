@@ -105,6 +105,7 @@ type fxpart struct {
 	nf, nw   uint8 // hzStep
 	nv, gate uint8 // gate in ms
 	flags    uint16
+	lv       int8 // the part's level, half-decibels (measured against the voice, both units)
 }
 
 const maxSegments = 8
@@ -401,7 +402,8 @@ func (sj *SpeakJet) playEffect(code int) {
 	for i := 0; i < count; i++ {
 		p := &fxparts[first+i]
 		var a, b frame
-		a.lv, b.lv = 1, 1
+		a.lv = float32(exp(float64(p.lv) * (0.5 * math.Ln10 / 20.0)))
+		b.lv = a.lv
 		for k := 0; k < 3; k++ {
 			a.f[k] = bent(float64(p.fa[k])*hzStep, bend)
 			b.f[k] = bent(float64(p.fb[k])*hzStep, bend)
@@ -780,7 +782,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		v += env * sum / 128.0 * float64(f.lv)
 		sj.venv = env
 		if nf == 2 {
-			v += float64(f.a[2]) / 128.0 * 0.6 * sin2pi(sj.phase[2])
+			v += float64(f.a[2]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[2])
 			sj.phase[2] += float64(f.f[2]) * (1.0 + jitter*2.0*sj.random()) / nominal
 		}
 		sj.ptick--
@@ -790,7 +792,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		// plain tones (the effects)
 		for k := 0; k < 3; k++ {
 			if f.f[k] > 0 && f.a[k] > 0 {
-				v += float64(f.a[k]) / 128.0 * 0.6 * sin2pi(sj.phase[k])
+				v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
 			}
 			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random()) / nominal
 		}
