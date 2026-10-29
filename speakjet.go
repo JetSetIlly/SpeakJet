@@ -400,6 +400,30 @@ func (sj *SpeakJet) playEffect(code int) {
 			a.a[k] = float32(p.v[k])
 			b.a[k] = a.a[k]
 		}
+		// D0 to D11 are the DTMF pairs, measured on both units within 3 Hz
+		// of the standard once each unit's rate is allowed for (keypad order:
+		// D1 to D9, then 0, * and #), at equal level; the table holds their
+		// length
+		if code >= 240 && code <= 251 {
+			row := [4]float64{697, 770, 852, 941}
+			col := [3]float64{1209, 1336, 1477}
+			d := code - 240
+			r, c := 3, 1
+			switch {
+			case d == 0:
+			case d == 10:
+				c = 0
+			case d == 11:
+				c = 2
+			default:
+				r, c = (d-1)/3, (d-1)%3
+			}
+			a.f[0], b.f[0] = bent(row[r], bend), bent(row[r], bend)
+			a.f[1], b.f[1] = bent(col[c], bend), bent(col[c], bend)
+			a.f[2], b.f[2] = 0, 0
+			a.a[0], b.a[0], a.a[1], b.a[1] = 31, 31, 31, 31
+			a.a[2], b.a[2] = 0, 0
+		}
 		a.nf, b.nf = float32(p.nf)*hzStep, float32(p.nf)*hzStep
 		a.nw, b.nw = float32(p.nw)*hzStep, float32(p.nw)*hzStep
 		a.na, b.na = float32(p.nv), float32(p.nv)
