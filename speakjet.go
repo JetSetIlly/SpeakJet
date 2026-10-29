@@ -35,7 +35,7 @@ const (
 	fxReleaseMs  = 15.0
 	floor        = 0.018 // the output noise floor, relative (measured, 35 dB under a tone)
 	jitter       = 0.03  // every oscillator\'s frequency wanders by this fraction each sample (the skirts around the chip\'s tones)
-	quant        = 48.0  // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
+	quant        = 0.0   // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
 	decayDB      = 35.0  // an fxDecay part falls this many dB
 	transitionMs = 25.0  // the voice moves to a new sound's target over this
 	closureMs    = 30.0  // silence before a stop's burst
@@ -59,7 +59,7 @@ func ticks(ms float64) int { return int(ms*rate/1000.0 + 0.5) }
 // to 31) and one noise band (centre Hz, throw Hz, level 0 to 31)
 type frame struct {
 	f, a       [3]float32
-	dc         float32 // the voice's offset: a fourth oscillator at 0 Hz under the same envelope
+	lv         float32 // the sound's level as a factor
 	nf, nw, na float32
 }
 
@@ -68,8 +68,8 @@ type segment struct {
 	ticks    int
 	from, to frame
 	voiced   bool
-	gate     int   // ticks of the on/off period for a pulsed effect, 0 = none
-	flags    uint8 // fx*
+	gate     int    // ticks of the on/off period for a pulsed effect, 0 = none
+	flags    uint16 // fx*
 }
 
 // the sound effects: each is a few parts. a part plays up to three tones
@@ -87,6 +87,7 @@ const (
 	fxNSweep   = 32
 	fxPulsed   = 64  // the plain tones pulse with the voice's envelope at Pitch
 	fxFade     = 128 // the level falls straight to nothing over the part (the tones' measured ending)
+	fxAll      = 256 // every tone and the noise of a voiced part pulse with the voice (C0, M2: silent between pulses on both units)
 )
 
 // the tables' units: frequencies in 16 Hz steps, lengths in 5 ms, so every
@@ -97,11 +98,12 @@ const (
 )
 
 type fxpart struct {
-	ms              uint8    // msStep
-	fa, fb          [3]uint8 // hzStep
-	v               [3]uint8
-	nf, nw          uint8 // hzStep
-	nv, gate, flags uint8 // gate in ms
+	ms       uint8    // msStep
+	fa, fb   [3]uint8 // hzStep
+	v        [3]uint8
+	nf, nw   uint8 // hzStep
+	nv, gate uint8 // gate in ms
+	flags    uint16
 }
 
 const maxSegments = 8
@@ -128,7 +130,7 @@ type allophone struct {
 	nf, nw uint8    // the noise band's centre and bandwidth, hzStep
 	na     uint8
 	cp     uint8 // the length of each further copy of a Repeat, msStep
-	dc     int8  // the voice's offset under the envelope, formant level units
+	lv     int8  // the sound's level, half-decibels (measured against the vowels, both units)
 }
 
 // the manual's lengths, for the copies of a Repeat
@@ -165,6 +167,7 @@ type SpeakJet struct {
 	period, ptick int
 	phase         [3]float64
 	nz            [2]float64 // the noise resonator's two delays
+	venv          float64    // the voicing envelope this tick, for an fxAll effect's noise
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 
@@ -397,6 +400,7 @@ func (sj *SpeakJet) playEffect(code int) {
 	for i := 0; i < count; i++ {
 		p := &fxparts[first+i]
 		var a, b frame
+		a.lv, b.lv = 1, 1
 		for k := 0; k < 3; k++ {
 			a.f[k] = bent(float64(p.fa[k])*hzStep, bend)
 			b.f[k] = bent(float64(p.fb[k])*hzStep, bend)
@@ -459,7 +463,7 @@ func alloFrame(a *allophone, second bool, bend float64) frame {
 		}
 		f.a[k] = float32(a.a[k])
 	}
-	f.dc = float32(a.dc)
+	f.lv = float32(exp(float64(a.lv) * (0.5 * math.Ln10 / 20.0)))
 	f.nf, f.nw, f.na = float32(a.nf)*hzStep, float32(a.nw)*hzStep, float32(a.na)
 	return f
 }
@@ -495,7 +499,6 @@ func (sj *SpeakJet) fromFrame(tgt frame) frame {
 		return sj.last
 	}
 	tgt.a = [3]float32{}
-	tgt.dc = 0
 	tgt.na = 0
 	return tgt
 }
@@ -508,6 +511,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	from := sj.fromFrame(tgt)
 	sj.nseg = 0
 	var silent frame
+	silent.lv = 1
 	switch a.kind {
 	case kVowel, kNasal, kVFric:
 		tr := ticks(transitionMs)
@@ -536,12 +540,15 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// the closure ("silence already added" says the manual; a voiced stop
 		// hums through it on its first formant alone, quietly) then the burst
 		// and release, which is the measured length
-		bar := silent
+		// the sound before fades away through the closure (both units: a vowel
+		// before a stop falls 30 dB over 50 to 60 ms at Speed 114, twice that
+		// at Speed 60), not a cut to silence
+		bar, gone := from, silent
 		if a.kind == kVStop {
-			bar.f[0] = tgt.f[0]
-			bar.a[0] = tgt.a[0] / 4.0
+			gone.f[0] = tgt.f[0]
+			gone.a[0] = tgt.a[0] / 4.0
 		}
-		sj.addSegment(ticks(closureMs), bar, bar, a.kind == kVStop)
+		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
 		sj.addSegment(tk, tgt, tgt, a.kind == kVStop)
 	case kAffr:
 		// a stop's closure, then the fricative (voiced for JH)
@@ -567,6 +574,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 func (sj *SpeakJet) playPause(ms float64) {
 	sj.nseg = 0
 	var silent frame
+	silent.lv = 1
 	sj.addSegment(ticks(ms), silent, silent, false)
 	sj.start(false)
 }
@@ -728,7 +736,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		}
 		f.a[k] = float32(lerp(float64(s.from.a[k]), float64(s.to.a[k]), t))
 	}
-	f.dc = float32(lerp(float64(s.from.dc), float64(s.to.dc), t))
+	f.lv = float32(lerp(float64(s.from.lv), float64(s.to.lv), t))
 	f.nf = float32(lerp(float64(s.from.nf), float64(s.to.nf), t))
 	f.nw = float32(lerp(float64(s.from.nw), float64(s.to.nw), t))
 	f.na = float32(lerp(float64(s.from.na), float64(s.to.na), t))
@@ -755,12 +763,12 @@ func (sj *SpeakJet) chipSample() float64 {
 		}
 		// an effect's third tone is a plain tone beside the voice
 		nf := 3
-		if s.flags&fxVoiced != 0 {
+		if s.flags&fxVoiced != 0 && s.flags&fxAll == 0 {
 			nf = 2
 		}
 		// the offset: measured on every voiced sound's pulse (both units), an
 		// envelope-shaped term beside the sines, against their starting direction
-		sum := -float64(f.dc)
+		sum := 0.0
 		for k := 0; k < nf; k++ {
 			sum += float64(f.a[k]) * sin2pi(sj.phase[k])
 			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random()) / nominal
@@ -768,7 +776,8 @@ func (sj *SpeakJet) chipSample() float64 {
 		if s.flags&fxPulsed != 0 {
 			env *= 0.6
 		}
-		v += env * sum / 128.0
+		v += env * sum / 128.0 * float64(f.lv)
+		sj.venv = env
 		if nf == 2 {
 			v += float64(f.a[2]) / 128.0 * 0.6 * sin2pi(sj.phase[2])
 			sj.phase[2] += float64(f.f[2]) * (1.0 + jitter*2.0*sj.random()) / nominal
@@ -776,6 +785,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		sj.ptick--
 	} else {
 		sj.ptick = 0
+		sj.venv = 1.0
 		// plain tones (the effects)
 		for k := 0; k < 3; k++ {
 			if f.f[k] > 0 && f.a[k] > 0 {
@@ -810,7 +820,10 @@ func (sj *SpeakJet) chipSample() float64 {
 		y := g*sj.random() + 2.0*r*c*sj.nz[0] - r2*sj.nz[1]
 		sj.nz[1] = sj.nz[0]
 		sj.nz[0] = y
-		v += lvl * float64(f.na) / 128.0 * 0.86 * y
+		if s.flags&fxAll != 0 {
+			lvl *= sj.venv // both units: C0 and M2 are silent between their pulses
+		}
+		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
 	}
 
 	if s.gate > 0 && sj.tick%s.gate >= s.gate/2 {
@@ -837,7 +850,9 @@ func (sj *SpeakJet) chipSample() float64 {
 
 	v *= sj.volumeGain()
 	// the output stage's step size
-	v = math.Floor(v*quant+0.5) / quant
+	if quant > 0 {
+		v = math.Floor(v*quant+0.5) / quant
+	}
 	// the output noise floor: white under the effects' tones, rising with
 	// frequency under the voice (the valley between the first two formants is
 	// deeper on the chip than a white floor leaves it)
