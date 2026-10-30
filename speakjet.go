@@ -33,7 +33,7 @@ const (
 	releaseMs    = 30.0
 	fxAttackMs   = 10.0 // the effects'
 	fxReleaseMs  = 15.0
-	floor        = 0.018 // the output noise floor, relative (measured, 35 dB under a tone)
+	floor        = 0.05  // the output noise floor, relative (both units: the bed between an effect's lines is -30 to -36 dB per band re the line, whatever its level)
 	jitter       = 0.03  // every oscillator\'s frequency wanders by this fraction each sample (the skirts around the chip\'s tones)
 	quant        = 0.0   // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
 	decayDB      = 35.0  // an fxDecay part falls this many dB
