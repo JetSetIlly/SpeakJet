@@ -809,9 +809,15 @@ func (sj *SpeakJet) chipSample() float64 {
 		// its centre and back, quieter at the top (measured on C8 and C9: 650
 		// Hz to 3 kHz and back every 20 ms with a 13 dB dip, both units)
 		if s.flags&fxNSweep != 0 && s.gate > 0 {
-			sw := sin2pi(0.5 * float64(sj.tick%s.gate) / float64(s.gate))
-			nf *= 0.4 + 1.6*sw
-			lvl = 1.0 - 0.75*sw
+			// both units, C8 and C9: up in 8 ms, down in 12, by 1.8x either side
+			// of the centre, and 5 dB quieter at the top beyond the output stage
+			p := float64(sj.tick%s.gate) / float64(s.gate)
+			sw := 1.0 - (p-0.4)/0.6
+			if p < 0.4 {
+				sw = p / 0.4
+			}
+			nf *= exp((2.0*sw - 1.0) * 0.6)
+			lvl = exp(-5.0 * sw / 20.0 * math.Ln10)
 		}
 		nw := float64(f.nw)
 		if nw < 10 {
@@ -829,8 +835,8 @@ func (sj *SpeakJet) chipSample() float64 {
 		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
 	}
 
-	if s.gate > 0 && sj.tick%s.gate >= s.gate/2 {
-		v *= gateDepth // measured on C8 and C9, both units: the gate's off half is 8 dB down, not silent
+	if s.gate > 0 && s.flags&fxNSweep == 0 && sj.tick%s.gate >= s.gate/2 {
+		v *= gateDepth
 	}
 	if s.flags&fxDecay != 0 {
 		v *= exp(-decayDB * t / 20.0 * math.Ln10)
