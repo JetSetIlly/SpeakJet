@@ -97,6 +97,7 @@ const (
 	fxSine     = 1024 // the envelope oscillator's waveform (manual, register 8): saw (the voice's measured pulse),
 	fxTri      = 2048 // sine, triangle or square
 	fxSquare   = 3072
+	fxOne      = 4096 // only the first tone pulses, the other two are plain tones beside it (A0, both units: a voice at Pitch under two smooth glides; register 8 envelopes oscillators 1-3 as a group, 4 and 5 run apart)
 	fxShape    = 3072
 )
 
@@ -812,6 +813,9 @@ func (sj *SpeakJet) chipSample() float64 {
 		nf := 3
 		if s.flags&fxVoiced != 0 && s.flags&fxAll == 0 {
 			nf = 2
+			if s.flags&fxOne != 0 {
+				nf = 1
+			}
 		}
 		if sj.ptick == sj.period && s.flags&fxPulsed == 0 { // pulsed tones run on; the enveloped ones restart, a plain tone beside them runs on
 			for k := 0; k < nf; k++ {
@@ -853,9 +857,9 @@ func (sj *SpeakJet) chipSample() float64 {
 		}
 		v -= env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
 		sj.venv = env
-		if nf == 2 {
-			v += float64(f.a[2]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[2])
-			sj.phase[2] += float64(f.f[2]) * (1.0 + jitter*2.0*sj.random()) / nominal
+		for k := nf; k < 3; k++ {
+			v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
+			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random()) / nominal
 		}
 		sj.ptick--
 	} else {
