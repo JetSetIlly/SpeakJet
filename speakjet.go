@@ -50,6 +50,7 @@ const (
 	fastFactor   = 0.77 // Fast and Slow: factors on the played length
 	slowFactor   = 1.22
 	copyExtraMs  = 0.0  // a Repeat copy adds this to the manual's length
+	copyClosure  = 20.0 // a stop's Repeat copy opens on this much closure, ms
 	bendHz       = 44.0 // Bend step
 )
 
@@ -141,6 +142,7 @@ type allophone struct {
 	na     uint8
 	cp     uint8 // the length of each further copy of a Repeat, msStep
 	lv     int8  // the sound's level, half-decibels (measured against the vowels, both units)
+	cb     uint8 // a stop's Repeat copies keep its voice bar through their closures
 }
 
 // the manual's lengths, for the copies of a Repeat
@@ -484,29 +486,42 @@ func alloFrame(a *allophone, second bool, bend float64) frame {
 }
 
 // the segments of one copy of a Repeat: the sound's body for its own copy
-// length (about the manual's length for most sounds, not for the stops), no
-// transition (the copies run on seamlessly, measured on ZZ x10 and EYIY x5;
-// a stop's copies repeat its burst, BE x5 is 260 ms)
+// length (about the manual's length for most sounds), no transition (the
+// copies run on seamlessly, measured on ZZ x10 and EYIY x5). a stop's copy is
+// the stop again, closure and release (VoxProbe 4 and 7, both units: the 12
+// voiced stops repeated 2 to 5 times, each copy a gap then a burst)
 func (sj *SpeakJet) copySegments(idx int) int {
 	a := &allophones[idx]
 	bend := sj.bendHz()
 	tk := ticks((float64(a.cp)*msStep + copyExtraMs) * sj.speedFactor(false))
 	tgt := alloFrame(a, false, bend)
 	sj.nseg = 0
-	if a.kind == kGlide {
+	switch {
+	case a.kind == kStop || a.kind == kVStop:
+		// the copy opens on a closure, then the release; cp is the whole copy, measured from one copy's onset to the
+		// next. the closure is silent (VoxProbe 4 and 7, both units: GE, GO and the final stops dip 27-35 dB between
+		// copies, 33-50 dB in the voice bar's band) or, for BE, BO, DE and DO, holds the voice bar (they dip only about 22 dB)
+		closure := ticks(copyClosure * sj.speedFactor(false))
+		if closure > tk-1 {
+			closure = tk - 1
+		}
+		var gone frame
+		gone.lv = 1
+		if a.cb != 0 {
+			gone.f[0] = tgt.f[0]
+			gone.a[0] = tgt.a[0]
+			gone.lv = tgt.lv
+		}
+		sj.addSegment(closure, gone, gone, a.cb != 0)
+		sj.addSegment(tk-closure, tgt, alloFrame(a, true, bend), a.kind == kVStop)
+	case a.kind == kGlide:
 		tgt2 := alloFrame(a, true, bend)
 		hold, move := tk/5, tk*7/10
 		sj.addSegment(hold, tgt, tgt, true)
 		sj.addSegment(move, tgt, tgt2, true)
 		sj.addSegment(tk-hold-move, tgt2, tgt2, true)
-	} else {
-		// a voiced stop's copies hold its release, the second frame (both units: BO repeated voices straight
-		// through on its release, 580/1406/2390 Hz); a sound without one holds its frame
-		hold := tgt
-		if a.kind == kVStop {
-			hold = alloFrame(a, true, bend)
-		}
-		sj.addSegment(tk, hold, hold, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
+	default:
+		sj.addSegment(tk, tgt, tgt, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
 	}
 	return tk
 }
