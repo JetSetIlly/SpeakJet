@@ -176,6 +176,7 @@ type SpeakJet struct {
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 	vprev         float64 // the output's last tick
+	am            float64 // the effects' slow level wobble
 
 	// output
 	held, heldpos float64
@@ -794,6 +795,9 @@ func (sj *SpeakJet) chipSample() float64 {
 		sj.ptick = 0
 		sj.venv = 1.0
 		sj.wander += (0.015/(0.57735*math.Sqrt(0.055/2.0))*sj.random() - sj.wander) * 0.055
+		// the effects' tones hold their pitch (both units) and the energy round
+		// their lines is a slow wobble in level, 10 % rms, spread to about 64 Hz
+		sj.am += (0.1/(0.57735*math.Sqrt(0.05/2.0))*sj.random() - sj.am) * 0.05
 		wander := 0.0
 		if s.flags&fxWander != 0 {
 			wander = sj.wander
@@ -803,8 +807,9 @@ func (sj *SpeakJet) chipSample() float64 {
 			if f.f[k] > 0 && f.a[k] > 0 {
 				v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
 			}
-			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random() + wander) / nominal
+			sj.phase[k] += float64(f.f[k]) * (1.0 + wander) / nominal
 		}
+		v *= 1.0 + sj.am
 	}
 
 	// noise: white noise through a two-pole resonance at nf with bandwidth nw
