@@ -561,7 +561,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		bar, gone := from, silent
 		if a.kind == kVStop {
 			gone.f[0] = tgt.f[0]
-			gone.a[0] = tgt.a[0] // at full level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
+			gone.a[0] = tgt.a[0] // the first formant's level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
+			gone.lv = tgt.lv // at the sound's own level (VoxProbe 6, slowed: DE's bar 3-4 dB under its release, BE's 8)
 		}
 		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
 		// the release glides to the stop's second frame: the first formant falls into a labial or alveolar
