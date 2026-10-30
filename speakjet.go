@@ -39,6 +39,7 @@ const (
 	decayDB      = 35.0  // an fxDecay part falls this many dB
 	transitionMs = 25.0  // the voice moves to a new sound's target over this
 	closureMs    = 30.0  // the closure before a stop's burst
+	slew         = 0.06  // the effects' bed, measured: grows with the tone's frequency on both units
 	gateDepth    = 0.4   // an effect's gate: its off half's level, a factor
 	overlapMs    = 15.0  // a sound followed at once by another is cut short by this
 	overlapVMs   = 30.0  // more when both are voiced
@@ -174,6 +175,7 @@ type SpeakJet struct {
 	wander        float64    // an fxWander part's pitch drift, a fraction
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
+	vprev         float64 // the output's last tick
 
 	// output
 	held, heldpos float64
@@ -876,9 +878,12 @@ func (sj *SpeakJet) chipSample() float64 {
 	if s.voiced && s.flags&(fxVoiced|fxPulsed) == 0 {
 		v *= 1.0 + floor*2.0*(r-sj.lastr)
 	} else {
-		v *= 1.0 + floor*2.0*r
+		// the effects' bed grows with the tone's frequency (both units): timing
+		// error, proportional to the signal's change per tick
+		v += slew * 2.0 * r * (v - sj.vprev)
 	}
 	sj.lastr = r
+	sj.vprev = v
 
 	sj.tick++
 	if sj.tick >= s.ticks {
