@@ -27,8 +27,8 @@ const (
 const (
 	envRise      = 0.5    // voicing envelope: rise (under one tick: a step), ticks
 	envFall      = 58.0   // and linear fall
-	lpfFc        = 2396.0 // the output stage's two poles: real, near 2 kHz and 2.9 kHz
-	lpfQ         = 0.491
+	lpfFc        = 1609.0 // the output stage's two poles (both units: the 12 DTMF pairs' level ratios and VoxProbe 7's direct tones at 125, 1000 and 3000 Hz, all 14 within 0.45 dB)
+	lpfQ         = 0.462
 	attackMs     = 35.0 // every sound's level ramp
 	releaseMs    = 30.0
 	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
