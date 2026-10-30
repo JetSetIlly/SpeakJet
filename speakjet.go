@@ -500,7 +500,13 @@ func (sj *SpeakJet) copySegments(idx int) int {
 		sj.addSegment(move, tgt, tgt2, true)
 		sj.addSegment(tk-hold-move, tgt2, tgt2, true)
 	} else {
-		sj.addSegment(tk, tgt, tgt, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
+		// a voiced stop's copies hold its release, the second frame (both units: BO repeated voices straight
+		// through on its release, 580/1406/2390 Hz); a sound without one holds its frame
+		hold := tgt
+		if a.kind == kVStop {
+			hold = alloFrame(a, true, bend)
+		}
+		sj.addSegment(tk, hold, hold, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
 	}
 	return tk
 }
