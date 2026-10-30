@@ -72,6 +72,7 @@ type segment struct {
 	voiced   bool
 	gate     int    // ticks of the on/off period for a pulsed effect, 0 = none
 	flags    uint16 // fx*
+	pa, pb   float32 // an effect part's pulse rate: Pitch plus pa Hz at its start, pb at its end
 }
 
 // the sound effects: each is a few parts. a part plays up to three tones
@@ -91,6 +92,10 @@ const (
 	fxFade     = 128 // the level falls straight to nothing over the part (the tones' measured ending)
 	fxAll      = 256 // every tone and the noise of a voiced part pulse with the voice (C0, M2: silent between pulses on both units)
 	fxWander   = 512 // the plain tones' pitch drifts (252 M0, both units: 1.45-1.59 % rms, spread to about 70 Hz)
+	fxSine     = 1024 // the envelope oscillator's waveform (manual, register 8): saw (the voice's measured pulse),
+	fxTri      = 2048 // sine, triangle or square
+	fxSquare   = 3072
+	fxShape    = 3072
 )
 
 // the tables' units: frequencies in 16 Hz steps, lengths in 5 ms, so every
@@ -108,6 +113,7 @@ type fxpart struct {
 	nv, gate uint8 // gate in ms
 	flags    uint16
 	lv       int8 // the part's level, half-decibels (measured against the voice, both units)
+	pa, pb   int16 // the part's pulse rate, Hz added to Pitch at its start and end (both units: the same offset at Pitch 60, 88 and 150)
 }
 
 const maxSegments = 32
@@ -447,6 +453,7 @@ func (sj *SpeakJet) playEffect(code int) {
 		if sj.nseg > n {
 			sj.seg[n].gate = ticks(float64(p.gate))
 			sj.seg[n].flags = p.flags
+			sj.seg[n].pa, sj.seg[n].pb = float32(p.pa), float32(p.pb)
 		}
 	}
 	sj.start(true)
@@ -755,24 +762,52 @@ func (sj *SpeakJet) chipSample() float64 {
 	// voicing
 	if s.voiced && sj.pitch > 0 {
 		if sj.ptick <= 0 {
-			sj.period = int(rate/float64(sj.pitch)) + 1 // measured: 92 ticks at Pitch 88 on both units
-			sj.ptick = sj.period
-			if s.flags&fxPulsed == 0 { // pulsed tones run on; formants restart
-				sj.phase = [3]float64{}
+			// measured: 92 ticks at Pitch 88 on both units. an effect's pulses
+			// run at Pitch plus the part's offset (C1, C2, C3, C6, C7: the same
+			// offset at Pitch 60, 88 and 150 on both units, gliding within the part)
+			f := float64(sj.pitch) + lerp(float64(s.pa), float64(s.pb), t)
+			if f < 10.0 {
+				f = 10.0
 			}
-		}
-		age := float64(sj.period - sj.ptick)
-		env := 1.0 - (age-envRise)/envFall
-		if age < envRise {
-			env = age / envRise
-		}
-		if env < 0.0 {
-			env = 0.0
+			sj.period = int(rate/f) + 1
+			sj.ptick = sj.period
 		}
 		// an effect's third tone is a plain tone beside the voice
 		nf := 3
 		if s.flags&fxVoiced != 0 && s.flags&fxAll == 0 {
 			nf = 2
+		}
+		if sj.ptick == sj.period && s.flags&fxPulsed == 0 { // pulsed tones run on; the enveloped ones restart, a plain tone beside them runs on
+			for k := 0; k < nf; k++ {
+				sj.phase[k] = 0.0
+			}
+		}
+		age := float64(sj.period - sj.ptick)
+		x := age / float64(sj.period)
+		var env float64
+		switch s.flags & fxShape {
+		case fxSine:
+			env = 0.5 + 0.5*sin2pi(x+0.25)
+		case fxTri:
+			if x < 0.5 {
+				env = 1.0 - 2.0*x
+			} else {
+				env = 2.0*x - 1.0
+			}
+		case fxSquare:
+			if x < 0.5 {
+				env = 1.0
+			} else {
+				env = 0.0
+			}
+		default:
+			env = 1.0 - (age-envRise)/envFall
+			if age < envRise {
+				env = age / envRise
+			}
+			if env < 0.0 {
+				env = 0.0
+			}
 		}
 		// the offset: measured on every voiced sound's pulse (both units), an
 		// envelope-shaped term beside the sines, against their starting direction
