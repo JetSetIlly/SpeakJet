@@ -74,6 +74,7 @@ type segment struct {
 	gate     int     // ticks of the on/off period for a pulsed effect, 0 = none
 	flags    uint16  // fx*
 	pa, pb   float32 // an effect part's pulse rate: Pitch plus pa Hz at its start, pb at its end
+	lr       float32 // an effect part's level ramp: half-decibels gained (or lost) across the part, even in dB
 }
 
 // the sound effects: each is a few parts. a part plays up to three tones
@@ -115,6 +116,7 @@ type fxpart struct {
 	flags    uint16
 	lv       int8  // the part's level, half-decibels (measured against the voice, both units)
 	pa, pb   int16 // the part's pulse rate, Hz added to Pitch at its start and end (both units: the same offset at Pitch 60, 88 and 150)
+	lr       int8  // the part's level ramp, half-decibels across it (both units: B1's tone falls and rises a steady 1.5 dB per 10 ms through its sweeps, the same up and down where the output stage alone can't)
 }
 
 const maxSegments = 32
@@ -456,6 +458,7 @@ func (sj *SpeakJet) playEffect(code int) {
 			sj.seg[n].gate = ticks(float64(p.gate))
 			sj.seg[n].flags = p.flags
 			sj.seg[n].pa, sj.seg[n].pb = float32(p.pa), float32(p.pb)
+			sj.seg[n].lr = float32(p.lr)
 		}
 	}
 	sj.start(true)
@@ -776,6 +779,9 @@ func (sj *SpeakJet) chipSample() float64 {
 		f.a[k] = float32(lerp(float64(s.from.a[k]), float64(s.to.a[k]), t))
 	}
 	f.lv = float32(lerp(float64(s.from.lv), float64(s.to.lv), t))
+	if s.lr != 0 {
+		f.lv *= float32(exp(float64(s.lr) * t * (0.5 * math.Ln10 / 20.0)))
+	}
 	f.nf = float32(lerp(float64(s.from.nf), float64(s.to.nf), t))
 	f.nw = float32(lerp(float64(s.from.nw), float64(s.to.nw), t))
 	f.na = float32(lerp(float64(s.from.na), float64(s.to.na), t))
