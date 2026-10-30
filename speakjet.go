@@ -561,7 +561,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		bar, gone := from, silent
 		if a.kind == kVStop {
 			gone.f[0] = tgt.f[0]
-			gone.a[0] = tgt.a[0] / 4.0
+			gone.a[0] = tgt.a[0] // at full level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
 		}
 		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
 		sj.addSegment(tk, tgt, tgt, a.kind == kVStop)
