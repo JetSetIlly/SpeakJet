@@ -31,7 +31,7 @@ const (
 	lpfQ         = 0.491
 	attackMs     = 35.0 // every sound's level ramp
 	releaseMs    = 30.0
-	fxAttackMs   = 10.0 // the effects'
+	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
 	fxReleaseMs  = 15.0
 	floor        = 0.05  // the output noise floor, relative (both units: the bed between an effect's lines is -30 to -36 dB per band re the line, whatever its level)
 	jitter       = 0.03  // every oscillator\'s frequency wanders by this fraction each sample (the skirts around the chip\'s tones)
@@ -882,7 +882,11 @@ func (sj *SpeakJet) chipSample() float64 {
 			}
 			sj.phase[k] += float64(f.f[k]) * (1.0 + wander) / nominal
 		}
-		v *= 1.0 + sj.am
+		amScale := 0.006 / 0.1 // a plain tone's level holds to 0.01-0.09 dB rms in its middle (VoxRecord, both units: the DTMF tones, B0, B3, R7, R9)
+		if s.flags&fxWander != 0 {
+			amScale = 1.0 // the full wobble only on a wandering part (M0)
+		}
+		v *= 1.0 + sj.am*amScale
 	}
 
 	// noise: white noise through a two-pole resonance at nf with bandwidth nw
