@@ -521,7 +521,9 @@ func (sj *SpeakJet) copySegments(idx int) int {
 	case a.kind == kGlide:
 		tgt2 := alloFrame(a, true, bend)
 		hold, move := tk/5, tk*7/10
-		sj.addSegment(hold, tgt, tgt, true)
+		// the copy glides back from the last copy's end to the first frame (VoxProbe 4, both units: IYRR x5 rises
+		// 1383 -> 2083 Hz over its first 60 ms each time, not a jump)
+		sj.addSegment(hold, tgt2, tgt, true)
 		sj.addSegment(move, tgt, tgt2, true)
 		sj.addSegment(tk-hold-move, tgt2, tgt2, true)
 	default:
