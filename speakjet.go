@@ -564,7 +564,9 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			gone.a[0] = tgt.a[0] // at full level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
 		}
 		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
-		sj.addSegment(tk, tgt, tgt, a.kind == kVStop)
+		// the release glides to the stop's second frame: the first formant falls into a labial or alveolar
+		// closure (both units: EB, OB, ED, OD); a stop without a measured target holds
+		sj.addSegment(tk, tgt, alloFrame(a, true, bend), a.kind == kVStop)
 	case kAffr:
 		// a stop's closure, then the fricative (voiced for JH)
 		sj.addSegment(ticks(closureMs), silent, silent, false)
