@@ -89,6 +89,7 @@ const (
 	fxPulsed   = 64  // the plain tones pulse with the voice's envelope at Pitch
 	fxFade     = 128 // the level falls straight to nothing over the part (the tones' measured ending)
 	fxAll      = 256 // every tone and the noise of a voiced part pulse with the voice (C0, M2: silent between pulses on both units)
+	fxWander   = 512 // the plain tones' pitch drifts (252 M0, both units: 1.45-1.59 % rms, spread to about 70 Hz)
 )
 
 // the tables' units: frequencies in 16 Hz steps, lengths in 5 ms, so every
@@ -170,6 +171,7 @@ type SpeakJet struct {
 	phase         [3]float64
 	nz            [2]float64 // the noise resonator's two delays
 	venv          float64    // the voicing envelope this tick, for an fxAll effect's noise
+	wander        float64    // an fxWander part's pitch drift, a fraction
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 
@@ -789,12 +791,17 @@ func (sj *SpeakJet) chipSample() float64 {
 	} else {
 		sj.ptick = 0
 		sj.venv = 1.0
+		sj.wander += (0.015/(0.57735*math.Sqrt(0.055/2.0))*sj.random() - sj.wander) * 0.055
+		wander := 0.0
+		if s.flags&fxWander != 0 {
+			wander = sj.wander
+		}
 		// plain tones (the effects)
 		for k := 0; k < 3; k++ {
 			if f.f[k] > 0 && f.a[k] > 0 {
 				v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
 			}
-			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random()) / nominal
+			sj.phase[k] += float64(f.f[k]) * (1.0 + jitter*2.0*sj.random() + wander) / nominal
 		}
 	}
 
