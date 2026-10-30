@@ -765,7 +765,13 @@ func (sj *SpeakJet) chipSample() float64 {
 			// measured: 92 ticks at Pitch 88 on both units. an effect's pulses
 			// run at Pitch plus the part's offset (C1, C2, C3, C6, C7: the same
 			// offset at Pitch 60, 88 and 150 on both units, gliding within the part)
-			f := float64(sj.pitch) + lerp(float64(s.pa), float64(s.pb), t)
+			// the offset from integers and one division, so every compiler gets the same period
+			f := float64(sj.pitch) + float64(s.pa)
+			if s.ticks > 1 {
+				f += float64((s.pb-s.pa)*float32(sj.tick)) / float64(s.ticks-1)
+			} else {
+				f += float64(s.pb - s.pa)
+			}
 			if f < 10.0 {
 				f = 10.0
 			}
