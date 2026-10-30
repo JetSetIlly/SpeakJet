@@ -108,7 +108,7 @@ type fxpart struct {
 	lv       int8 // the part's level, half-decibels (measured against the voice, both units)
 }
 
-const maxSegments = 8
+const maxSegments = 32
 
 // the sound component database: per allophone, its kind, measured length and
 // targets (tables.go, generated)
