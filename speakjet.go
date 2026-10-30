@@ -70,8 +70,8 @@ type segment struct {
 	ticks    int
 	from, to frame
 	voiced   bool
-	gate     int    // ticks of the on/off period for a pulsed effect, 0 = none
-	flags    uint16 // fx*
+	gate     int     // ticks of the on/off period for a pulsed effect, 0 = none
+	flags    uint16  // fx*
 	pa, pb   float32 // an effect part's pulse rate: Pitch plus pa Hz at its start, pb at its end
 }
 
@@ -88,10 +88,10 @@ const (
 	fxBump     = 8
 	fxExpDecay = 16
 	fxNSweep   = 32
-	fxPulsed   = 64  // the plain tones pulse with the voice's envelope at Pitch
-	fxFade     = 128 // the level falls straight to nothing over the part (the tones' measured ending)
-	fxAll      = 256 // every tone and the noise of a voiced part pulse with the voice (C0, M2: silent between pulses on both units)
-	fxWander   = 512 // the plain tones' pitch drifts (252 M0, both units: 1.45-1.59 % rms, spread to about 70 Hz)
+	fxPulsed   = 64   // the plain tones pulse with the voice's envelope at Pitch
+	fxFade     = 128  // the level falls straight to nothing over the part (the tones' measured ending)
+	fxAll      = 256  // every tone and the noise of a voiced part pulse with the voice (C0, M2: silent between pulses on both units)
+	fxWander   = 512  // the plain tones' pitch drifts (252 M0, both units: 1.45-1.59 % rms, spread to about 70 Hz)
 	fxSine     = 1024 // the envelope oscillator's waveform (manual, register 8): saw (the voice's measured pulse),
 	fxTri      = 2048 // sine, triangle or square
 	fxSquare   = 3072
@@ -112,7 +112,7 @@ type fxpart struct {
 	nf, nw   uint8 // hzStep
 	nv, gate uint8 // gate in ms
 	flags    uint16
-	lv       int8 // the part's level, half-decibels (measured against the voice, both units)
+	lv       int8  // the part's level, half-decibels (measured against the voice, both units)
 	pa, pb   int16 // the part's pulse rate, Hz added to Pitch at its start and end (both units: the same offset at Pitch 60, 88 and 150)
 }
 
@@ -568,7 +568,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		if a.kind == kVStop {
 			gone.f[0] = tgt.f[0]
 			gone.a[0] = tgt.a[0] // the first formant's level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
-			gone.lv = tgt.lv // at the sound's own level (VoxProbe 6, slowed: DE's bar 3-4 dB under its release, BE's 8)
+			gone.lv = tgt.lv     // at the sound's own level (VoxProbe 6, slowed: DE's bar 3-4 dB under its release, BE's 8)
 		}
 		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
 		// the release glides to the stop's second frame: the first formant falls into a labial or alveolar
@@ -804,11 +804,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		case fxSine:
 			env = 0.5 + 0.5*sin2pi(x+0.25)
 		case fxTri:
-			if x < 0.5 {
-				env = 1.0 - 2.0*x
-			} else {
-				env = 2.0*x - 1.0
-			}
+			env = x // VoxProbe 7, both units: a rising ramp, then straight back to nothing
 		case fxSquare:
 			if x < 0.5 {
 				env = 1.0
