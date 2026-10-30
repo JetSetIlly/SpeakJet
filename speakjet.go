@@ -115,9 +115,10 @@ type fxpart struct {
 	nf, nw   uint8 // hzStep
 	nv, gate uint8 // gate in ms
 	flags    uint16
-	lv       int8  // the part's level, half-decibels (measured against the voice, both units)
-	pa, pb   int16 // the part's pulse rate, Hz added to Pitch at its start and end (both units: the same offset at Pitch 60, 88 and 150)
-	lr       int8  // the part's level ramp, half-decibels across it (both units: B1's tone falls and rises a steady 1.5 dB per 10 ms through its sweeps, the same up and down where the output stage alone can't)
+	lv       int8     // the part's level, half-decibels (measured against the voice, both units)
+	pa, pb   int16    // the part's pulse rate, Hz added to Pitch at its start and end (both units: the same offset at Pitch 60, 88 and 150)
+	lr       int8     // the part's level ramp, half-decibels across it (both units: B1's tone falls and rises a steady 1.5 dB per 10 ms through its sweeps, the same up and down where the output stage alone can't)
+	ve       [3]uint8 // each tone's level at the part's end, 0 to 31 (both units: A7's lowest tone fades in by 27 dB while its highest fades out by 30, inside one sweep; the tones' volumes are registers swept like their frequencies)
 }
 
 const maxSegments = 32
@@ -424,7 +425,7 @@ func (sj *SpeakJet) playEffect(code int) {
 			a.f[k] = bent(float64(p.fa[k])*hzStep, bend)
 			b.f[k] = bent(float64(p.fb[k])*hzStep, bend)
 			a.a[k] = float32(p.v[k])
-			b.a[k] = a.a[k]
+			b.a[k] = float32(p.ve[k])
 		}
 		// D0 to D11 are the DTMF pairs, measured on both units within 3 Hz
 		// of the standard once each unit's rate is allowed for (keypad order:
