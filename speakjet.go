@@ -553,7 +553,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		sj.addSegment(tk, tgt, tgt, false)
 	case kStop, kVStop:
 		// the closure ("silence already added" says the manual; a voiced stop
-		// hums through it on its first formant alone, quietly) then the burst
+		// hums through it on its first formant alone) then the burst
 		// and release, which is the measured length
 		// the sound before fades away through the closure (both units: a vowel
 		// before a stop falls 30 dB over 50 to 60 ms at Speed 114, twice that
