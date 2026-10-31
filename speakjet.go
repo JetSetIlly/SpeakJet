@@ -54,7 +54,7 @@ const (
 	bendHz       = 44.0 // Bend step
 )
 
-var pauseMs = [7]float64{0, 100, 200, 700, 30, 60, 90}
+var pauseMs = [7]float64{0, 90, 200, 700, 15, 60, 90} // P1 and P4 measured (VoxProbe 8): the rest are the manual's
 
 func ticks(ms float64) int { return int(ms*rate/1000.0 + 0.5) }
 
