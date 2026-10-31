@@ -3,7 +3,20 @@ package speakjet
 import (
 	"math"
 	"testing"
+	"unsafe"
 )
+
+// the tables' size budget: the library's brief is a few bytes per sound, and every field only some sounds use goes
+// in the effects' optional fields or a side table, never a fixed column (2606 bytes when this test was written)
+const tableBudget = 2700
+
+func TestTableSize(t *testing.T) {
+	n := int(unsafe.Sizeof(allophones) + unsafe.Sizeof(allog) + unsafe.Sizeof(fxdata) + unsafe.Sizeof(fxat))
+	if n > tableBudget {
+		t.Errorf("the tables are %d bytes, over the %d-byte budget", n, tableBudget)
+	}
+	t.Logf("tables: %d bytes", n)
+}
 
 // every sound code plays something: the allophones' lengths are within what
 // the chip was measured to play, and every effect has parts
