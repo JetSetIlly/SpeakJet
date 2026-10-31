@@ -892,9 +892,8 @@ func (sj *SpeakJet) chipSample() float64 {
 
 	// noise: white noise through a two-pole resonance at nf with bandwidth nw
 	// (the chip's hiss is random noise - Gaussian to the sample, both units -
-	// not a tone; FF, TH and HE are flat to 4 kHz, SH and CH peak near 2.3
-	// kHz, WH at 800 Hz, SE and SO at the top of the band). the gain holds
-	// the output power at the input's whatever the band (the AR(2) variance)
+	// not a tone; FF is flat to 4 kHz, the others resonate from WH's 800 Hz
+	// to SE's 4 kHz). the gain holds the output power at the input's whatever the band (the AR(2) variance)
 	if f.na > 0 {
 		nf, lvl := float64(f.nf), 1.0
 		// fxNSweep: over each gate period the band climbs from 0.4 to 2 times
