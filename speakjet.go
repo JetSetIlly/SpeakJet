@@ -29,7 +29,8 @@ const (
 	envFall      = 58.0   // and linear fall
 	lpfFc        = 1609.0 // the output stage's two poles (both units: the 12 DTMF pairs' level ratios and VoxProbe 7's direct tones at 125, 1000 and 3000 Hz, all 14 within 0.45 dB)
 	lpfQ         = 0.462
-	attackMs     = 35.0 // every sound's level ramp
+	lpfZero      = 14000.0 // and one real zero, Hz: the images above 8 kHz (every effect, both units)
+	attackMs     = 35.0    // every sound's level ramp
 	releaseMs    = 30.0
 	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
 	fxReleaseMs  = 15.0
@@ -190,7 +191,7 @@ type SpeakJet struct {
 	// output
 	held, heldpos float64
 	z             [2]float64
-	lpf           [5]float64 // the low pass: its two poles (per tick), their decays over an output sample, p2 / (p2 - p1)
+	lpf           [6]float64 // the low pass: its two poles (per tick), their decays over an output sample, p2 / (p2 - p1), p2 / zero
 	speaking      bool
 
 	// the amount of volume increase to apply to each sample. defaults to 1.0
@@ -214,8 +215,8 @@ func (sj *SpeakJet) powerOn() {
 	*sj = SpeakJet{Gain: gain}
 	sj.resetControls()
 	sj.rnd = 0x12345678
-	// the output low pass: two real poles (Q under 0.5) per chip tick, and
-	// their decays over one output sample
+	// the output low pass: two real poles (Q under 0.5) per chip tick, their
+	// decays over one output sample, and the zero
 	w := 2.0 * math.Pi * lpfFc / rate
 	h := 0.5 / math.Min(lpfQ, 0.499)
 	r := math.Sqrt(h*h - 1.0)
@@ -224,6 +225,7 @@ func (sj *SpeakJet) powerOn() {
 	sj.lpf[2] = math.Exp(-sj.lpf[0] * rate / SampleRate)
 	sj.lpf[3] = math.Exp(-sj.lpf[1] * rate / SampleRate)
 	sj.lpf[4] = sj.lpf[1] / (sj.lpf[1] - sj.lpf[0])
+	sj.lpf[5] = sj.lpf[1] / (2.0 * math.Pi * lpfZero / rate)
 }
 
 // settle drives the two poles with x held for a stretch, exactly (e1, e2:
@@ -1112,7 +1114,8 @@ func (sj *SpeakJet) Render(buf []float32) bool {
 	sounding := sj.sounding || sj.count > 0
 	for i := range buf {
 		// the held chip samples through the AtariVox's low pass, sampled at
-		// the end of this output sample
+		// the end of this output sample (the zero adds the second pole's input
+		// in proportion: y2 + y2' / zero)
 		if sj.heldpos+step < 1.0 {
 			sj.settle(sj.held, sj.lpf[2], sj.lpf[3])
 			sj.heldpos += step
@@ -1125,7 +1128,7 @@ func (sj *SpeakJet) Render(buf []float32) bool {
 			sj.settle(sj.held, math.Exp(-sj.lpf[0]*b), math.Exp(-sj.lpf[1]*b))
 			sj.heldpos = b
 		}
-		buf[i] = float32(sj.z[1]) * sj.Gain
+		buf[i] = float32(sj.z[1]+sj.lpf[5]*(sj.z[0]-sj.z[1])) * sj.Gain
 	}
 	sj.speaking = sounding
 	return sounding
