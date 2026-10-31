@@ -33,8 +33,8 @@ const (
 	releaseMs    = 30.0
 	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
 	fxReleaseMs  = 15.0
-	floor        = 0.05  // the output noise floor, relative (both units: the bed between an effect's lines is -30 to -36 dB per band re the line, whatever its level)
-	jitter       = 0.03  // every oscillator\'s frequency wanders by this fraction each sample (the skirts around the chip\'s tones)
+	floor        = 0.0   // the voiced output noise floor, relative. 0: the chip's voice is exactly periodic (both units, every vowel and nasal at Pitch 88: the period holds to one 48 kHz sample, and the gaps between harmonics sit 30-60 dB under them, which a 0.05 floor filled to 15-30)
+	jitter       = 0.0   // the voiced oscillators' frequency wanders by this fraction each sample. 0, measured with the floor: it smeared the same gaps
 	quant        = 0.0   // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
 	decayDB      = 35.0  // an fxDecay part falls this many dB
 	transitionMs = 25.0  // the voice moves to a new sound's target over this
@@ -954,9 +954,8 @@ func (sj *SpeakJet) chipSample() float64 {
 	if quant > 0 {
 		v = math.Floor(v*quant+0.5) / quant
 	}
-	// the output noise floor: white under the effects' tones, rising with
-	// frequency under the voice (the valley between the first two formants is
-	// deeper on the chip than a white floor leaves it)
+	// the output noise floor: white under the effects' tones; none under the
+	// voice (floor 0, the chip's voice is exactly periodic)
 	r := sj.random()
 	if s.voiced && s.flags&(fxVoiced|fxPulsed) == 0 {
 		v *= 1.0 + floor*2.0*(r-sj.lastr)
