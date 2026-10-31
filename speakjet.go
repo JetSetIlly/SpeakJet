@@ -190,7 +190,7 @@ type SpeakJet struct {
 	// output
 	held, heldpos float64
 	z             [2]float64
-	lpf           [5]float64 // the low pass's coefficients: b0 b1 b2 a1 a2
+	lpf           [5]float64 // the low pass: its two poles (per tick), their decays over an output sample, p2 / (p2 - p1)
 	speaking      bool
 
 	// the amount of volume increase to apply to each sample. defaults to 1.0
@@ -214,15 +214,24 @@ func (sj *SpeakJet) powerOn() {
 	*sj = SpeakJet{Gain: gain}
 	sj.resetControls()
 	sj.rnd = 0x12345678
-	// the output low pass: two real poles, bilinear, prewarped
-	w := 2.0 * SampleRate * math.Tan(math.Pi*lpfFc/SampleRate)
-	k := 2.0 * SampleRate
-	d := k*k + w/lpfQ*k + w*w
-	sj.lpf[0] = w * w / d
-	sj.lpf[1] = 2.0 * sj.lpf[0]
-	sj.lpf[2] = sj.lpf[0]
-	sj.lpf[3] = (2.0*w*w - 2.0*k*k) / d
-	sj.lpf[4] = (k*k - w/lpfQ*k + w*w) / d
+	// the output low pass: two real poles (Q under 0.5) per chip tick, and
+	// their decays over one output sample
+	w := 2.0 * math.Pi * lpfFc / rate
+	h := 0.5 / math.Min(lpfQ, 0.499)
+	r := math.Sqrt(h*h - 1.0)
+	sj.lpf[0] = w * (h - r)
+	sj.lpf[1] = w * (h + r)
+	sj.lpf[2] = math.Exp(-sj.lpf[0] * rate / SampleRate)
+	sj.lpf[3] = math.Exp(-sj.lpf[1] * rate / SampleRate)
+	sj.lpf[4] = sj.lpf[1] / (sj.lpf[1] - sj.lpf[0])
+}
+
+// settle drives the two poles with x held for a stretch, exactly (e1, e2:
+// their decays over it)
+func (sj *SpeakJet) settle(x, e1, e2 float64) {
+	u1 := sj.z[0] - x
+	sj.z[0] = x + u1*e1
+	sj.z[1] = x + (sj.z[1]-x)*e2 + u1*sj.lpf[4]*(e1-e2)
 }
 
 // CommandSize returns the number of bytes a command takes, including its data
@@ -1100,26 +1109,23 @@ func (sj *SpeakJet) chipSample() float64 {
 // in the range -1 to 1. returns true if the chip is producing sound
 func (sj *SpeakJet) Render(buf []float32) bool {
 	const step = rate / SampleRate
-	b0, b1, b2, a1, a2 := sj.lpf[0], sj.lpf[1], sj.lpf[2], sj.lpf[3], sj.lpf[4]
 	sounding := sj.sounding || sj.count > 0
 	for i := range buf {
-		// the average of the held chip samples over this output sample
-		rest, sum := step, 0.0
-		for sj.heldpos+rest >= 1.0 {
-			sum += sj.held * (1.0 - sj.heldpos)
-			rest -= 1.0 - sj.heldpos
+		// the held chip samples through the AtariVox's low pass, sampled at
+		// the end of this output sample
+		if sj.heldpos+step < 1.0 {
+			sj.settle(sj.held, sj.lpf[2], sj.lpf[3])
+			sj.heldpos += step
+		} else {
+			a := 1.0 - sj.heldpos
+			b := step - a
+			sj.settle(sj.held, math.Exp(-sj.lpf[0]*a), math.Exp(-sj.lpf[1]*a))
 			sj.held = sj.chipSample()
-			sj.heldpos = 0.0
 			sounding = sounding || sj.sounding || sj.count > 0
+			sj.settle(sj.held, math.Exp(-sj.lpf[0]*b), math.Exp(-sj.lpf[1]*b))
+			sj.heldpos = b
 		}
-		sum += sj.held * rest
-		sj.heldpos += rest
-		x := sum / step
-		// direct form II transposed
-		y := b0*x + sj.z[0]
-		sj.z[0] = b1*x - a1*y + sj.z[1]
-		sj.z[1] = b2*x - a2*y
-		buf[i] = float32(y) * sj.Gain
+		buf[i] = float32(sj.z[1]) * sj.Gain
 	}
 	sj.speaking = sounding
 	return sounding
