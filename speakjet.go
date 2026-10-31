@@ -164,7 +164,10 @@ type SpeakJet struct {
 	// what is playing
 	seg             [maxSegments]segment
 	nseg, cur, tick int
-	stick, stotal   int // ticks into the sound, and its whole length
+	stick, stotal   int  // ticks into the sound, and its whole length
+	effect          bool // the sound is an effect (its Speed law)
+	read            bool // the command after it has been read ahead
+	ahead           int  // bytes of that command, executed early: retired with the sound
 	attack, release int
 	copies          int   // copies of a Repeat still to play
 	copyOf          int   // which allophone
@@ -265,8 +268,8 @@ func (sj *SpeakJet) Reset() {
 
 // the length of a sound at the current Speed, as a factor on its length at
 // Speed 114. linear: measured 95/197/287 ms for AW at Speed 127/90/60; the
-// effects change more, on a curve this line approximates (tonal effects x0.55 at
-// 127, 1.68 at 90, 2.7 at 60 past a fixed ~30 ms; pulsed ones less)
+// effects change more (measured on effects played alone: about (145.3 - Speed) /
+// 31.3 on every part; items followed by a Speed command read it ahead)
 func (sj *SpeakJet) speedFactor(effect bool) float64 {
 	if effect {
 		return (fxSpeedA - float64(sj.speed)) / fxSpeedB
@@ -403,6 +406,9 @@ func (sj *SpeakJet) start(effect bool) {
 		sj.stotal += sj.seg[i].ticks
 	}
 	sj.sounding = sj.nseg > 0
+	sj.effect = effect
+	sj.read = false
+	sj.ahead = 0
 }
 
 // fxDecode reads one effect part from the table's byte stream (fxdata, from fxat[code-200]): its length, a byte
@@ -787,9 +793,10 @@ func (sj *SpeakJet) finishSound() {
 	if sj.peek(0) >= 128 {
 		sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 	}
-	sj.head = (sj.head + sj.executing) % BufferSize
-	sj.count -= sj.executing
+	sj.head = (sj.head + sj.executing + sj.ahead) % BufferSize
+	sj.count -= sj.executing + sj.ahead
 	sj.executing = 0
+	sj.ahead = 0
 	sj.sounding = false
 }
 
@@ -802,6 +809,54 @@ func (sj *SpeakJet) random() float64 {
 	return float64(sj.rnd>>8)*(1.0/16777216.0) - 0.5
 }
 
+// readAheadMs: the chip reads the command after a sound while the sound is still playing, at its release: an
+// effect's closing fade, or the last readAheadMs (VoxProbe 8, both units: "Speed v, D1, Speed 114" fades at Speed
+// 114's length whatever v; "Volume 16, IY, Volume 96" jumps to Volume 96 in IY's last 25-30 ms; VoxProbe 7 and 4: a
+// Pitch after a sound doesn't move it, and only the one command right after is read). A Speed or Volume read so is
+// carried out at once: the rest of the sound plays at the new rate and level
+const readAheadMs = 30
+
+func (sj *SpeakJet) readAhead() {
+	sj.read = true
+	i := sj.executing
+	if i+2 > sj.count {
+		return
+	}
+	code, data := sj.peek(i), sj.peek(i+1)
+	switch code {
+	case 20:
+		if data > 127 {
+			data = 127
+		}
+		sj.volume = data
+	case 21:
+		before := sj.speedFactor(sj.effect)
+		if data > 127 {
+			data = 127
+		}
+		sj.speed = data
+		scale := sj.speedFactor(sj.effect) / before
+		total := 0
+		for k := 0; k < sj.nseg; k++ {
+			g := &sj.seg[k]
+			if k == sj.cur {
+				g.ticks = sj.tick + 1 + int(float64(g.ticks-sj.tick-1)*scale+0.5)
+			} else if k > sj.cur {
+				if float64(g.ticks)*scale < 1.0 {
+					g.ticks = 1
+				} else {
+					g.ticks = int(float64(g.ticks)*scale + 0.5)
+				}
+			}
+			total += g.ticks
+		}
+		sj.stotal = total
+	default:
+		return
+	}
+	sj.ahead = 2
+}
+
 // one chip sample
 func (sj *SpeakJet) chipSample() float64 {
 	if !sj.sounding {
@@ -809,6 +864,12 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	if !sj.sounding {
 		return 0.0
+	}
+	if !sj.read && sj.copies == 0 && sj.peek(0) >= 128 { // sounds only: no recording shows a pause reading ahead
+		fade := sj.seg[sj.nseg-1].flags&fxFade != 0
+		if (fade && sj.cur == sj.nseg-1) || (!fade && sj.stotal-sj.stick <= ticks(readAheadMs)) {
+			sj.readAhead()
+		}
 	}
 
 	s := &sj.seg[sj.cur]
