@@ -33,17 +33,18 @@ const (
 	releaseMs    = 30.0
 	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
 	fxReleaseMs  = 15.0
-	floor        = 0.0   // the voiced output noise floor, relative. 0: the chip's voice is exactly periodic (both units, every vowel and nasal at Pitch 88: the period holds to one 48 kHz sample, and the gaps between harmonics sit 30-60 dB under them, which a 0.05 floor filled to 15-30)
-	jitter       = 0.0   // the voiced oscillators' frequency wanders by this fraction each sample. 0, measured with the floor: it smeared the same gaps
-	quant        = 0.0   // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
-	decayDB      = 35.0  // an fxDecay part falls this many dB
-	transitionMs = 25.0  // the voice moves to a new sound's target over this
-	closureMs    = 30.0  // the closure before a stop's burst
-	slew         = 0.06  // the effects' bed, measured: grows with the tone's frequency on both units
-	gateDepth    = 0.4   // an effect's gate: its off half's level, a factor
-	overlapMs    = 15.0  // a sound followed at once by another is cut short by this
-	overlapVMs   = 30.0  // more when both are voiced
-	speedA       = 162.0 // length factor (speedA - Speed) / speedB
+	floor        = 0.0                // the voiced output noise floor, relative. 0: the chip's voice is exactly periodic (both units, every vowel and nasal at Pitch 88: the period holds to one 48 kHz sample, and the gaps between harmonics sit 30-60 dB under them, which a 0.05 floor filled to 15-30)
+	jitter       = 0.0                // the voiced oscillators' frequency wanders by this fraction each sample. 0, measured with the floor: it smeared the same gaps
+	quant        = 0.0                // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
+	decayDB      = 35.0               // an fxDecay part falls this many dB
+	transitionMs = 25.0               // the voice moves to a new sound's target over this
+	closureMs    = 30.0               // the closure before a stop's burst
+	slew         = 0.078              // the effects' bed, measured: grows with the tone's frequency on both units
+	bedPole      = 0.6909588478246612 // up to about 1.5 kHz, then with the tone's level alone (one pole)
+	gateDepth    = 0.4                // an effect's gate: its off half's level, a factor
+	overlapMs    = 15.0               // a sound followed at once by another is cut short by this
+	overlapVMs   = 30.0               // more when both are voiced
+	speedA       = 162.0              // length factor (speedA - Speed) / speedB
 	speedB       = 48.0
 	fxSpeedA     = 147.0 // the effects' (they shorten faster)
 	fxSpeedB     = 33.0
@@ -183,6 +184,7 @@ type SpeakJet struct {
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 	vprev         float64 // the output's last tick
+	bed           float64 // the output's change per tick, smoothed, for the effects' bed
 	am            float64 // the effects' slow level wobble
 
 	// output
@@ -1068,9 +1070,11 @@ func (sj *SpeakJet) chipSample() float64 {
 	if s.voiced && s.flags&(fxVoiced|fxPulsed) == 0 {
 		v *= 1.0 + floor*2.0*(r-sj.lastr)
 	} else {
-		// the effects' bed grows with the tone's frequency (both units): timing
-		// error, proportional to the signal's change per tick
-		v += slew * 2.0 * r * (v - sj.vprev)
+		// the effects' bed (both units): timing error, proportional to the
+		// signal's change per tick smoothed by one pole - it grows with the
+		// tone's frequency to about 1.5 kHz and only with its level above
+		sj.bed += bedPole * (v - sj.vprev - sj.bed)
+		v += slew * 2.0 * r * sj.bed
 	}
 	sj.lastr = r
 	sj.vprev = v
