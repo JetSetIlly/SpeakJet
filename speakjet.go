@@ -45,8 +45,8 @@ const (
 	overlapVMs   = 30.0  // more when both are voiced
 	speedA       = 162.0 // length factor (speedA - Speed) / speedB
 	speedB       = 48.0
-	fxSpeedA     = 149.0 // the effects' (they shorten faster)
-	fxSpeedB     = 35.0
+	fxSpeedA     = 147.0 // the effects' (they shorten faster)
+	fxSpeedB     = 33.0
 	fastFactor   = 0.77 // Fast and Slow: factors on the played length
 	slowFactor   = 1.22
 	copyExtraMs  = 0.0  // a Repeat copy adds this to the manual's length
@@ -268,8 +268,9 @@ func (sj *SpeakJet) Reset() {
 
 // the length of a sound at the current Speed, as a factor on its length at
 // Speed 114. linear: measured 95/197/287 ms for AW at Speed 127/90/60; the
-// effects change more (measured on effects played alone: about (145.3 - Speed) /
-// 31.3 on every part; items followed by a Speed command read it ahead)
+// effects change more: (147 - Speed) / 33 on every part (fitted on every effect
+// recording at a Speed other than 114; alone they read about (145 - Speed) / 31,
+// steeper still at low Speeds than near 114)
 func (sj *SpeakJet) speedFactor(effect bool) float64 {
 	if effect {
 		return (fxSpeedA - float64(sj.speed)) / fxSpeedB
