@@ -4,7 +4,7 @@ package speakjet
 
 // kind, ms, f1 f2 f3, a1 a2 a3, nf nw na, cp, lv, cb
 var allophones = [72]allophone{
-	/* IY   */ {kVowel, 27, [3]uint8{17, 139, 159}, [3]uint8{29, 31, 21}, 0, 0, 0, 15, -5, 0},
+	/* IY   */ {kVowel, 27, [3]uint8{17, 138, 159}, [3]uint8{29, 30, 20}, 0, 0, 0, 15, -5, 0},
 	/* IH   */ {kVowel, 27, [3]uint8{22, 110, 154}, [3]uint8{26, 29, 16}, 0, 0, 0, 14, -1, 0},
 	/* EY   */ {kVowel, 28, [3]uint8{33, 110, 148}, [3]uint8{29, 29, 15}, 0, 0, 0, 14, -1, 0},
 	/* EH   */ {kVowel, 28, [3]uint8{38, 105, 149}, [3]uint8{21, 17, 12}, 0, 0, 0, 15, 4, 0},
