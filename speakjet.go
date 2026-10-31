@@ -148,13 +148,6 @@ type allophone struct {
 	cb     uint8 // a stop's Repeat copies keep its voice bar through their closures
 }
 
-// the manual's lengths, for the copies of a Repeat
-var manualMs = [72]uint8{
-	70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70,
-	70, 70, 70, 200, 200, 190, 200, 185, 165, 200, 225, 185, 170, 140, 180, 170, 170, 200,
-	131, 70, 70, 70, 70, 70, 45, 45, 10, 10, 45, 45, 10, 10, 55, 55, 55, 55,
-	70, 70, 70, 70, 70, 40, 40, 50, 40, 50, 70, 170, 55, 55, 55, 45, 99, 99}
-
 // SpeakJet is the chip. Write() is called by whatever is sending it data (the
 // AtariVox serial line) and Render() by whatever is playing its output
 type SpeakJet struct {
