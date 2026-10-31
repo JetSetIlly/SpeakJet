@@ -141,7 +141,6 @@ type allophone struct {
 	ms     uint8    // the length played at Speed 114, measured, msStep
 	f      [3]uint8 // formants, hzStep
 	a      [3]uint8 // their levels, 0 to 31
-	g      [3]uint8 // kGlide: the second target
 	nf, nw uint8    // the noise band's centre and bandwidth, hzStep
 	na     uint8
 	cp     uint8 // the length of each further copy of a Repeat, msStep
@@ -412,12 +411,61 @@ func (sj *SpeakJet) start(effect bool) {
 	sj.sounding = sj.nseg > 0
 }
 
+// fxDecode reads one effect part from the table's byte stream (fxdata, from fxat[code-200]): its length, a byte
+// saying which fields follow (bits 0-1 the number of tones; 4 noise, 8 gate, 16 pulse offsets, 32 level ramp, 64 end
+// levels, 128 a high flags byte), its flags and level, then three bytes a tone and only the fields it uses
+func fxDecode(at int, f *fxpart) int {
+	*f = fxpart{}
+	f.ms = fxdata[at]
+	h := fxdata[at+1]
+	f.flags = uint16(fxdata[at+2])
+	at += 3
+	if h&128 != 0 {
+		f.flags |= uint16(fxdata[at]) << 8
+		at++
+	}
+	f.lv = int8(fxdata[at])
+	at++
+	n := int(h & 3)
+	for k := 0; k < n; k++ {
+		f.fa[k], f.fb[k], f.v[k] = fxdata[at], fxdata[at+1], fxdata[at+2]
+		at += 3
+	}
+	if h&4 != 0 {
+		f.nf, f.nw, f.nv = fxdata[at], fxdata[at+1], fxdata[at+2]
+		at += 3
+	}
+	if h&8 != 0 {
+		f.gate = fxdata[at]
+		at++
+	}
+	if h&16 != 0 {
+		f.pa = int16(uint16(fxdata[at]) | uint16(fxdata[at+1])<<8)
+		f.pb = int16(uint16(fxdata[at+2]) | uint16(fxdata[at+3])<<8)
+		at += 4
+	}
+	if h&32 != 0 {
+		f.lr = int8(fxdata[at])
+		at++
+	}
+	f.ve = f.v
+	if h&64 != 0 {
+		for k := 0; k < n; k++ {
+			f.ve[k] = fxdata[at+k]
+		}
+		at += n
+	}
+	return at
+}
+
 func (sj *SpeakJet) playEffect(code int) {
-	first, count := int(fxindex[code-200][0]), int(fxindex[code-200][1])
+	at, end := int(fxat[code-200]), int(fxat[code-199])
 	bend := sj.bendHz()
 	sj.nseg = 0
-	for i := 0; i < count; i++ {
-		p := &fxparts[first+i]
+	for at < end {
+		var part fxpart
+		at = fxDecode(at, &part)
+		p := &part
 		var a, b frame
 		a.lv = float32(exp(float64(p.lv) * (0.5 * math.Ln10 / 20.0)))
 		b.lv = a.lv
@@ -476,13 +524,18 @@ func alloFrame(a *allophone, second bool, bend float64) frame {
 		}
 		return alloFrame(&allophones[a.f[0]], false, bend)
 	}
+	// a voiced stop's release ends on formants of its own (allog: the few that have them)
+	fs := a.f
+	if second {
+		for _, g := range allog {
+			if &allophones[g[0]] == a {
+				fs = [3]uint8{g[1], g[2], g[3]}
+			}
+		}
+	}
 	var f frame
 	for k := 0; k < 3; k++ {
-		if second {
-			f.f[k] = bent(float64(a.g[k])*hzStep, bend)
-		} else {
-			f.f[k] = bent(float64(a.f[k])*hzStep, bend)
-		}
+		f.f[k] = bent(float64(fs[k])*hzStep, bend)
 		f.a[k] = float32(a.a[k])
 	}
 	f.lv = float32(exp(float64(a.lv) * (0.5 * math.Ln10 / 20.0)))

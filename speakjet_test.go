@@ -16,9 +16,10 @@ func TestSounds(t *testing.T) {
 	}
 	for code := 200; code <= 254; code++ {
 		ms := 0
-		first, count := int(fxindex[code-200][0]), int(fxindex[code-200][1])
-		for i := 0; i < count; i++ {
-			ms += int(fxparts[first+i].ms) * msStep
+		for at := int(fxat[code-200]); at < int(fxat[code-199]); {
+			var part fxpart
+			at = fxDecode(at, &part)
+			ms += int(part.ms) * msStep
 		}
 		if ms <= 0 {
 			t.Errorf("code %d: no length", code)
