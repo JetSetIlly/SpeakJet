@@ -5,7 +5,7 @@
 // revision 1.1, 2004) and from recordings of two AtariVoxes playing every
 // sound and control, and from nothing else; the aim is the smallest model that
 // matches those recordings. It is a line-for-line port of the C library
-// (speakjet.c in github.com/andrew-davie/SpeakJet, branch rebuild) and renders
+// (speakjet.c in github.com/andrew-davie/SpeakJet) and renders
 // the same samples. That repository's docs/technical-manual.md describes the
 // chip as measured, and docs/design.md the model.
 //

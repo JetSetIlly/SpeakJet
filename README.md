@@ -7,8 +7,7 @@ Gopher2600 emulator uses it for its AtariVox.
 It was written from scratch from the SpeakJet User's Manual and recordings of
 two real AtariVoxes (an original AtariVox and an AtariVox+), and from nothing
 else. It is a line-for-line port of the C library at
-[andrew-davie/SpeakJet](https://github.com/andrew-davie/SpeakJet) (branch
-`rebuild`) and renders the same samples to within float rounding.
+[andrew-davie/SpeakJet](https://github.com/andrew-davie/SpeakJet) and renders the same samples to within float rounding.
 
 - Pure Go, no dependencies, no global state: any number of chips side by side.
 - Takes the raw command stream and gives the Buffer Half Full and Speaking
