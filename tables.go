@@ -75,7 +75,7 @@ var allophones = [72]allophone{
 	/* EK   */ {kStop, 2, [3]uint8{0, 0, 0}, [3]uint8{0, 0, 0}, 139, 15, 5, 11, 45, 0},
 	/* OK   */ {kStop, 3, [3]uint8{0, 0, 0}, [3]uint8{0, 0, 0}, 116, 49, 22, 9, 9, 0},
 	/* PE   */ {kStop, 13, [3]uint8{0, 0, 0}, [3]uint8{0, 0, 0}, 4, 149, 31, 14, -52, 0},
-	/* PO   */ {kStop, 15, [3]uint8{0, 0, 0}, [3]uint8{0, 0, 0}, 4, 129, 26, 22, -53, 0},
+	/* PO   */ {kStop, 15, [3]uint8{0, 0, 0}, [3]uint8{0, 0, 0}, 4, 156, 28, 22, -53, 0},
 }
 
 // index, g1 g2 g3: a second frame of its own (BO EB OB ED OD)
