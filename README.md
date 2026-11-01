@@ -63,7 +63,7 @@ Every sound is compared with recordings of both AtariVoxes by three scores,
 lower is better: the whole-sound spectrum error and E (spectrum, time-frequency
 picture and level over time together), both in rms dB on the takes of each
 sound alone, and P, a perceptual score averaged over every recording of the
-sound (1191 recordings in all). At 2.0.0:
+sound (1191 recordings in all). At 0.3.0:
 
 ```
               sounds   spectrum dB   E dB    P
@@ -87,5 +87,5 @@ measurement; its `CHANGELOG.md` has the history.
 
 ## Version
 
-2.0.0: the from-data rebuild (every table and most rules re-measured from the
+0.3.0: the from-data rebuild (every table and most rules re-measured from the
 chip), with the same API as before.
