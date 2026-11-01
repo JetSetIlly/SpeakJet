@@ -8,7 +8,7 @@ import (
 
 // the tables' size budget: the library's brief is a few bytes per sound, and every field only some sounds use goes
 // in the effects' optional fields or a side table, never a fixed column (2606 bytes when this test was written)
-const tableBudget = 10000 // raised from 3000 on 2026-11-02: spent conservatively, on measured breakpoints only
+const tableBudget = 3000
 
 func TestTableSize(t *testing.T) {
 	n := int(unsafe.Sizeof(allophones) + unsafe.Sizeof(allog) + unsafe.Sizeof(fxdata) + unsafe.Sizeof(fxat))
