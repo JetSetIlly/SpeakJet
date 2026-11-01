@@ -11,15 +11,18 @@
 //
 // What the chip was found to do:
 //
-//   - It makes samples at about 8026 Hz (the two units: 8039 and 8013; the
+//   - It makes samples at about 8026 Hz (the two units: 8047 and 8014; the
 //     manual says 8192), its arithmetic in 8000ths, and holds each sample until
-//     the next; the AtariVox then low-passes the held signal with two poles at
-//     about 1609 Hz (Q 0.462). The output here is at 48 kHz, so the hold's
-//     images are carried as the real thing's are.
-//   - Voicing: a period of floor(rate / Pitch) + 1 ticks, exactly periodic. At
-//     the start of each period three formant sines restart at one phase under
-//     an envelope that steps to full at once and falls linearly over about
-//     7 ms.
+//     the next; the AtariVox's output stage then filters the held signal as an
+//     analogue circuit does: two real poles (about 1.1 and 2.4 kHz) and a real
+//     zero at 14 kHz, solved exactly over each held sample. The output here is
+//     at 48 kHz, so the hold's images are carried as the real thing's are.
+//   - Voicing: a period of floor(8000 / Pitch) + 1 ticks, exactly periodic; an
+//     effect's pulse runs ceil(8000 / rate) ticks, one shorter wherever
+//     8000 / rate is whole. The reset default is Pitch 87 (every voiced sound
+//     runs 92 ticks there on both units; the manual says 88). At the start of
+//     each period three formant sines restart at one phase under an envelope
+//     that steps to full at once and falls linearly over about 7 ms.
 //   - Noise: white noise through a two-pole resonance, a centre and width per
 //     sound (the chip's hiss is Gaussian noise, not a thrown tone).
 //   - Lengths are measured per sound, independent of context and Pitch, and
@@ -30,11 +33,14 @@
 //     is the stop again, closure and release; a glide's copy glides back.
 //   - Effects pulse at Pitch plus an offset of their own; plain tones hold
 //     pitch and level and end in a 55 ms fade; D0 to D11 are the standard DTMF
-//     pairs.
+//     pairs. Under every effect's tones runs a faint noise bed that follows
+//     each tone's change per tick, smoothed (up to about 1.5 kHz).
+//   - The chip reads the command after a sound early, at that sound's release:
+//     a Speed or Volume command read so changes the rest of the sound playing.
 //   - Bend moves every oscillator by 44 Hz a step; Stress, Relax and code 18 do
 //     nothing measurable.
 //
-// The tables (tables.go, generated) are about 2.6 KB: 72 allophones of 14
+// The tables (tables.go, generated) are about 2.7 KB: 72 allophones of 14
 // bytes (kind, length, three formants with levels, a noise band, a Repeat copy
 // length, a level), a second frame for the five voiced stops that have one,
 // and the 55 effects as a byte stream of parts, each holding only the tones
