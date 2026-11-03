@@ -206,7 +206,7 @@ func NewSpeakJet() *SpeakJet {
 }
 
 func (sj *SpeakJet) resetControls() {
-	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 87, 5, 0 // Pitch 87, not the manual's 88: at the reset default every voiced sound runs 92 ticks on both units, which only 87 gives (provisional, see speakjet.h in the C library)
+	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 88, 5, 0 // the manual's Pitch 88: its period is one of the twelve one tick long (92 ticks, VoxProbe 2 and 10)
 	sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 }
 
@@ -939,6 +939,14 @@ func (sj *SpeakJet) chipSample() float64 {
 				sj.period = int(math.Ceil(8000.0 / f))
 			} else {
 				sj.period = int(8000.0/f) + 1
+			}
+			// one tick more at twelve rates (VoxProbe 2's Pitch sweep and VoxProbe 10's register sweep, both units: the
+			// same routine; it is why the reset default, Pitch 88, runs 92 ticks)
+			if f == float64(int(f)) {
+				switch int(f) {
+				case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
+					sj.period++
+				}
 			}
 			sj.ptick = sj.period
 		}
