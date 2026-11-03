@@ -184,6 +184,9 @@ type SpeakJet struct {
 	xa            [3]float32    // fxSmooth: the tone amplitudes as they ramp
 	xv            float32       // fxSmooth: the voice's gain as it ramps in
 	vbuzz         float64       // fxBuzz: this tick's band output, kept out of the bed's slope
+	neq           int           // the playing effect's peaking filters (fxeq)
+	eqc           [3][5]float64 // b0 b1 b2 a1 a2
+	eqz           [3][2]float64
 	bzbuf         [1024]float64 // fxBuzz: the source's recent past, for the comb
 	bzpos, bzclk  int           // and ticks to the next click
 	nz            [2]float64    // the noise resonator's two delays
@@ -415,6 +418,9 @@ func (sj *SpeakJet) addSegment(ticks int, from, to frame, voiced bool) {
 
 // start playing the segments built so far
 func (sj *SpeakJet) start(effect bool) {
+	if !effect {
+		sj.neq = 0 // an allophone has no peaking filters
+	}
 	if effect {
 		sj.attack, sj.release = ticks(fxAttackMs), ticks(fxReleaseMs)
 	} else {
@@ -480,6 +486,28 @@ func fxDecode(at int, f *fxpart) int {
 }
 
 func (sj *SpeakJet) playEffect(code int) {
+	// its peaking filters (fxeq, at most 3): a fixed shaping of its spectrum toward the chip's, set after its
+	// structure was tuned (2026-11-04); RBJ peaking biquads at the chip's rate
+	sj.neq = 0
+	for i := 0; i < len(fxeq) && sj.neq < 3; i++ {
+		if int(fxeq[i][0]) != code-200 {
+			continue
+		}
+		f, g, qq := float64(fxeq[i][1])*hzStep, float64(int8(fxeq[i][2]))/2.0, float64(fxeq[i][3])/10.0
+		A := math.Pow(10.0, g/40.0)
+		w := 2.0 * math.Pi * f / rate
+		al := math.Sin(w) / (2.0 * qq)
+		cw := math.Cos(w)
+		a0 := 1.0 + al/A
+		c := &sj.eqc[sj.neq]
+		c[0] = (1.0 + al*A) / a0
+		c[1] = -2.0 * cw / a0
+		c[2] = (1.0 - al*A) / a0
+		c[3] = -2.0 * cw / a0
+		c[4] = (1.0 - al/A) / a0
+		sj.eqz[sj.neq] = [2]float64{}
+		sj.neq++
+	}
 	at, end := int(fxat[code-200]), int(fxat[code-199])
 	bend := sj.bendHz()
 	sj.nseg = 0
@@ -1167,6 +1195,14 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	sj.stick++
 
+	// the effect's peaking filters (transposed direct form II)
+	for k := 0; k < sj.neq; k++ {
+		c := &sj.eqc[k]
+		y := c[0]*v + sj.eqz[k][0]
+		sj.eqz[k][0] = c[1]*v - c[3]*y + sj.eqz[k][1]
+		sj.eqz[k][1] = c[2]*v - c[4]*y
+		v = y
+	}
 	v *= sj.volumeGain()
 	// the output stage's step size
 	if quant > 0 {
