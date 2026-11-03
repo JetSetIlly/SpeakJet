@@ -1,3 +1,9 @@
+***NOTE from @JetSetIlly**: I am hosting this under my name only because it is so closely related to `Gopher2600`.
+The original impetus for the project was for the creation of an `AtariVox` emulation that would remove the need for `Festival`.
+I challenged Andrew Davie to use `Claude` to create this new emulation from first principles using only the `SpeakJet` manual.
+I have had no hand in the project except a small change to the API so that it could fit better with the needs of
+`Gopher2600`.*
+
 # SpeakJet
 
 An emulation of the Magnevation SpeakJet speech and sound synthesizer, the
