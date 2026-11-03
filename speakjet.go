@@ -99,7 +99,9 @@ const (
 	fxSine     = 1024 // the envelope oscillator's waveform (manual, register 8): saw (the voice's measured pulse),
 	fxTri      = 2048 // sine, triangle or square
 	fxSquare   = 3072
-	fxOne      = 4096 // only the first tone pulses, the other two are plain tones beside it (A0, both units: a voice at Pitch under two smooth glides; register 8 envelopes oscillators 1-3 as a group, 4 and 5 run apart)
+	fxOne      = 4096  // only the first tone pulses, the other two are plain tones beside it (A0, both units: a voice at Pitch under two smooth glides; register 8 envelopes oscillators 1-3 as a group, 4 and 5 run apart)
+	fxSmooth   = 16384 // a tone switching on from silence or off to silence ramps over 3 ms (24 ticks) instead of stepping at a part boundary (202 R2, 218 A8: no click on the chip); per sound, 233 C3's tones switch sharply
+	fxBuzz     = 8192  // the noise band driven by an impulse every period of the part's pulse rate instead of noise, at the same power (232 C2's banded burst)
 	fxShape    = 3072
 )
 
@@ -179,9 +181,14 @@ type SpeakJet struct {
 	// synthesizer state
 	period, ptick int
 	phase         [3]float64
-	nz            [2]float64 // the noise resonator's two delays
-	venv          float64    // the voicing envelope this tick, for an fxAll effect's noise
-	wander        float64    // an fxWander part's pitch drift, a fraction
+	xa            [3]float32    // fxSmooth: the tone amplitudes as they ramp
+	xv            float32       // fxSmooth: the voice's gain as it ramps in
+	vbuzz         float64       // fxBuzz: this tick's band output, kept out of the bed's slope
+	bzbuf         [1024]float64 // fxBuzz: the source's recent past, for the comb
+	bzpos, bzclk  int           // and ticks to the next click
+	nz            [2]float64    // the noise resonator's two delays
+	venv          float64       // the voicing envelope this tick, for an fxAll effect's noise
+	wander        float64       // an fxWander part's pitch drift, a fraction
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 	vprev         float64 // the output's last tick
@@ -911,11 +918,45 @@ func (sj *SpeakJet) chipSample() float64 {
 	f.nf = float32(lerp(float64(s.from.nf), float64(s.to.nf), t))
 	f.nw = float32(lerp(float64(s.from.nw), float64(s.to.nw), t))
 	f.na = float32(lerp(float64(s.from.na), float64(s.to.na), t))
+	if s.flags&fxSmooth != 0 {
+		if sj.stick == 0 {
+			for k := 0; k < 3; k++ {
+				sj.xa[k] = f.a[k]
+			}
+		}
+		for k := 0; k < 3; k++ {
+			onoff := f.a[k] < 0.5 || sj.xa[k] < 0.5 || (sj.xa[k] < f.a[k]*0.5 && sj.xa[k] < 2.0)
+			if onoff {
+				sj.xa[k] = sj.xa[k] + (f.a[k]-sj.xa[k])/24.0
+			} else {
+				sj.xa[k] = f.a[k]
+			}
+			f.a[k] = sj.xa[k]
+		}
+	} else {
+		for k := 0; k < 3; k++ {
+			sj.xa[k] = f.a[k]
+		}
+	}
 	sj.last = f
 
 	v := 0.0
 
 	// voicing
+	// fxSmooth: where voicing starts after unvoiced sound, the voice comes in over 3 ms (24 ticks)
+	{
+		want := float32(0.0)
+		if s.voiced && sj.pitch > 0 {
+			want = 1.0
+		}
+		if s.flags&fxSmooth == 0 || sj.stick == 0 {
+			sj.xv = want
+		} else if want > sj.xv {
+			sj.xv += (want - sj.xv) / 24.0
+		} else {
+			sj.xv = want
+		}
+	}
 	if s.voiced && sj.pitch > 0 {
 		if sj.ptick <= 0 {
 			// the period in ticks, from the chip's own nominal 8000: the voice runs
@@ -996,7 +1037,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		if s.flags&fxPulsed != 0 {
 			env *= 0.6
 		}
-		v -= env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
+		v -= float64(sj.xv) * env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
 		sj.venv = env
 		for k := nf; k < 3; k++ {
 			v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
@@ -1055,13 +1096,53 @@ func (sj *SpeakJet) chipSample() float64 {
 		r, c := exp(-math.Pi*nw/rate), sin2pi(nf/rate+0.25)
 		r2 := r * r
 		g := math.Sqrt((1.0 - r2) * ((1.0+r2)*(1.0+r2) - 4.0*r2*c*c) / (1.0 + r2))
-		y := g*sj.random() + 2.0*r*c*sj.nz[0] - r2*sj.nz[1]
+		// fxBuzz: the noise minus itself one period of the part's pulse rate ago at 0.6: notches every rate Hz in an
+		// otherwise flat noise, the power kept (232 C2's late burst)
+		ex := sj.random()
+		if s.flags&fxBuzz != 0 {
+			// clicks, not noise: an impulse every voice period (Pitch), an even broadband colour; the comb cuts narrow
+			// notches every rate Hz (user, C2: plain orange with narrow, regular purple stripes)
+			vper := 92
+			if sj.pitch > 0 {
+				vper = int(8000.0/float64(sj.pitch)) + 1
+			}
+			if sj.bzclk <= 0 {
+				sj.bzclk = vper
+			}
+			if sj.bzclk == vper {
+				ex = math.Sqrt(float64(vper) / 12.0)
+			} else {
+				ex = 0.0
+			}
+			sj.bzclk--
+			rate := float64(sj.pitch) + float64(s.pa)
+			if s.ticks > 1 {
+				rate += float64((s.pb-s.pa)*float32(sj.tick)) / float64(s.ticks-1)
+			} else {
+				rate += float64(s.pb - s.pa)
+			}
+			if rate < 10.0 {
+				rate = 10.0
+			}
+			per := int(math.Ceil(8000.0 / rate))
+			if per > 1023 {
+				per = 1023
+			}
+			old := sj.bzbuf[(sj.bzpos-per)&1023]
+			sj.bzbuf[sj.bzpos&1023] = ex
+			sj.bzpos++
+			ex = (ex - 0.6*old) * 0.8574929257125441 * 0.25
+		}
+		y := g*ex + 2.0*r*c*sj.nz[0] - r2*sj.nz[1]
 		sj.nz[1] = sj.nz[0]
 		sj.nz[0] = y
 		if s.flags&fxAll != 0 {
 			lvl *= sj.venv // both units: C0 and M2 are silent between their pulses
 		}
 		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
+		if s.flags&fxBuzz != 0 {
+			sj.vbuzz = lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
+		}
 	}
 
 	if s.gate > 0 && s.flags&fxNSweep == 0 && sj.tick%s.gate >= s.gate/2 {
@@ -1100,11 +1181,13 @@ func (sj *SpeakJet) chipSample() float64 {
 		// the effects' bed (both units): timing error, proportional to the
 		// signal's change per tick smoothed by one pole - it grows with the
 		// tone's frequency to about 1.5 kHz and only with its level above
-		sj.bed += bedPole * (v - sj.vprev - sj.bed)
+		// the buzz's clicks kept out of the slope (each is a huge step: the bed turned 227 B7's bands into noise)
+		sj.bed += bedPole * (v - sj.vbuzz - sj.vprev - sj.bed)
 		v += slew * 2.0 * r * sj.bed
 	}
 	sj.lastr = r
-	sj.vprev = v
+	sj.vprev = v - sj.vbuzz
+	sj.vbuzz = 0.0
 
 	sj.tick++
 	if sj.tick >= s.ticks {
