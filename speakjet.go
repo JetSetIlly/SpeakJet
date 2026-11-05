@@ -838,7 +838,17 @@ func (sj *SpeakJet) nextCommand() {
 			sj.playPause(pauseMs[code])
 			sj.joined = false
 		case code >= 128 && code <= 199:
+			// a sound played straight after the same sound (joined, controls between allowed) plays as a Repeat copy
+			// of it (VoxProbe 12, 2026-11-05, both units, 2600 and Stella: AY AY 208 ms, AW AW AW 255, UX UX UX 260 -
+			// what Repeat 2 / 3 makes, 214 / 268 / 259 - not two whole sounds, 272 / 316 / 329; a Pitch or Speed between
+			// the copies doesn't change it: AW Pitch 88 AW Pitch 88 AW 256)
+			again := sj.joined && sj.copyOf == int(code)-128 && sj.repeat <= 1
 			sj.playAllophone(int(code) - 128)
+			if again {
+				sj.stotal = sj.copySegments(int(code) - 128)
+				sj.cur = 0
+				sj.tick = 0
+			}
 			sj.repeat = 0
 			// the level ramps were measured on sounds played alone. inside a
 			// phrase the chip's level never drops more than 14-30 dB between
@@ -860,7 +870,11 @@ func (sj *SpeakJet) nextCommand() {
 				if both {
 					cut = ticks(overlapVMs)
 				}
-				if l.ticks > cut+1 {
+				// no overlap before the same sound again: it plays as a copy, which runs on from this one as a Repeat's do
+				if next == int(code) {
+					cut = 0
+				}
+				if cut > 0 && l.ticks > cut+1 {
 					l.ticks -= cut
 					sj.stotal -= cut
 				}
