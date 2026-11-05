@@ -49,8 +49,8 @@ const (
 	speedB       = 48.0
 	fxSpeedA     = 147.0 // the effects' (they shorten faster)
 	fxSpeedB     = 33.0
-	fastFactor   = 0.77 // Fast and Slow: factors on the played length
-	slowFactor   = 1.22
+	fastFactor   = 2.0 / 3.0 // Fast and Slow: factors on the played length
+	slowFactor   = 4.0 / 3.0
 	copyExtraMs  = 0.0  // a Repeat copy adds this to the manual's length
 	copyClosure  = 20.0 // a stop's Repeat copy opens on this much closure, ms
 	bendHz       = 44.0 // Bend step
@@ -385,13 +385,18 @@ func (sj *SpeakJet) speedFactor(effect bool) float64 {
 	return (speedA - float64(sj.speed)) / speedB
 }
 
-// Fast and Slow: measured (VoxRecord section 7, both units) as x0.77 and
-// x1.22 of the played length on vowels, nasals and fricatives; the stops
-// don't change (TT is 45-50 ms plain, fast or slow)
+// Fast x2/3 and Slow x4/3 of the played length (VoxProbe 12 section 2,
+// 2026-11-05, at -20 dB, both units, 2600 and Stella: Fast AY IYUW x0.63-0.70,
+// Slow AY IYUW OWWW NE AW UX x1.27-1.36; was x0.77 and x1.22). The unvoiced
+// stops and affricates don't change (TT is 45-50 ms plain, fast or slow); the
+// voiced stops do under Slow (VoxProbe 12: Slow GO OWWW +12 ms)
 func (sj *SpeakJet) modifiedMs(idx int, ms float64) float64 {
 	k := allophones[idx].kind
-	if k == kStop || k == kVStop || k == kAffr {
+	if k == kStop || k == kAffr || (k == kVStop && !sj.slow) {
 		return ms
+	}
+	if k == kVStop {
+		return ms * slowFactor
 	}
 	if sj.fast {
 		ms *= fastFactor
