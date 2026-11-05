@@ -19,8 +19,9 @@
 //     at 48 kHz, so the hold's images are carried as the real thing's are.
 //   - Voicing: a period of floor(8000 / Pitch) + 1 ticks, exactly periodic; an
 //     effect's pulse runs ceil(8000 / rate) ticks, one shorter wherever
-//     8000 / rate is whole. The reset default is Pitch 87 (every voiced sound
-//     runs 92 ticks there on both units; the manual says 88). At the start of
+//     8000 / rate is whole; twelve rates (44 51 53 56 63 77 87 88 92 104 127
+//     151) run one tick longer. The reset default is the manual's Pitch 88, one
+//     of them (92 ticks on both units). At the start of
 //     each period three formant sines restart at one phase under an envelope
 //     that steps to full at once and falls linearly over about 7 ms.
 //   - Noise: white noise through a two-pole resonance, a centre and width per

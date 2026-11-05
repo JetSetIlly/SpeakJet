@@ -99,7 +99,9 @@ const (
 	fxSine     = 1024 // the envelope oscillator's waveform (manual, register 8): saw (the voice's measured pulse),
 	fxTri      = 2048 // sine, triangle or square
 	fxSquare   = 3072
-	fxOne      = 4096 // only the first tone pulses, the other two are plain tones beside it (A0, both units: a voice at Pitch under two smooth glides; register 8 envelopes oscillators 1-3 as a group, 4 and 5 run apart)
+	fxOne      = 4096  // only the first tone pulses, the other two are plain tones beside it (A0, both units: a voice at Pitch under two smooth glides; register 8 envelopes oscillators 1-3 as a group, 4 and 5 run apart)
+	fxSmooth   = 16384 // a tone switching on from silence or off to silence ramps over 3 ms (24 ticks) instead of stepping at a part boundary (202 R2, 218 A8: no click on the chip); per sound, 233 C3's tones switch sharply
+	fxBuzz     = 8192  // the noise band driven by an impulse every period of the part's pulse rate instead of noise, at the same power (232 C2's banded burst)
 	fxShape    = 3072
 )
 
@@ -179,14 +181,33 @@ type SpeakJet struct {
 	// synthesizer state
 	period, ptick int
 	phase         [3]float64
-	nz            [2]float64 // the noise resonator's two delays
-	venv          float64    // the voicing envelope this tick, for an fxAll effect's noise
-	wander        float64    // an fxWander part's pitch drift, a fraction
+	xa            [3]float32    // fxSmooth: the tone amplitudes as they ramp
+	xv            float32       // fxSmooth: the voice's gain as it ramps in
+	vbuzz         float64       // fxBuzz: this tick's band output, kept out of the bed's slope
+	neq           int           // the playing effect's peaking filters (fxeq)
+	eqc           [3][5]float64 // b0 b1 b2 a1 a2
+	eqz           [3][2]float64
+	bzbuf         [1024]float64 // fxBuzz: the source's recent past, for the comb
+	bzpos, bzclk  int           // and ticks to the next click
+	nz            [2]float64    // the noise resonator's two delays
+	venv          float64       // the voicing envelope this tick, for an fxAll effect's noise
+	wander        float64       // an fxWander part's pitch drift, a fraction
 	rnd           uint32
 	lastr         float64 // the previous noise sample, for the floor's high pass
 	vprev         float64 // the output's last tick
 	bed           float64 // the output's change per tick, smoothed, for the effects' bed
 	am            float64 // the effects' slow level wobble
+
+	// the serial control protocol (manual, SCP): "\\0" enters it, then the synthesizer's registers are written
+	// directly ("<address>J<value>N"); its commands act at once, never through the buffer
+	scp, esc     bool       // in control mode; a "\\" seen, its node character next
+	sval         uint32     // the SCP input buffer's decimal value so far
+	slen         int        // and its characters (16 at most)
+	mtype, maddr uint8      // the Memory Type and Memory Address control registers
+	reg          [16]uint16 // the synthesizer's registers as SCP last wrote them (0-5 Hz, 6 distortion, 8 envelope control, 11-15 volumes; 7, the master volume, is volume)
+	hold         bool       // SCP "S": the MSA ignores the buffer until "T"
+	sph          [5]float64 // the direct oscillators' phases
+	eage         int        // ticks into the envelope oscillator's period
 
 	// output
 	held, heldpos float64
@@ -206,7 +227,7 @@ func NewSpeakJet() *SpeakJet {
 }
 
 func (sj *SpeakJet) resetControls() {
-	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 87, 5, 0 // Pitch 87, not the manual's 88: at the reset default every voiced sound runs 92 ticks on both units, which only 87 gives (provisional, see speakjet.h in the C library)
+	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 88, 5, 0 // the manual's Pitch 88: its period is one of the twelve one tick long (92 ticks, VoxProbe 2 and 10)
 	sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 }
 
@@ -250,6 +271,9 @@ func CommandSize(code uint8) int {
 // that take one. returns false if the buffer is too full to take the command,
 // in which case it is lost
 func (sj *SpeakJet) Write(code uint8, data uint8) bool {
+	if CommandSize(code) == 1 && sj.scpByte(code) {
+		return true
+	}
 	n := CommandSize(code)
 	if sj.count+n > BufferSize {
 		return false
@@ -259,6 +283,76 @@ func (sj *SpeakJet) Write(code uint8, data uint8) bool {
 		sj.buf[(sj.head+sj.count+1)%BufferSize] = data
 	}
 	sj.count += n
+	return true
+}
+
+// scpByte gives one serial byte to the SCP module, which watches every byte: true if it took the byte. Registers 0-5
+// take 0 to 3999 Hz, 6 and 8 0 to 255, 7 (the master volume, the MSA's Volume) 0 to 127, 11-15 0 to 31. "V" (say
+// "Ready") is not played: the chip's phrase for it is unmeasured. Memory type 32 (the EEPROM) is ignored
+func (sj *SpeakJet) scpByte(c uint8) bool {
+	if sj.esc {
+		sj.esc = false
+		if c >= '0' && c <= '9' {
+			// node 0 is every chip's; the AtariVox's own node is 0
+			sj.scp = c == '0'
+			sj.sval, sj.slen = 0, 0
+			sj.mtype, sj.maddr = 0, 0
+			return true
+		}
+		if sj.scp {
+			sj.scp = false // an escape and a non-numeric character leave control mode
+			return true
+		}
+		return false // outside control mode the character goes on to the MSA
+	}
+	if c == '\\' {
+		sj.esc = true
+		return true
+	}
+	if !sj.scp {
+		return false
+	}
+	if (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') {
+		if sj.slen < 16 {
+			sj.slen++
+			if c <= '9' {
+				sj.sval = sj.sval*10 + uint32(c-'0')
+			}
+		}
+		return true
+	}
+	v := sj.sval
+	sj.sval, sj.slen = 0, 0
+	switch c {
+	case 'H':
+		sj.mtype = uint8(v)
+	case 'J':
+		sj.maddr = uint8(v)
+	case 'N':
+		if sj.mtype == 0 && sj.maddr < 16 {
+			a := sj.maddr
+			switch {
+			case a == 7:
+				sj.volume = uint8(min(v, 127))
+			case a <= 5:
+				sj.reg[a] = uint16(min(v, 3999))
+			case a >= 11:
+				sj.reg[a] = uint16(min(v, 31))
+			case a == 6 || a == 8:
+				sj.reg[a] = uint16(min(v, 255))
+			}
+		}
+	case 'R': // clears the buffer: what is playing plays on
+		sj.count = sj.executing + sj.ahead
+	case 'S':
+		sj.hold = true
+	case 'T':
+		sj.hold = false
+	case 'W':
+		sj.powerOn()
+	case 'X':
+		sj.scp = false
+	}
 	return true
 }
 
@@ -408,6 +502,9 @@ func (sj *SpeakJet) addSegment(ticks int, from, to frame, voiced bool) {
 
 // start playing the segments built so far
 func (sj *SpeakJet) start(effect bool) {
+	if !effect {
+		sj.neq = 0 // an allophone has no peaking filters
+	}
 	if effect {
 		sj.attack, sj.release = ticks(fxAttackMs), ticks(fxReleaseMs)
 	} else {
@@ -420,6 +517,10 @@ func (sj *SpeakJet) start(effect bool) {
 		sj.stotal += sj.seg[i].ticks
 	}
 	sj.sounding = sj.nseg > 0
+	// the MSA drives the synthesizer itself and leaves the oscillator volumes at 0 (manual: its pauses ramp them out)
+	for k := 11; k <= 15; k++ {
+		sj.reg[k] = 0
+	}
 	sj.effect = effect
 	sj.read = false
 	sj.ahead = 0
@@ -473,6 +574,28 @@ func fxDecode(at int, f *fxpart) int {
 }
 
 func (sj *SpeakJet) playEffect(code int) {
+	// its peaking filters (fxeq, at most 3): a fixed shaping of its spectrum toward the chip's, set after its
+	// structure was tuned (2026-11-04); RBJ peaking biquads at the chip's rate
+	sj.neq = 0
+	for i := 0; i < len(fxeq) && sj.neq < 3; i++ {
+		if int(fxeq[i][0]) != code-200 {
+			continue
+		}
+		f, g, qq := float64(fxeq[i][1])*hzStep, float64(int8(fxeq[i][2]))/2.0, float64(fxeq[i][3])/10.0
+		A := math.Pow(10.0, g/40.0)
+		w := 2.0 * math.Pi * f / rate
+		al := math.Sin(w) / (2.0 * qq)
+		cw := math.Cos(w)
+		a0 := 1.0 + al/A
+		c := &sj.eqc[sj.neq]
+		c[0] = (1.0 + al*A) / a0
+		c[1] = -2.0 * cw / a0
+		c[2] = (1.0 - al*A) / a0
+		c[3] = -2.0 * cw / a0
+		c[4] = (1.0 - al/A) / a0
+		sj.eqz[sj.neq] = [2]float64{}
+		sj.neq++
+	}
 	at, end := int(fxat[code-200]), int(fxat[code-199])
 	bend := sj.bendHz()
 	sj.nseg = 0
@@ -697,7 +820,7 @@ func (sj *SpeakJet) peek(i int) uint8 { return sj.buf[(sj.head+i)%BufferSize] }
 // take the next command from the buffer and start it. the command stays
 // counted in the buffer until it has finished
 func (sj *SpeakJet) nextCommand() {
-	for sj.count > 0 && !sj.sounding {
+	for sj.count > 0 && !sj.sounding && !sj.hold {
 		code := sj.peek(0)
 		n := CommandSize(code)
 		var data uint8
@@ -871,12 +994,134 @@ func (sj *SpeakJet) readAhead() {
 	sj.ahead = 2
 }
 
+// outputStage applies the master volume and the output stage: the voice (an allophone's voicing) gets the floor,
+// everything else the bed
+func (sj *SpeakJet) outputStage(v float64, voice bool) float64 {
+	v *= sj.volumeGain()
+	// the output stage's step size
+	if quant > 0 {
+		v = math.Floor(v*quant+0.5) / quant
+	}
+	// the output noise floor: white under the effects' tones; none under the
+	// voice (floor 0, the chip's voice is exactly periodic)
+	r := sj.random()
+	if voice {
+		v *= 1.0 + floor*2.0*(r-sj.lastr)
+	} else {
+		// the effects' bed (both units): timing error, proportional to the
+		// signal's change per tick smoothed by one pole - it grows with the
+		// tone's frequency to about 1.5 kHz and only with its level above
+		// the buzz's clicks kept out of the slope (each is a huge step: the bed turned 227 B7's bands into noise)
+		sj.bed += bedPole * (v - sj.vbuzz - sj.vprev - sj.bed)
+		v += slew * 2.0 * r * sj.bed
+	}
+	sj.lastr = r
+	sj.vprev = v - sj.vbuzz
+	sj.vbuzz = 0.0
+	return v
+}
+
+// scpDB is a register tone's level: VoxProbe 9, both units, the 1000 Hz tone at volume 31 stands 3.1-3.6 dB over 235
+// C5 and 241 D1, which put it 4.9 and 6.9 dB above the effects' tone scale; the mean (written out as a factor below,
+// so every compiler gets the same)
+const scpDB = 5.9
+
+func (sj *SpeakJet) scpAudible() bool {
+	return sj.volume > 0 && (sj.reg[11]|sj.reg[12]|sj.reg[13]|sj.reg[14]|sj.reg[15]) != 0
+}
+
+// scpSample is the synthesizer as SCP set it, between the MSA's sounds: five sines at registers 1-5 and 11-15;
+// register 8's bits 0-1 the envelope's shape (as the effects': saw is the voice's pulse), bit 6 envelopes oscillators
+// 1-3, bit 7 half envelopes 4 and 5, and no bed (the effects' own); the envelope runs at register 0 Hz, ceil(8000 / rate) ticks (the effects' rule);
+// register 6 spreads 4 and 5 into noise round their frequencies. Unmeasured: the distortion's law (here a random
+// frequency error of up to distortion / 255 a tick), and the envelope at 0 Hz (here silent)
+func (sj *SpeakJet) scpSample() float64 {
+	ctl, rt := int(sj.reg[8]), int(sj.reg[0])
+	env := 1.0
+	if ctl&0xc0 != 0 {
+		if rt <= 0 {
+			env = 0.0
+		} else {
+			period := int(math.Ceil(8000.0 / float64(rt)))
+			switch rt {
+			case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
+				period++
+			}
+			if sj.eage >= period {
+				sj.eage = 0
+			}
+			if sj.eage == 0 && ctl&0x40 != 0 {
+				for k := 0; k < 3; k++ {
+					sj.sph[k] = 0.0 // the enveloped tones restart with each pulse, as the voice's
+				}
+			}
+			age := sj.eage
+			sj.eage++
+			x := float64(age) / float64(period)
+			switch ctl & 3 {
+			case 1:
+				env = 0.5 + 0.5*sin2pi(x+0.25)
+			case 2:
+				env = x
+			case 3:
+				if x < 0.5 {
+					env = 1.0
+				} else {
+					env = 0.0
+				}
+			default:
+				fa := float64(age)
+				env = 1.0 - (fa-envRise)/envFall
+				if fa < envRise {
+					env = fa / envRise
+				}
+				if env < 0.0 {
+					env = 0.0
+				}
+			}
+		}
+	}
+	s13, s45 := 0.0, 0.0
+	for k := 0; k < 5; k++ {
+		a, f := float64(sj.reg[11+k]), float64(sj.reg[1+k])
+		if a > 0.0 && f > 0.0 {
+			if k < 3 {
+				s13 += a * sin2pi(sj.sph[k])
+			} else {
+				s45 += a * sin2pi(sj.sph[k])
+			}
+		}
+		step := f / nominal
+		if k >= 3 && sj.reg[6] > 0 {
+			step *= 1.0 + float64(sj.reg[6])/255.0*2.0*sj.random()
+		}
+		sj.sph[k] += step
+		sj.sph[k] -= math.Floor(sj.sph[k])
+	}
+	v := 0.0
+	if ctl&0x40 != 0 {
+		v -= env * s13 / 128.0 // enveloped, as the voice: the pulse starts downward
+	} else {
+		v += s13 / 128.0 * 0.6 // plain, as the effects' tones
+	}
+	half := 1.0
+	if ctl&0x80 != 0 {
+		half = 0.5*env + 0.5
+	}
+	v += half * s45 / 128.0 * 0.6
+	v *= 1.9724227361148539
+	return sj.outputStage(v, true) // no bed: under a register tone it is 57 dB down (VoxProbe 10, all three takes)
+}
+
 // one chip sample
 func (sj *SpeakJet) chipSample() float64 {
 	if !sj.sounding {
 		sj.nextCommand()
 	}
 	if !sj.sounding {
+		if sj.scpAudible() {
+			return sj.scpSample()
+		}
 		return 0.0
 	}
 	if !sj.read && sj.copies == 0 && sj.peek(0) >= 128 { // sounds only: no recording shows a pause reading ahead
@@ -911,11 +1156,45 @@ func (sj *SpeakJet) chipSample() float64 {
 	f.nf = float32(lerp(float64(s.from.nf), float64(s.to.nf), t))
 	f.nw = float32(lerp(float64(s.from.nw), float64(s.to.nw), t))
 	f.na = float32(lerp(float64(s.from.na), float64(s.to.na), t))
+	if s.flags&fxSmooth != 0 {
+		if sj.stick == 0 {
+			for k := 0; k < 3; k++ {
+				sj.xa[k] = f.a[k]
+			}
+		}
+		for k := 0; k < 3; k++ {
+			onoff := f.a[k] < 0.5 || sj.xa[k] < 0.5 || (sj.xa[k] < f.a[k]*0.5 && sj.xa[k] < 2.0)
+			if onoff {
+				sj.xa[k] = sj.xa[k] + (f.a[k]-sj.xa[k])/24.0
+			} else {
+				sj.xa[k] = f.a[k]
+			}
+			f.a[k] = sj.xa[k]
+		}
+	} else {
+		for k := 0; k < 3; k++ {
+			sj.xa[k] = f.a[k]
+		}
+	}
 	sj.last = f
 
 	v := 0.0
 
 	// voicing
+	// fxSmooth: where voicing starts after unvoiced sound, the voice comes in over 3 ms (24 ticks)
+	{
+		want := float32(0.0)
+		if s.voiced && sj.pitch > 0 {
+			want = 1.0
+		}
+		if s.flags&fxSmooth == 0 || sj.stick == 0 {
+			sj.xv = want
+		} else if want > sj.xv {
+			sj.xv += (want - sj.xv) / 24.0
+		} else {
+			sj.xv = want
+		}
+	}
 	if s.voiced && sj.pitch > 0 {
 		if sj.ptick <= 0 {
 			// the period in ticks, from the chip's own nominal 8000: the voice runs
@@ -939,6 +1218,14 @@ func (sj *SpeakJet) chipSample() float64 {
 				sj.period = int(math.Ceil(8000.0 / f))
 			} else {
 				sj.period = int(8000.0/f) + 1
+			}
+			// one tick more at twelve rates (VoxProbe 2's Pitch sweep and VoxProbe 10's register sweep, both units: the
+			// same routine; it is why the reset default, Pitch 88, runs 92 ticks)
+			if f == float64(int(f)) {
+				switch int(f) {
+				case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
+					sj.period++
+				}
 			}
 			sj.ptick = sj.period
 		}
@@ -988,7 +1275,7 @@ func (sj *SpeakJet) chipSample() float64 {
 		if s.flags&fxPulsed != 0 {
 			env *= 0.6
 		}
-		v -= env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
+		v -= float64(sj.xv) * env * sum / 128.0 * float64(f.lv) // the pulse starts downward (both units, every vowel at Pitch 20)
 		sj.venv = env
 		for k := nf; k < 3; k++ {
 			v += float64(f.a[k]) / 128.0 * 0.6 * float64(f.lv) * sin2pi(sj.phase[k])
@@ -1047,13 +1334,53 @@ func (sj *SpeakJet) chipSample() float64 {
 		r, c := exp(-math.Pi*nw/rate), sin2pi(nf/rate+0.25)
 		r2 := r * r
 		g := math.Sqrt((1.0 - r2) * ((1.0+r2)*(1.0+r2) - 4.0*r2*c*c) / (1.0 + r2))
-		y := g*sj.random() + 2.0*r*c*sj.nz[0] - r2*sj.nz[1]
+		// fxBuzz: the noise minus itself one period of the part's pulse rate ago at 0.6: notches every rate Hz in an
+		// otherwise flat noise, the power kept (232 C2's late burst)
+		ex := sj.random()
+		if s.flags&fxBuzz != 0 {
+			// clicks, not noise: an impulse every voice period (Pitch), an even broadband colour; the comb cuts narrow
+			// notches every rate Hz (user, C2: plain orange with narrow, regular purple stripes)
+			vper := 92
+			if sj.pitch > 0 {
+				vper = int(8000.0/float64(sj.pitch)) + 1
+			}
+			if sj.bzclk <= 0 {
+				sj.bzclk = vper
+			}
+			if sj.bzclk == vper {
+				ex = math.Sqrt(float64(vper) / 12.0)
+			} else {
+				ex = 0.0
+			}
+			sj.bzclk--
+			rate := float64(sj.pitch) + float64(s.pa)
+			if s.ticks > 1 {
+				rate += float64((s.pb-s.pa)*float32(sj.tick)) / float64(s.ticks-1)
+			} else {
+				rate += float64(s.pb - s.pa)
+			}
+			if rate < 10.0 {
+				rate = 10.0
+			}
+			per := int(math.Ceil(8000.0 / rate))
+			if per > 1023 {
+				per = 1023
+			}
+			old := sj.bzbuf[(sj.bzpos-per)&1023]
+			sj.bzbuf[sj.bzpos&1023] = ex
+			sj.bzpos++
+			ex = (ex - 0.6*old) * 0.8574929257125441 * 0.25
+		}
+		y := g*ex + 2.0*r*c*sj.nz[0] - r2*sj.nz[1]
 		sj.nz[1] = sj.nz[0]
 		sj.nz[0] = y
 		if s.flags&fxAll != 0 {
 			lvl *= sj.venv // both units: C0 and M2 are silent between their pulses
 		}
 		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
+		if s.flags&fxBuzz != 0 {
+			sj.vbuzz = lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
+		}
 	}
 
 	if s.gate > 0 && s.flags&fxNSweep == 0 && sj.tick%s.gate >= s.gate/2 {
@@ -1078,25 +1405,15 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	sj.stick++
 
-	v *= sj.volumeGain()
-	// the output stage's step size
-	if quant > 0 {
-		v = math.Floor(v*quant+0.5) / quant
+	// the effect's peaking filters (transposed direct form II)
+	for k := 0; k < sj.neq; k++ {
+		c := &sj.eqc[k]
+		y := c[0]*v + sj.eqz[k][0]
+		sj.eqz[k][0] = c[1]*v - c[3]*y + sj.eqz[k][1]
+		sj.eqz[k][1] = c[2]*v - c[4]*y
+		v = y
 	}
-	// the output noise floor: white under the effects' tones; none under the
-	// voice (floor 0, the chip's voice is exactly periodic)
-	r := sj.random()
-	if s.voiced && s.flags&(fxVoiced|fxPulsed) == 0 {
-		v *= 1.0 + floor*2.0*(r-sj.lastr)
-	} else {
-		// the effects' bed (both units): timing error, proportional to the
-		// signal's change per tick smoothed by one pole - it grows with the
-		// tone's frequency to about 1.5 kHz and only with its level above
-		sj.bed += bedPole * (v - sj.vprev - sj.bed)
-		v += slew * 2.0 * r * sj.bed
-	}
-	sj.lastr = r
-	sj.vprev = v
+	v = sj.outputStage(v, s.voiced && s.flags&(fxVoiced|fxPulsed) == 0)
 
 	sj.tick++
 	if sj.tick >= s.ticks {
@@ -1119,7 +1436,7 @@ func (sj *SpeakJet) chipSample() float64 {
 // in the range -1 to 1. returns true if the chip is producing sound
 func (sj *SpeakJet) Render(buf []float32) bool {
 	const step = rate / SampleRate
-	sounding := sj.sounding || sj.count > 0
+	sounding := sj.sounding || sj.count > 0 || sj.scpAudible()
 	for i := range buf {
 		// the held chip samples through the AtariVox's low pass, sampled at
 		// the end of this output sample (the zero adds the second pole's input
@@ -1132,7 +1449,7 @@ func (sj *SpeakJet) Render(buf []float32) bool {
 			b := step - a
 			sj.settle(sj.held, math.Exp(-sj.lpf[0]*a), math.Exp(-sj.lpf[1]*a))
 			sj.held = sj.chipSample()
-			sounding = sounding || sj.sounding || sj.count > 0
+			sounding = sounding || sj.sounding || sj.count > 0 || sj.scpAudible()
 			sj.settle(sj.held, math.Exp(-sj.lpf[0]*b), math.Exp(-sj.lpf[1]*b))
 			sj.heldpos = b
 		}
