@@ -19,7 +19,7 @@ else. It is a line-for-line port of the C library at
 - Takes the raw command stream and gives the Buffer Half Full and Speaking
   lines, so it drops straight into an emulator's AtariVox.
 - Output: mono float32 samples at 48 kHz (`SampleRate`).
-- Tables about 2.7 KB; the package compiles to about 22 KB.
+- Tables about 5 KB; the package adds about 50 KB to a stripped binary.
 
 ## Using it
 
