@@ -19,7 +19,7 @@ else. It is a line-for-line port of the C library at
 - Takes the raw command stream and gives the Buffer Half Full and Speaking
   lines, so it drops straight into an emulator's AtariVox.
 - Output: mono float32 samples at 48 kHz (`SampleRate`).
-- Tables about 2.7 KB; the package compiles to about 22 KB.
+- Tables about 5 KB; the package adds about 50 KB to a stripped binary.
 
 ## Using it
 
@@ -92,6 +92,11 @@ describes the chip as measured and `docs/design.md` the model, measurement by
 measurement; its `CHANGELOG.md` has the history.
 
 ## Version
+
+0.4.0: structure measured by a band × time audit against the chip's own
+take-to-take spread, the VoxProbe 12 timing (Slow, Fast, the same-sound join),
+the voice period from a 16-bit phase step, and each sound worked to its measured
+structure; P over all 2355 recordings 0.895 -> 0.844. Same API.
 
 0.3.0: the from-data rebuild (every table and most rules re-measured from the
 chip), with the same API as before.
