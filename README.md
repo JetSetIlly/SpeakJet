@@ -93,5 +93,10 @@ measurement; its `CHANGELOG.md` has the history.
 
 ## Version
 
+0.4.0: structure measured by a band × time audit against the chip's own
+take-to-take spread, the VoxProbe 12 timing (Slow, Fast, the same-sound join),
+the voice period from a 16-bit phase step, and each sound worked to its measured
+structure; P over all 2355 recordings 0.895 -> 0.844. Same API.
+
 0.3.0: the from-data rebuild (every table and most rules re-measured from the
 chip), with the same API as before.
