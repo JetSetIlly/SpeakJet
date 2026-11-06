@@ -18,8 +18,17 @@ const (
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
 // assumes 8000: its tones come out rate/8000 sharp on both units
 const (
-	rate    = 8026.0
-	nominal = 8000.0
+	rate        = 8026.0
+	nominal     = 8000.0
+	nhpFC       = 400.0 // an allophone's noise high pass, Hz
+	nsweepHP    = 150.0 // the swept noise's high pass (C8, C9), Hz
+	fricRamp    = 3.0   // an unvoiced fricative's attack and release, ms
+	thumpMs     = 16.0  // a sibilant's starting burst of low noise: it fades out over this, ms
+	fxburstMs   = 5.0   // an effect's starting click: it fades out over this, ms (220 B0: the chip's is ~5 ms)
+	thumpHz     = 800.0 // and is low-passed here
+	nasalAttack = 25.0  // a nasal's attack, ms (the vowels': attackMs)
+	barUp       = 0.12  // a voiced stop's bar: its upper formants at this fraction of the release's
+	barClick    = 0.0   // and the click it opens on, ms
 )
 
 // the constants of the model, as the recordings gave them. the same values as
@@ -33,7 +42,7 @@ const (
 	attackMs     = 35.0    // every sound's level ramp
 	releaseMs    = 30.0
 	fxAttackMs   = 1.0 // the effects' (both units: a tone starts within 1-3 ms, its splatter is the bed around it)
-	fxReleaseMs  = 15.0
+	fxReleaseMs  = 25.0
 	floor        = 0.0                // the voiced output noise floor, relative. 0: the chip's voice is exactly periodic (both units, every vowel and nasal at Pitch 88: the period holds to one 48 kHz sample, and the gaps between harmonics sit 30-60 dB under them, which a 0.05 floor filled to 15-30)
 	jitter       = 0.0                // the voiced oscillators' frequency wanders by this fraction each sample. 0, measured with the floor: it smeared the same gaps
 	quant        = 0.0                // the output\'s steps per full scale: the chip\'s output is coarse, about 5 bits across a vowel
@@ -150,6 +159,18 @@ type allophone struct {
 	cp     uint8 // the length of each further copy of a Repeat, msStep
 	lv     int8  // the sound's level, half-decibels (measured against the vowels, both units)
 	cb     uint8 // a stop's Repeat copies keep its voice bar through their closures
+	ob     uint8 // its onset: the first ob ms play og half-decibels louder (0: none)
+	og     uint8
+	cl     uint8 // a stop's closure, ms (0: the common closureMs)
+	rl     int8  // a stop's release after its first pulse, half-decibels re its bar (0: as the table)
+	wf     uint8 // a white floor under its noise band, /256 of the band's level (0: none)
+	rr     uint8 // its own release (fade-out) length, ms (0: the common one)
+	tc     uint8 // its starting burst's low-pass corner, Hz/32 (0: thumpHz)
+	th     uint8 // a low thump at its start: one cycle near 190 Hz, /256 of the noise band's level (0: none)
+	ba     uint8 // a voiced stop's bar fade-in from silence, ms (0: fricRamp)
+	bl     int8  // the bar's level re the release, half-decibels (0: the same)
+	aa     uint8 // its own attack (fade-in) length, ms (0: the class's)
+	hp     uint8 // its noise high pass corner, Hz/16 (0: nhpFC)
 }
 
 // SpeakJet is the chip. Write() is called by whatever is sending it data (the
@@ -173,9 +194,21 @@ type SpeakJet struct {
 	read            bool // the command after it has been read ahead
 	ahead           int  // bytes of that command, executed early: retired with the sound
 	attack, release int
-	copies          int   // copies of a Repeat still to play
-	copyOf          int   // which allophone
-	last            frame // where the voice is, for transitions into the next sound
+	onset           int // the sound's louder onset: its length in ticks, where it starts (a stop's or an affricate's release, after the closure)
+	onsetFrom       int
+	releaseGain     float64 // a stop's release (from onsetFrom), relative
+	wfloor          float64 // an allophone's white floor under its noise band
+	thump           float64 // its starting burst of low noise, relative to the noise band
+	thlp            float64 // that burst's low-pass state
+	thk             float64 // and its low-pass coefficient
+	nhk             float64 // an allophone's noise high pass coefficient
+	fxburst         float64 // an effect's onset burst (fxs): level
+	fxbk            float64 // its low-pass coefficient
+	fxblp           float64 // and state
+	onsetGain       float64 // and its gain
+	copies          int     // copies of a Repeat still to play
+	copyOf          int     // which allophone
+	last            frame   // where the voice is, for transitions into the next sound
 	sounding        bool
 
 	// synthesizer state
@@ -190,6 +223,7 @@ type SpeakJet struct {
 	bzbuf         [1024]float64 // fxBuzz: the source's recent past, for the comb
 	bzpos, bzclk  int           // and ticks to the next click
 	nz            [2]float64    // the noise resonator's two delays
+	nhp           [4]float64    // an allophone's noise high pass: input and output of each of its two stages
 	venv          float64       // the voicing envelope this tick, for an fxAll effect's noise
 	wander        float64       // an fxWander part's pitch drift, a fraction
 	rnd           uint32
@@ -515,6 +549,13 @@ func (sj *SpeakJet) start(effect bool) {
 	} else {
 		sj.attack, sj.release = ticks(attackMs), ticks(releaseMs)
 	}
+	sj.fxburst = 0
+	sj.onset = 0
+	sj.onsetFrom = 0
+	sj.releaseGain = 1.0
+	sj.wfloor = 0
+	sj.thump = 0
+	sj.thlp = 0
 	sj.cur, sj.tick, sj.stick = 0, 0, 0
 	sj.copies = 0
 	sj.stotal = 0
@@ -654,6 +695,22 @@ func (sj *SpeakJet) playEffect(code int) {
 		}
 	}
 	sj.start(true)
+	// its own structure (fxs, the structure loop's): fade-in and fade-out lengths, and a burst of low noise at its start
+	// (2026-11-06: the DTMF tones open on a broadband column ~15 ms long that the chip has and the library lacked)
+	x := fxs[code-200]
+	if x[0] > 0 {
+		sj.attack = ticks(float64(x[0]))
+	}
+	if x[1] > 0 {
+		sj.release = ticks(float64(x[1]))
+	}
+	sj.fxburst = float64(x[2]) / 256.0
+	bc := thumpHz
+	if x[3] > 0 {
+		bc = float64(x[3]) * 32.0
+	}
+	sj.fxbk = 1.0 - math.Exp(-2.0*math.Pi*bc/8000.0)
+	sj.fxblp = 0
 }
 
 func alloFrame(a *allophone, second bool, bend float64) frame {
@@ -756,6 +813,10 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		if tr > tk {
 			tr = tk
 		}
+		// a sound with an onset, from silence, starts on its own frame (its onset at full level)
+		if a.kind == kVFric && a.ob > 0 && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+			tr = 0
+		}
 		sj.addSegment(tr, from, tgt, true)
 		sj.addSegment(tk-tr, tgt, tgt, true)
 	case kGlide:
@@ -763,14 +824,39 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// the sound, the move takes the next seven tenths, the second frame
 		// holds the last tenth
 		tgt2 := alloFrame(a, true, bend)
+		// a glide's ba: its first frame's F1 in percent (161 AXUW)
+		tgt0 := tgt
+		tgt := tgt
+		if a.ba > 0 {
+			tgt.f[0] = tgt.f[0] * float32(a.ba) / 100.0
+		}
 		hold, move := tk/5, tk*7/10
 		tr := ticks(transitionMs)
 		if tr > hold {
 			tr = hold
 		}
-		sj.addSegment(tr, from, tgt, true)
-		sj.addSegment(hold-tr, tgt, tgt, true)
-		sj.addSegment(move, tgt, tgt2, true)
+		// with its own F1 (ba) the hold starts on the first allophone's and rises to it (161 AXUW)
+		sj.addSegment(tr, from, tgt0, true)
+		sj.addSegment(hold-tr, tgt0, tgt, true)
+		// a glide's cl: its F1 holds until cl percent of the sound, then moves with the rest (161 AXUW)
+		if k := int(a.cl) * tk / 100; a.cl > 0 && k > hold && k < hold+move {
+			k1 := k - hold
+			fr := float32(k1) / float32(move)
+			m := tgt
+			for q := 0; q < 3; q++ {
+				m.f[q] = tgt.f[q] + (tgt2.f[q]-tgt.f[q])*fr
+				m.a[q] = tgt.a[q] + (tgt2.a[q]-tgt.a[q])*fr
+			}
+			m.lv = tgt.lv + (tgt2.lv-tgt.lv)*fr
+			m.nf = tgt.nf + (tgt2.nf-tgt.nf)*fr
+			m.nw = tgt.nw + (tgt2.nw-tgt.nw)*fr
+			m.na = tgt.na + (tgt2.na-tgt.na)*fr
+			m.f[0] = tgt.f[0]
+			sj.addSegment(k1, tgt, m, true)
+			sj.addSegment(move-k1, m, tgt2, true)
+		} else {
+			sj.addSegment(move, tgt, tgt2, true)
+		}
 		sj.addSegment(tk-hold-move, tgt2, tgt2, true)
 	case kFric:
 		sj.addSegment(tk, tgt, tgt, false)
@@ -784,10 +870,37 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		bar, gone := from, silent
 		if a.kind == kVStop {
 			gone.f[0] = tgt.f[0]
-			gone.a[0] = tgt.a[0] // the first formant's level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
-			gone.lv = tgt.lv     // at the sound's own level (VoxProbe 6, slowed: DE's bar 3-4 dB under its release, BE's 8)
+			gone.a[0] = tgt.a[0]                                                    // the first formant's level: both units' voiced stops open on a voice bar 2-9 dB under the release (BE, BO, DE, DO, GE, GO)
+			gone.lv = tgt.lv                                                        // at the sound's own level (VoxProbe 6, slowed: DE's bar 3-4 dB under its release, BE's 8)
+			gone.lv = float32(float64(tgt.lv) * math.Pow(10.0, float64(a.bl)/40.0)) // or its own (the structure loop's bl)
+			// and its upper formants, weak (both units, the bar alone: 6-10 dB more than F1's tail at 1.8-5 kHz, 12-24 on GE GO)
+			gone.f[1] = tgt.f[1]
+			gone.f[2] = tgt.f[2]
+			gone.a[1] = float32(float64(tgt.a[1]) * barUp)
+			gone.a[2] = float32(float64(tgt.a[2]) * barUp)
 		}
-		sj.addSegment(ticks(closureMs*sj.speedFactor(false)), bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
+		// from silence, a voiced stop's bar is there at once, at its level (both units, the VoxRecord solo takes lined up
+		// on the release: BE BO DE DO GE GO's bar 2-11 dB under the peak through the closure, not a fade up from nothing)
+		if a.kind == kVStop && bar.a[0]+bar.a[1]+bar.a[2]+bar.na == 0 {
+			bar = gone
+		}
+		// each stop's own closure (both units, lined up on the release: BE BO DE DO's bar 50-55 ms, the final stops' 5-16)
+		cl := closureMs
+		if a.cl > 0 {
+			cl = float64(a.cl)
+		}
+		closure := ticks(cl * sj.speedFactor(false))
+		// from silence, the bar opens on a click: the release's full frame falling into the bar over barClick ms (both
+		// units, every voiced stop's first 10 ms 11-33 dB over the library's at 1-10 kHz)
+		click := 0
+		if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na == 0 && barClick > 0 {
+			click = ticks(barClick)
+			if click > closure-1 {
+				click = closure - 1
+			}
+			sj.addSegment(click, tgt, gone, true)
+		}
+		sj.addSegment(closure-click, bar, gone, a.kind == kVStop || bar.a[0]+bar.a[1]+bar.a[2] > 0)
 		// the release glides to the stop's second frame: the first formant falls into a labial or alveolar
 		// closure (both units: EB, OB, ED, OD); a stop without a measured target holds
 		sj.addSegment(tk, tgt, alloFrame(a, true, bend), a.kind == kVStop)
@@ -797,6 +910,58 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		sj.addSegment(tk, tgt, tgt, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
 	}
 	sj.start(false)
+	// an unvoiced fricative starts and stops at once (HE HO WH FF SE SO SH TH, both units, background allowed for: rise
+	// and fall 0-4 ms, median 2, where the vowels' 35 ms ramp gave 22-38)
+	if a.kind == kFric {
+		sj.attack = ticks(fricRamp)
+		sj.release = ticks(fricRamp)
+	}
+	if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+		sj.attack = ticks(fricRamp) // its bar starts at once too
+	}
+	if a.kind == kNasal {
+		sj.attack = ticks(nasalAttack) // a nasal rises faster than a vowel (both units, lined up at -20 dB: full in 15 ms, not 25)
+	}
+	// a louder onset (VoxRecord solo, both units: the voiced stops' and fricatives' first 1-8 ms, 3-19 dB over the rest)
+	sj.onset = ticks(float64(a.ob))
+	sj.onsetGain = math.Pow(10.0, float64(a.og)/40.0)
+	if sj.onset > 0 {
+		sj.attack = 0 // a sound with an onset starts at once, the onset at full level
+	}
+	if a.kind == kVStop && a.ba > 0 && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+		sj.attack = ticks(float64(a.ba)) // the bar fades in (both units: 175 DO's bar quiet for its first ~30 ms)
+	}
+	if a.aa > 0 {
+		sj.attack = ticks(float64(a.aa)) // a sound's own fade-in (the structure loop's aa: e.g. 185 WH starting ~5 ms early)
+	}
+	if (a.kind == kStop || a.kind == kVStop || a.kind == kAffr) && sj.nseg > 1 {
+		for k := 0; k < sj.nseg-1; k++ {
+			sj.onsetFrom += sj.seg[k].ticks // the release: everything before its segment
+		}
+	}
+	// a stop's release level of its own (both units, lined up on the release: DE's and DO's voicing after the first
+	// pulse 7-11 dB under the library's, their bars and bursts as the library's)
+	if a.rl != 0 && sj.onsetFrom > 0 {
+		sj.releaseGain = math.Pow(10.0, float64(a.rl)/40.0)
+	}
+	// a white floor under the band (WH, both units: noise 30 dB under its 700 Hz band out to 12 kHz)
+	sj.wfloor = float64(a.wf) / 256.0
+	hpc := nhpFC
+	if a.hp > 0 {
+		hpc = float64(a.hp) * 16.0
+	}
+	sj.nhk = 1.0 / (1.0 + 2.0*math.Pi*hpc/8000.0) // its own corner (PE, PO: their noise's bottom end)
+	// a sibilant starts on a thump: one cycle near 190 Hz, downward (both units: SE SO SH 12-18 dB over their body's
+	// 100-700 Hz band for 4-6 ms at the onset, every take)
+	sj.thump = float64(a.th) / 256.0
+	tcHz := thumpHz
+	if a.tc > 0 {
+		tcHz = float64(a.tc) * 32.0
+	}
+	sj.thk = 1.0 - math.Exp(-2.0*math.Pi*tcHz/8000.0)
+	if a.rr > 0 {
+		sj.release = ticks(float64(a.rr)) // a sound's own fade-out (SE, SO: the chip fades over most of the sound)
+	}
 	// the copies of a Repeat follow on; the level ramps once, over the whole
 	sj.copies = 0
 	if sj.repeat > 1 {
@@ -1236,11 +1401,13 @@ func (sj *SpeakJet) chipSample() float64 {
 			if s.flags&(fxVoiced|fxPulsed) != 0 {
 				sj.period = int(math.Ceil(8000.0 / f))
 			} else {
-				sj.period = int(8000.0/f) + 1
+				// the voice counts a 16-bit phase up by floor(rate * 65536 / 8000) a tick: floor(65536 / step) + 1 ticks
+				// (VoxProbe 2's Pitch sweep 20-255, both units: every Pitch to measuring precision, where
+				// floor(8000 / Pitch) + 1 missed 27; it is why the reset default, Pitch 88, runs 92 ticks)
+				sj.period = 65536/int(f*65536.0/8000.0) + 1
 			}
-			// one tick more at twelve rates (VoxProbe 2's Pitch sweep and VoxProbe 10's register sweep, both units: the
-			// same routine; it is why the reset default, Pitch 88, runs 92 ticks)
-			if f == float64(int(f)) {
+			// an effect's pulse: one tick more at twelve rates (VoxProbe 10's register sweep, both units)
+			if s.flags&(fxVoiced|fxPulsed) != 0 && f == float64(int(f)) {
 				switch int(f) {
 				case 44, 51, 53, 56, 63, 77, 87, 88, 92, 104, 127, 151:
 					sj.period++
@@ -1343,8 +1510,8 @@ func (sj *SpeakJet) chipSample() float64 {
 			if p < 0.4 {
 				sw = p / 0.4
 			}
-			nf *= exp((2.0*sw - 1.0) * 0.6)
-			lvl = exp(-5.0 * sw / 20.0 * math.Ln10)
+			nf *= exp((2.0*sw - 1.0) * 0.75)        // 2026-11-06: the chip spans ~650 Hz - 2.4 kHz
+			lvl = exp(-5.0 * sw / 20.0 * math.Ln10) // 5 dB quieter at the top (2026-11-06: 15 dB scored worse)
 		}
 		nw := float64(f.nw)
 		if nw < 10 {
@@ -1396,7 +1563,28 @@ func (sj *SpeakJet) chipSample() float64 {
 		if s.flags&fxAll != 0 {
 			lvl *= sj.venv // both units: C0 and M2 are silent between their pulses
 		}
-		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
+		// an allophone's noise is high-passed twice at nhpFC (every unvoiced fricative, both units, the VoxRecord solo
+		// takes with the background taken off: 6-21 dB too much under 400 Hz without it)
+		yo := y
+		// and the swept noise (C8, C9) at nsweepHP (2026-11-06: ~10 dB heavy under 300 Hz without it)
+		if !sj.effect || s.flags&fxNSweep != 0 {
+			k := sj.nhk
+			if sj.effect {
+				k = 1.0 / (1.0 + 2.0*math.Pi*nsweepHP/8000.0)
+			}
+			o1 := k * (sj.nhp[1] + y - sj.nhp[0])
+			sj.nhp[0] = y
+			sj.nhp[1] = o1
+			o2 := k * (sj.nhp[3] + o1 - sj.nhp[2])
+			sj.nhp[2] = o1
+			sj.nhp[3] = o2
+			yo = o2 + sj.wfloor*ex
+		}
+		if sj.thump > 0 && sj.stick < ticks(thumpMs) { // low noise (one pole at thumpHz) fading over thumpMs
+			sj.thlp += sj.thk * (ex - sj.thlp)
+			yo += sj.thump * sj.thlp * (1.0 - float64(sj.stick)/float64(ticks(thumpMs)))
+		}
+		v += lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * yo
 		if s.flags&fxBuzz != 0 {
 			sj.vbuzz = lvl * float64(f.lv) * float64(f.na) / 128.0 * 0.86 * y
 		}
@@ -1421,6 +1609,16 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	if sj.stotal-sj.stick < sj.release {
 		v *= float64(sj.stotal-sj.stick) / float64(sj.release)
+	}
+	if sj.stick >= sj.onsetFrom && sj.stick < sj.onsetFrom+sj.onset {
+		v *= sj.onsetGain
+	}
+	if sj.onsetFrom > 0 && sj.stick >= sj.onsetFrom {
+		v *= sj.releaseGain
+	}
+	if sj.fxburst > 0 && sj.stick < ticks(fxburstMs) {
+		sj.fxblp += sj.fxbk * (2.0*sj.random() - sj.fxblp)
+		v += sj.fxburst * sj.fxblp * (1.0 - float64(sj.stick)/float64(ticks(fxburstMs)))
 	}
 	sj.stick++
 

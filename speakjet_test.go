@@ -53,7 +53,11 @@ func TestPhraseLength(t *testing.T) {
 	got := float64(n) * 1000 / SampleRate
 	// the sounds' lengths, the stop's closure, and the two sounds followed at
 	// once by another cut short by the overlap
-	want := float64(int(allophones[183-128].ms)+int(allophones[135-128].ms)+int(allophones[199-128].ms))*msStep + closureMs - 2*overlapMs
+	closure := closureMs // the stop's own closure when it has one, as the engine plays it
+	if allophones[199-128].cl > 0 {
+		closure = float64(allophones[199-128].cl)
+	}
+	want := float64(int(allophones[183-128].ms)+int(allophones[135-128].ms)+int(allophones[199-128].ms))*msStep + closure - 2*overlapMs
 	if math.Abs(got-want) > 10 {
 		t.Errorf("phrase played for %.0fms, expected about %.0fms", got, want)
 	}
