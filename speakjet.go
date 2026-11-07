@@ -49,6 +49,7 @@ const (
 	decayDB      = 35.0               // an fxDecay part falls this many dB
 	transitionMs = 25.0               // the voice moves to a new sound's target over this
 	closureMs    = 30.0               // the closure before a stop's burst
+	joinClosure  = 45.0               // a stop's closure after a sound, at least this, ms (Man Goes Down's GO)
 	slew         = 0.078              // the effects' bed, measured: grows with the tone's frequency on both units
 	bedPole      = 0.6909588478246612 // up to about 1.5 kHz, then with the tone's level alone (one pole)
 	gateDepth    = 0.4                // an effect's gate: its off half's level, a factor
@@ -171,6 +172,7 @@ type allophone struct {
 	bl     int8  // the bar's level re the release, half-decibels (0: the same)
 	aa     uint8 // its own attack (fade-in) length, ms (0: the class's)
 	hp     uint8 // its noise high pass corner, Hz/16 (0: nhpFC)
+	nd     uint8 // a decaying release: the noise band's level at the end of its last segment, /256 (0: steady)
 }
 
 // SpeakJet is the chip. Write() is called by whatever is sending it data (the
@@ -203,6 +205,8 @@ type SpeakJet struct {
 	thk             float64 // and its low-pass coefficient
 	nhk             float64 // an allophone's noise high pass coefficient
 	fxburst         float64 // an effect's onset burst (fxs): level
+	fxbms           float64 // its length, ms (fxs tl; fxburstMs when 0)
+	fxhpk           float64 // the effect's own noise high pass (fxs hp), one stage; 0: none
 	fxbk            float64 // its low-pass coefficient
 	fxblp           float64 // and state
 	onsetGain       float64 // and its gain
@@ -550,6 +554,8 @@ func (sj *SpeakJet) start(effect bool) {
 		sj.attack, sj.release = ticks(attackMs), ticks(releaseMs)
 	}
 	sj.fxburst = 0
+	sj.fxbms = fxburstMs
+	sj.fxhpk = 0
 	sj.onset = 0
 	sj.onsetFrom = 0
 	sj.releaseGain = 1.0
@@ -704,13 +710,24 @@ func (sj *SpeakJet) playEffect(code int) {
 	if x[1] > 0 {
 		sj.release = ticks(float64(x[1]))
 	}
-	sj.fxburst = float64(x[2]) / 256.0
+	sj.fxburst = float64(x[2]) / 64.0 // /64 since 2026-11-07 (was /256; values divided by four): 253 M1's 50 ms burst needs the range
 	bc := thumpHz
 	if x[3] > 0 {
 		bc = float64(x[3]) * 32.0
 	}
 	sj.fxbk = 1.0 - math.Exp(-2.0*math.Pi*bc/8000.0)
 	sj.fxblp = 0
+	// 253 M1 (2026-11-07, both units, every take): a low block 100-500 Hz for the first ~50 ms under a hiss that has little
+	// under 500 Hz. An effect's noise is otherwise white to DC: its own high pass (hp, Hz/16, one stage) and its burst's own
+	// length (tl, ms)
+	sj.fxhpk = 0
+	if x[4] > 0 {
+		sj.fxhpk = 1.0 / (1.0 + 2.0*math.Pi*(float64(x[4])*16.0)/8000.0)
+	}
+	sj.fxbms = fxburstMs
+	if x[5] > 0 {
+		sj.fxbms = float64(x[5])
+	}
 }
 
 func alloFrame(a *allophone, second bool, bend float64) frame {
@@ -889,6 +906,10 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		if a.cl > 0 {
 			cl = float64(a.cl)
 		}
+		// after a sound the chip closes for at least joinClosure (Man Goes Down's NE GO, both units)
+		if from.a[0]+from.a[1]+from.a[2]+from.na > 0 && cl < joinClosure {
+			cl = joinClosure
+		}
 		closure := ticks(cl * sj.speedFactor(false))
 		// from silence, the bar opens on a click: the release's full frame falling into the bar over barClick ms (both
 		// units, every voiced stop's first 10 ms 11-33 dB over the library's at 1-10 kHz)
@@ -908,6 +929,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// a stop's closure, then the fricative (voiced for JH)
 		sj.addSegment(ticks(closureMs), silent, silent, false)
 		sj.addSegment(tk, tgt, tgt, int(a.a[0])+int(a.a[1])+int(a.a[2]) > 0)
+	}
+	// a release that decays: the noise band ends its last segment at nd/256 of its level (TS, both units, every take:
+	// -13 dB over its 95 ms, the low band holding - the white floor - while the band falls)
+	if a.nd > 0 && sj.nseg > 0 {
+		sj.seg[sj.nseg-1].to.na *= float32(a.nd) / 256.0
 	}
 	sj.start(false)
 	// an unvoiced fricative starts and stops at once (HE HO WH FF SE SO SH TH, both units, background allowed for: rise
@@ -953,7 +979,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	sj.nhk = 1.0 / (1.0 + 2.0*math.Pi*hpc/8000.0) // its own corner (PE, PO: their noise's bottom end)
 	// a sibilant starts on a thump: one cycle near 190 Hz, downward (both units: SE SO SH 12-18 dB over their body's
 	// 100-700 Hz band for 4-6 ms at the onset, every take)
-	sj.thump = float64(a.th) / 256.0
+	sj.thump = float64(a.th) / 64.0 // /64 since 2026-11-07 (was /256): SE's thump was pinned at the byte's top; values divided by four
 	tcHz := thumpHz
 	if a.tc > 0 {
 		tcHz = float64(a.tc) * 32.0
@@ -1567,10 +1593,13 @@ func (sj *SpeakJet) chipSample() float64 {
 		// takes with the background taken off: 6-21 dB too much under 400 Hz without it)
 		yo := y
 		// and the swept noise (C8, C9) at nsweepHP (2026-11-06: ~10 dB heavy under 300 Hz without it)
-		if !sj.effect || s.flags&fxNSweep != 0 {
+		if !sj.effect || s.flags&fxNSweep != 0 || sj.fxhpk > 0 {
 			k := sj.nhk
 			if sj.effect {
 				k = 1.0 / (1.0 + 2.0*math.Pi*nsweepHP/8000.0)
+				if sj.fxhpk > 0 {
+					k = sj.fxhpk // the effect's own high pass (fxs hp)
+				}
 			}
 			o1 := k * (sj.nhp[1] + y - sj.nhp[0])
 			sj.nhp[0] = y
@@ -1616,9 +1645,9 @@ func (sj *SpeakJet) chipSample() float64 {
 	if sj.onsetFrom > 0 && sj.stick >= sj.onsetFrom {
 		v *= sj.releaseGain
 	}
-	if sj.fxburst > 0 && sj.stick < ticks(fxburstMs) {
+	if sj.fxburst > 0 && sj.stick < ticks(sj.fxbms) {
 		sj.fxblp += sj.fxbk * (2.0*sj.random() - sj.fxblp)
-		v += sj.fxburst * sj.fxblp * (1.0 - float64(sj.stick)/float64(ticks(fxburstMs)))
+		v += sj.fxburst * sj.fxblp * (1.0 - float64(sj.stick)/float64(ticks(sj.fxbms)))
 	}
 	sj.stick++
 

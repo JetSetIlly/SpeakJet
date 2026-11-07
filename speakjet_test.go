@@ -57,6 +57,9 @@ func TestPhraseLength(t *testing.T) {
 	if allophones[199-128].cl > 0 {
 		closure = float64(allophones[199-128].cl)
 	}
+	if closure < joinClosure { // PO follows OH at once: it closes for at least joinClosure
+		closure = joinClosure
+	}
 	want := float64(int(allophones[183-128].ms)+int(allophones[135-128].ms)+int(allophones[199-128].ms))*msStep + closure - 2*overlapMs
 	if math.Abs(got-want) > 10 {
 		t.Errorf("phrase played for %.0fms, expected about %.0fms", got, want)
