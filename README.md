@@ -93,6 +93,14 @@ measurement; its `CHANGELOG.md` has the history.
 
 ## Version
 
+0.4.2: phrases. How sounds join, pause and stretch, fitted on Man Goes Down's phrases
+and every two-sound pair recorded on both units (rules resting on a few items marked
+ASSUMPTION in the code): speech below Speed 114 on the effects' law, measured pause
+lengths, a near-silent closure after a nasal, joins by formant distance, a voiced
+stop into a vowel trimmed by F2 distance; 191 TT's onset and noise bands on NE NO
+NGE. Man Goes Down's three phrases within 20 ms of both units (they were up to
+85 ms off). Every other single sound plays as at 0.4.1.
+
 0.4.1: the measurement under the fits repaired (unit A's newest takes re-placed,
 the audit's chip run found above the hum, the depth cut no longer emptying four
 sounds), then 46 sounds worked to it; four mechanisms: the sibilants' burst at
