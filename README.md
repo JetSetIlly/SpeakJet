@@ -93,6 +93,24 @@ measurement; its `CHANGELOG.md` has the history.
 
 ## Version
 
+0.4.2: phrases. How sounds join, pause and stretch, fitted on Man Goes Down's phrases
+and every two-sound pair recorded on both units (rules resting on a few items marked
+ASSUMPTION in the code): speech below Speed 114 on the effects' law, measured pause
+lengths, a near-silent closure after a nasal, joins by formant distance, a voiced
+stop into a vowel trimmed by F2 distance; 191 TT's onset and noise bands on NE NO
+NGE. Man Goes Down's three phrases within 20 ms of both units (they were up to
+85 ms off). Every other single sound plays as at 0.4.1.
+
+0.4.1: the measurement under the fits repaired (unit A's newest takes re-placed,
+the audit's chip run found above the hum, the depth cut no longer emptying four
+sounds), then 46 sounds worked to it; four mechanisms: the sibilants' burst at
+twice its old ceiling, a decaying release (TS), an effect's own noise high pass
+and burst length (M1's low block under a high-passed hiss), a stop's closure
+after a sound. Over every sound on both units' solo takes, against 0.3.0:
+E 4.35 -> 3.78, P 0.64 -> 0.55, spectrum 2.54 -> 2.34 (40 / 29 / 15 % of the gap
+to a second AtariVox closed); against 1.0.0, 92 % of the E gap. Same API; parity
+with the C library 2.7e-05.
+
 0.4.0: structure measured by a band × time audit against the chip's own
 take-to-take spread, the VoxProbe 12 timing (Slow, Fast, the same-sound join),
 the voice period from a 16-bit phase step, and each sound worked to its measured
