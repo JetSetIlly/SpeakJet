@@ -453,6 +453,21 @@ func (sj *SpeakJet) Reset() {
 // consonants ran 15-40 ms short each. Below 114 nothing changes. The step is at 116, not 115 (2026-11-09, VoxProbe
 // 14 section 2, both units: at Speed 115 IYUW is 225 ms as at 114, AW P2 AW 435 against 455 at 113; with the step
 // at 115 ours read IYUW -30, AW P2 AW -35 ms), so Speed 115 plays as 114
+// ASSUMPTION (2026-11-09, VoxProbe 4, 13 and 14's vowel and liquid joins, both units, the 2600 takes): besides the
+// distance law, a few sounds carry a join term of their own (alloj), added to the cut of every vowel or glide join
+// they are on either side of: IH +15, AW +6, OW -10, RR -16 ms. The law alone left AW IH, IH AW IH and AW IH AW
+// 22-45 ms long and AW RR, RR AW 10-13 ms short; with the terms the 26 joins without AY read rms 16.8 -> 5.0 ms, max
+// 42 -> 10. Fitted on VoxProbe 4 and 13 alone, the terms took VoxProbe 14 from rms 30.1 to 10.6 ms. AY IY is still
+// ~30 ms long: no term on AY or IY fits it with AY EH and IY's other joins (open)
+func joinTerm(idx int) float64 {
+	for _, j := range alloj {
+		if int(j[0]) == idx {
+			return float64(j[1]) - 128.0
+		}
+	}
+	return 0.0
+}
+
 func (sj *SpeakJet) speedStep() float64 { return (155.9 - float64(sj.speed)) / 47.4 }
 
 func (sj *SpeakJet) speedFactor(effect bool) float64 {
@@ -1653,7 +1668,7 @@ func (sj *SpeakJet) nextCommand() {
 							d += eb - ea
 						}
 					}
-					ms := (joinA - joinK*d) * sj.speedFactor(false)
+					ms := (joinA - joinK*d + joinTerm(int(code)-128) + joinTerm(next-128)) * sj.speedFactor(false)
 					if ms >= 0.0 {
 						cut = ticks(ms)
 					} else {
