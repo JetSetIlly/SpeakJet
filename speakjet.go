@@ -450,7 +450,9 @@ func (sj *SpeakJet) Reset() {
 // 114 an unslowed vowel or glide (and its Repeat copy) and a pause shrink by (155.9 - Speed) / 47.4, a step down from
 // 114 (118: x0.80, 127: x0.61, as measured; the effects' law gives x0.88 at 118), and the other speech sounds don't
 // shrink at all. P2 1700 ms against 1695/1700, timing inside it 12.9 -> 8.5 ms; with the step on the vowels alone the
-// consonants ran 15-40 ms short each. Below 114 nothing changes
+// consonants ran 15-40 ms short each. Below 114 nothing changes. The step is at 116, not 115 (2026-11-09, VoxProbe
+// 14 section 2, both units: at Speed 115 IYUW is 225 ms as at 114, AW P2 AW 435 against 455 at 113; with the step
+// at 115 ours read IYUW -30, AW P2 AW -35 ms), so Speed 115 plays as 114
 func (sj *SpeakJet) speedStep() float64 { return (155.9 - float64(sj.speed)) / 47.4 }
 
 func (sj *SpeakJet) speedFactor(effect bool) float64 {
@@ -820,7 +822,7 @@ func (sj *SpeakJet) copySegments(idx int) int {
 	a := &allophones[idx]
 	bend := sj.bendHz()
 	cf := sj.speedFactor(false)
-	if (a.kind == kVowel || a.kind == kGlide) && sj.speed > 114 && !sj.slow {
+	if (a.kind == kVowel || a.kind == kGlide) && sj.speed > 115 && !sj.slow {
 		cf = sj.speedStep()
 	}
 	tk := ticks((float64(a.cp)*msStep + copyExtraMs) * cf)
@@ -1092,7 +1094,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	sf := sj.speedFactor(false)
 	if a.kind == kVowel || a.kind == kGlide {
 		sf = sj.speedFactor(true)
-		if sj.speed > 114 && !sj.slow {
+		if sj.speed > 115 && !sj.slow {
 			sf = sj.speedStep()
 		}
 	} else if sj.speed > 114 {
@@ -1453,7 +1455,7 @@ func (sj *SpeakJet) nextCommand() {
 		switch {
 		case code <= 6:
 			pf := (fxSpeedA - float64(sj.speed)) / fxSpeedB
-			if sj.speed > 114 {
+			if sj.speed > 115 {
 				pf = sj.speedStep()
 			}
 			sj.playPause(pauseMs[code] * pf)
