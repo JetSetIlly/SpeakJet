@@ -1271,9 +1271,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			cl += 30.0
 		}
 		// ASSUMPTION (2026-11-08, VoxProbe 13 NE KO OW, both units by picture: NE stops at 0.105 s and KO bursts at 0.15,
-		// 30 ms after ours; NE TT and NE PO already land): KE and KO after a nasal close 30 ms longer
+		// 30 ms after ours; NE TT and NE PO already land): KE and KO after a nasal close longer. 15 ms, not 30
+		// (2026-11-09, the closure's quiet run against both units' 2600 takes: with 30 it was 11-30 ms long on VoxProbe
+		// 14's NE NO MM NGE KO AW and 15 on VoxProbe 13's NE KO OW itself)
 		if (a == &allophones[66] || a == &allophones[67]) && sj.lastNasal && from.a[0]+from.a[1]+from.a[2]+from.na > 0 {
-			cl += 30.0
+			cl += 15.0
 		}
 		// ASSUMPTION (2026-11-08): a slowed unvoiced stop after a sound closes 20 ms longer (VoxProbe 13 section 10, all
 		// four takes: AW Slow TT AW and Slow AYWW Slow TT 60 ms short; Man Goes Down P2's UW Slow TT: P2 timing 17.0 ->
