@@ -1315,8 +1315,10 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// ASSUMPTION (2026-11-08): a slowed unvoiced stop after a sound closes 20 ms longer (VoxProbe 13 section 10, all
 		// four takes: AW Slow TT AW and Slow AYWW Slow TT 60 ms short; Man Goes Down P2's UW Slow TT: P2 timing 17.0 ->
 		// 12.3)
-		// only before a pause (2026-11-08): before a sound the vowel ahead runs on instead (see the join)
-		if a.kind == kStop && sj.slow && from.a[0]+from.a[1]+from.a[2]+from.na > 0 && sj.nextSound(sj.executing) < 128 {
+		// only before a pause (2026-11-08): before a sound the vowel ahead runs on instead (see the join). That is TT's
+		// way; a slowed KE KO PE PO closes longer before a sound too (2026-11-09, VoxProbe 14 section 4, both units: AW
+		// Slow KO AW's closure 56 ms against 44 unslowed, AW Slow PO AW's 101 against 85, where the AW ahead doesn't run on)
+		if a.kind == kStop && sj.slow && from.a[0]+from.a[1]+from.a[2]+from.na > 0 && (sj.nextSound(sj.executing) < 128 || idx != 63) {
 			cl += 20.0
 		}
 		// a voiced stop after a nasal closes quietly, and Slow lengthens that closure (Man Goes Down's NE GO, VoxProbe 12
@@ -1612,8 +1614,10 @@ func (sj *SpeakJet) nextCommand() {
 				}
 				// ASSUMPTION (2026-11-08, VoxProbe 13 AW Slow TT AW and Slow AYWW Slow TT, both units, the runs of sound: the
 				// sound before a slowed unvoiced stop runs on ~40 ms - the Slow is read ahead - unless it is a nasal or the
-				// stop is followed by a pause (Man Goes Down P2's UW Slow TT P1): AW 130 -> 170 ms against 170)
-				if next <= 199 && allophones[next-128].kind == kStop && sj.slowBeforeNext(n) && allophones[code-128].kind != kStop && !(code >= 140 && code <= 144) {
+				// stop is followed by a pause (Man Goes Down P2's UW Slow TT P1): AW 130 -> 170 ms against 170). Before TT
+				// only (2026-11-09, VoxProbe 14 section 4, both units by picture: before a slowed KO or PO the AW is ~130 ms, as
+				// unslowed, where ours ran ~160; AW Slow KO AW +30 -> ~0, AW Slow PO AW +25)
+				if next == 191 && sj.slowBeforeNext(n) && allophones[code-128].kind != kStop && !(code >= 140 && code <= 144) {
 					j := n
 					for j < sj.count && sj.peek(j) < 128 {
 						if c := sj.peek(j); c >= 20 && c <= 26 {
@@ -1631,7 +1635,9 @@ func (sj *SpeakJet) nextCommand() {
 				// ~25, the AW after it 30-40 ms later than ours; Slow TT alone doesn't change, NE Slow TT IHWW is already
 				// long): a slowed unvoiced stop after a sound other than a nasal, followed at once by a voiced sound,
 				// releases 40 ms longer
-				if allophones[code-128].kind == kStop && sj.slow && !prevNasal && next <= 199 && allophones[next-128].kind != kStop && allophones[next-128].kind != kFric {
+				// TT only (2026-11-09, VoxProbe 14 section 4, both units: after a slowed KO or PO the release is as
+				// unslowed, 145 against 142 ms; the Slow goes into their closure)
+				if code == 191 && sj.slow && !prevNasal && next <= 199 && allophones[next-128].kind != kStop && allophones[next-128].kind != kFric {
 					l.ticks += ticks(15.0) // 15, not 40, now the vowel ahead runs on: the release after it 185 ms against 185
 					sj.stotal += ticks(15.0)
 				}
