@@ -54,10 +54,14 @@ const (
 	slowGlideOn   = 25.0                // ms: see the ASSUMPTION at its use
 	joinA         = 66.9                // a vowel or glide into a vowel or glide: cut joinA - joinK * (F1+F2 ERB distance) ms
 	joinK         = 6.9
-	nasalFade     = 0.6513             // and the nasal fades into it over this share of the closure
-	nasalClosure  = 38.0               // a voiced stop's closure after a nasal, ms (before Speed and Slow)
-	nasalRamp     = 10.0               // and its release rises over this, ms
-	nasalRampFrom = 0.316228           // from 10 dB down
+	nasalFade     = 0.6513   // and the nasal fades into it over this share of the closure
+	nasalClosure  = 38.0     // a voiced stop's closure after a nasal, ms (before Speed and Slow)
+	nasalRamp     = 10.0     // and its release rises over this, ms
+	nasalRampFrom = 0.316228 // from 10 dB down
+	xjA           = 5.0      // a vowel or glide into a vowel: its formants move over xjA + xjK * (F1+F2 ERB distance) ms, ...
+	xjK           = 5.5
+	xjMin         = 20.0               // ... at least this, ...
+	xjEnd         = 31.0               // ... ending this far into the vowel (crossJoin)
 	slew          = 0.078              // the effects' bed, measured: grows with the tone's frequency on both units
 	bedPole       = 0.6909588478246612 // up to about 1.5 kHz, then with the tone's level alone (one pole)
 	gateDepth     = 0.4                // an effect's gate: its off half's level, a factor
@@ -200,12 +204,14 @@ type SpeakJet struct {
 	// the controls
 	volume, speed, pitch, bend, repeat uint8
 	fast, slow, stress, relax          bool
-	joined                             bool // the last sound ran straight into the next: no ramps at that join
-	afterPause                         bool // a pause code played since the last sound
-	afterVelar                         bool // the last sound played was GE
-	lastNGE                            bool // the last sound played was NGE
-	lastNasal                          bool // the last sound played was a nasal, MM NE NO NGE NGO (not the liquids that share kNasal)
-	rampSeg                            int  // a voiced stop after a nasal: its release ramp's segment (-1: none)
+	joined                             bool   // the last sound ran straight into the next: no ramps at that join
+	afterPause                         bool   // a pause code played since the last sound
+	afterVelar                         bool   // the last sound played was GE
+	lastNGE                            bool   // the last sound played was NGE
+	lastNasal                          bool   // the last sound played was a nasal, MM NE NO NGE NGO (not the liquids that share kNasal)
+	rampSeg                            int    // a voiced stop after a nasal: its release ramp's segment (-1: none)
+	xon                                bool   // the next vowel's formants finish a move begun in this sound's tail (crossJoin)
+	xpost                              [3]int // each formant's ticks to its target after the join
 
 	// what is playing
 	seg             [maxSegments]segment
@@ -253,6 +259,7 @@ type SpeakJet struct {
 	lastr         float64 // the previous noise sample, for the floor's high pass
 	vprev         float64 // the output's last tick
 	bed           float64 // the output's change per tick, smoothed, for the effects' bed
+	bscale        float64 // the playing effect's own bed scale (fxs bs; 1: the common)
 	am            float64 // the effects' slow level wobble
 
 	// the serial control protocol (manual, SCP): "\\0" enters it, then the synthesizer's registers are written
@@ -592,6 +599,7 @@ func (sj *SpeakJet) start(effect bool) {
 	sj.fxburst = 0
 	sj.fxbms = fxburstMs
 	sj.fxhpk = 0
+	sj.bscale = 1
 	sj.onset = 0
 	sj.onsetFrom = 0
 	sj.releaseGain = 1.0
@@ -767,6 +775,11 @@ func (sj *SpeakJet) playEffect(code int) {
 	if x[5] > 0 {
 		sj.fxbms = float64(x[5])
 	}
+	// its own bed scale (bs, percent; 0: the common): see the C library's play_effect
+	sj.bscale = 1
+	if x[6] > 0 {
+		sj.bscale = float64(x[6]) / 100.0
+	}
 }
 
 func alloFrame(a *allophone, second bool, bend float64) frame {
@@ -914,6 +927,162 @@ func (sj *SpeakJet) anticipate(at int, f2, f3 float32) {
 	}
 }
 
+// splitAt: split the sound's segments at tick at from its start (no split at an existing edge)
+func (sj *SpeakJet) splitAt(at int) {
+	acc, k := 0, 0
+	for k < sj.nseg && acc+sj.seg[k].ticks <= at {
+		acc += sj.seg[k].ticks
+		k++
+	}
+	if k >= sj.nseg || acc == at || sj.nseg >= maxSegments {
+		return
+	}
+	sg := sj.seg[k]
+	t1 := at - acc
+	mid := lerpFrame(sg.from, sg.to, float32(t1)/float32(sg.ticks))
+	copy(sj.seg[k+2:sj.nseg+1], sj.seg[k+1:sj.nseg])
+	sj.seg[k].ticks = t1
+	sj.seg[k].to = mid
+	sj.seg[k+1] = sg
+	sj.seg[k+1].ticks = sg.ticks - t1
+	sj.seg[k+1].from = mid
+	sj.nseg++
+}
+
+// crossJoin: ASSUMPTION (2026-11-08, VoxProbe 13 section 5 and VoxProbe 4 section 5, both units): a vowel, glide or
+// liquid into a vowel, glide or liquid moves its formants on one line across the join, over xjA + xjK * d ms (d the
+// F1+F2 ERB distance, at least xjMin), ending xjEnd ms into the next sound. See the C library's cross_join
+func (sj *SpeakJet) crossJoin(tgt frame) {
+	total := 0
+	for k := 0; k < sj.nseg; k++ {
+		total += sj.seg[k].ticks
+	}
+	a := sj.seg[sj.nseg-1].to
+	sf := sj.speedFactor(false)
+	d := 0.0
+	for q := 0; q < 2; q++ {
+		ea := 21.4 * log(1.0+0.00437*float64(a.f[q])) / math.Ln10
+		eb := 21.4 * log(1.0+0.00437*float64(tgt.f[q])) / math.Ln10
+		if ea > eb {
+			d += ea - eb
+		} else {
+			d += eb - ea
+		}
+	}
+	ln := xjA + xjK*d
+	if ln < xjMin {
+		ln = xjMin
+	}
+	var s, e [3]int
+	for q := 0; q < 3; q++ {
+		s[q] = ticks((xjEnd - ln) * sf)
+		e[q] = ticks(xjEnd * sf)
+		if -s[q] > total*3/4 {
+			s[q] = -(total * 3 / 4)
+			if e[q] <= s[q] {
+				e[q] = s[q] + 1
+			}
+		}
+		if s[q] < 0 {
+			sj.splitAt(total + s[q])
+			if e[q] < 0 {
+				sj.splitAt(total + e[q])
+			}
+		}
+	}
+	var v0 [3]float32
+	for q := 0; q < 3; q++ {
+		v0[q] = a.f[q]
+	}
+	el := 0
+	for k := 0; k < sj.nseg; k++ {
+		g := &sj.seg[k]
+		for q := 0; q < 3; q++ {
+			if s[q] >= 0 {
+				continue
+			}
+			t0, t1 := el-total, el+g.ticks-total
+			if t1 <= s[q] {
+				continue
+			}
+			f0 := v0[q]
+			if t0 > s[q] {
+				f0 = a.f[q] + (tgt.f[q]-a.f[q])*float32(t0-s[q])/float32(e[q]-s[q])
+			}
+			te := t1
+			if te > e[q] {
+				te = e[q]
+			}
+			f1 := a.f[q] + (tgt.f[q]-a.f[q])*float32(te-s[q])/float32(e[q]-s[q])
+			if t0 >= e[q] {
+				g.from.f[q] = tgt.f[q]
+			} else {
+				g.from.f[q] = f0
+			}
+			g.to.f[q] = f1
+		}
+		el += g.ticks
+	}
+	for q := 0; q < 3; q++ {
+		sj.xpost[q] = 0
+		if e[q] > 0 {
+			sj.xpost[q] = e[q]
+		}
+	}
+	sj.xon = true
+}
+
+// crossSegments: the next sound's side of crossJoin: each formant reaches the target xpost ticks in, the rest of the
+// frame at tr, all of it within n ticks (the sound's length, or a glide's first hold)
+func (sj *SpeakJet) crossSegments(from, tgt frame, tr, n int, xpost [3]int) {
+	bp := [4]int{tr, xpost[0], xpost[1], xpost[2]}
+	nb, prev := 0, 0
+	for i := 0; i < 4; i++ {
+		if bp[i] > 0 && bp[i] < n {
+			bp[nb] = bp[i]
+			nb++
+		}
+	}
+	for i := 1; i < nb; i++ {
+		for j := i; j > 0 && bp[j] < bp[j-1]; j-- {
+			bp[j], bp[j-1] = bp[j-1], bp[j]
+		}
+	}
+	fp := from
+	for i := 0; i <= nb; i++ {
+		t := n
+		if i < nb {
+			t = bp[i]
+		}
+		if t <= prev {
+			continue
+		}
+		fr := float32(1)
+		if tr > 0 {
+			tt := t
+			if tt > tr {
+				tt = tr
+			}
+			fr = float32(tt) / float32(tr)
+		}
+		fn := lerpFrame(from, tgt, fr)
+		for q := 0; q < 3; q++ {
+			if xpost[q] > 0 {
+				tt := t
+				if tt > xpost[q] {
+					tt = xpost[q]
+				}
+				fn.f[q] = from.f[q] + (tgt.f[q]-from.f[q])*float32(tt)/float32(xpost[q])
+			} else {
+				fn.f[q] = tgt.f[q]
+			}
+		}
+		sj.addSegment(t-prev, fp, fn, true)
+		fp = fn
+		prev = t
+	}
+}
+
 func (sj *SpeakJet) playAllophone(idx int) {
 	a := &allophones[idx]
 	bend := sj.bendHz()
@@ -932,6 +1101,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	tk := ticks(sj.modifiedMs(idx, float64(a.ms)*msStep) * sf)
 	tgt := alloFrame(a, false, bend)
 	from := sj.fromFrame(tgt)
+	xon, xpost := sj.xon, sj.xpost
+	sj.xon = false
 	sj.nseg = 0
 	sj.rampSeg = -1
 	var silent frame
@@ -960,6 +1131,10 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		if a.kind == kVFric && a.ob > 0 && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
 			tr = 0
 		}
+		if xon && (a.kind == kVowel || (idx >= 17 && idx <= 20)) {
+			sj.crossSegments(from, tgt, tr, tk, xpost)
+			break
+		}
 		sj.addSegment(tr, from, tgt, true)
 		sj.addSegment(tk-tr, tgt, tgt, true)
 	case kGlide:
@@ -979,8 +1154,20 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			tr = hold
 		}
 		// with its own F1 (ba) the hold starts on the first allophone's and rises to it (161 AXUW)
-		sj.addSegment(tr, from, tgt0, true)
-		sj.addSegment(hold-tr, tgt0, tgt, true)
+		if xon {
+			// a crossing join into a glide (crossJoin) finishes within its first hold
+			var xp [3]int
+			for q := 0; q < 3; q++ {
+				xp[q] = xpost[q]
+				if xp[q] > hold {
+					xp[q] = hold
+				}
+			}
+			sj.crossSegments(from, tgt, tr, hold, xp)
+		} else {
+			sj.addSegment(tr, from, tgt0, true)
+			sj.addSegment(hold-tr, tgt0, tgt, true)
+		}
 		// a glide's cl: its F1 holds until cl percent of the sound, then moves with the rest (161 AXUW)
 		if k := int(a.cl) * tk / 100; a.cl > 0 && k > hold && k < hold+move {
 			k1 := k - hold
@@ -1505,6 +1692,10 @@ func (sj *SpeakJet) nextCommand() {
 					l.ticks -= cut
 					sj.stotal -= cut
 				}
+				liq := func(c int) bool { return c >= 145 && c <= 148 }
+				if both && (kc == kVowel || kc == kGlide || liq(int(code))) && int(next) != int(code) && next <= 199 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide || liq(int(next))) {
+					sj.crossJoin(alloFrame(&allophones[next-128], false, sj.bendHz()))
+				}
 				sj.release = 0
 				sj.joined = true
 			}
@@ -1695,7 +1886,7 @@ func (sj *SpeakJet) outputStage(v float64, voice bool) float64 {
 		// tone's frequency to about 1.5 kHz and only with its level above
 		// the buzz's clicks kept out of the slope (each is a huge step: the bed turned 227 B7's bands into noise)
 		sj.bed += bedPole * (v - sj.vbuzz - sj.vprev - sj.bed)
-		v += slew * 2.0 * r * sj.bed
+		v += slew * sj.bscale * 2.0 * r * sj.bed
 	}
 	sj.lastr = r
 	sj.vprev = v - sj.vbuzz
@@ -1790,7 +1981,8 @@ func (sj *SpeakJet) scpSample() float64 {
 	if ctl&0x80 != 0 {
 		half = 0.5*env + 0.5
 	}
-	v += half * s45 / 128.0 * 0.6
+	// oscillators 4 and 5 sit 6 dB under 1-3 (VoxProbe 7 section 5, 1000 Hz at volume 31: 5.99 dB unit A, 5.96 unit B)
+	v += half * s45 / 128.0 * 0.3
 	v *= 1.9724227361148539
 	return sj.outputStage(v, true) // no bed: under a register tone it is 57 dB down (VoxProbe 10, all three takes)
 }
