@@ -60,8 +60,12 @@ const (
 	nasalRampFrom = 0.316228 // from 10 dB down
 	xjA           = 5.0      // a vowel or glide into a vowel: its formants move over xjA + xjK * (F1+F2 ERB distance) ms, ...
 	xjK           = 5.5
-	xjMin         = 20.0               // ... at least this, ...
-	xjEnd         = 31.0               // ... ending this far into the vowel (crossJoin)
+	xjMin         = 20.0   // ... at least this, ...
+	xjEnd         = 31.0   // ... ending this far into the vowel (crossJoin)
+	kvKE          = 2100.0 // a vowel after KE starts with F2 here (Hz), F1 at kvF1, and moves to its own (the velar locus)
+	kvF1          = 300.0
+	kvMs          = 8.0                // ... over this many ms per ERB of F2 distance
+	kvAdd         = 4.0                // ... and is this many ms per ERB longer
 	slew          = 0.078              // the effects' bed, measured: grows with the tone's frequency on both units
 	bedPole       = 0.6909588478246612 // up to about 1.5 kHz, then with the tone's level alone (one pole)
 	gateDepth     = 0.4                // an effect's gate: its off half's level, a factor
@@ -207,6 +211,7 @@ type SpeakJet struct {
 	joined                             bool   // the last sound ran straight into the next: no ramps at that join
 	afterPause                         bool   // a pause code played since the last sound
 	afterVelar                         bool   // the last sound played was GE
+	afterKVelar                        bool   // the last sound played was KE
 	lastNGE                            bool   // the last sound played was NGE
 	lastNasal                          bool   // the last sound played was a nasal, MM NE NO NGE NGO (not the liquids that share kNasal)
 	rampSeg                            int    // a voiced stop after a nasal: its release ramp's segment (-1: none)
@@ -690,6 +695,7 @@ func (sj *SpeakJet) playEffect(code int) {
 	sj.lastNasal = false
 	sj.afterPause = false
 	sj.afterVelar = false
+	sj.afterKVelar = false
 	// its peaking filters (fxeq, at most 3): a fixed shaping of its spectrum toward the chip's, set after its
 	// structure was tuned (2026-11-04); RBJ peaking biquads at the chip's rate
 	sj.neq = 0
@@ -1152,6 +1158,35 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			sj.crossSegments(from, tgt, tr, tk, xpost)
 			break
 		}
+		// ASSUMPTION (2026-11-09, VoxProbe 14 section 7, both units by picture: after KE the vowel's F2 starts
+		// ~2000-2500 Hz and falls to AW OW UW's over 60-80 ms, after KO it starts ~1000 and rises to IY's over ~50; KE IY
+		// and KO OW, where the locus is the vowel's, have no glide; ours started on the vowel and KE AW OW UW ran 32-50 ms
+		// short, KO IY 20): KE, which has no formants of its own, hands the vowel a locus to start from; the glide takes
+		// ~8 ms per ERB of F2 distance (the pictures' ~60 ms into AW) but the vowel grows only half that. Fitted on the ten
+		// KE/KO items: KE AW -30 -> -5, KE OW -45 -> -15, KE UW -30 -> -5 ms, KE IY EH unchanged. KO is left alone: no one
+		// locus fits both KO IY (-20) and KO EH (+5), which went to +15 and +20 (open)
+		if sj.afterKVelar && a.kind == kVowel {
+			lf := tgt
+			lf.f[0] = bent(kvF1, bend)
+			lf.f[1] = bent(kvKE, bend)
+			ea := 21.4 * log(1.0+0.00437*float64(lf.f[1])) / math.Ln10
+			eb := 21.4 * log(1.0+0.00437*float64(tgt.f[1])) / math.Ln10
+			de := ea - eb
+			if de < 0 {
+				de = -de
+			}
+			gl := ticks(kvMs * de * sj.speedFactor(true))
+			tk += ticks(kvAdd * de * sj.speedFactor(true))
+			if gl > tk-tr-1 {
+				gl = tk - tr - 1
+			}
+			if gl > 0 {
+				sj.addSegment(tr, from, lf, true)
+				sj.addSegment(gl, lf, tgt, true)
+				sj.addSegment(tk-tr-gl, tgt, tgt, true)
+				break
+			}
+		}
 		sj.addSegment(tr, from, tgt, true)
 		sj.addSegment(tk-tr, tgt, tgt, true)
 	case kGlide:
@@ -1370,6 +1405,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	sj.lastNasal = idx >= 12 && idx <= 16
 	sj.lastNGE = idx == 15
 	sj.afterVelar = idx == 50
+	sj.afterKVelar = idx == 66
 	sj.afterPause = false
 	nasalRampOn := sj.rampSeg >= 0
 	// an unvoiced fricative starts and stops at once (HE HO WH FF SE SO SH TH, both units, background allowed for: rise
