@@ -15,7 +15,7 @@ const (
 )
 
 // Version is the library's version, the same as the C library's SJ_VERSION.
-const Version = "2.0.0"
+const Version = "2.0.1"
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
@@ -231,6 +231,7 @@ type SpeakJet struct {
 	joined                             bool   // the last sound ran straight into the next: no ramps at that join
 	afterPause                         bool   // a pause code played since the last sound
 	afterVelar                         bool   // the last sound played was GE
+	aidx                               int    // 2.0.1: the playing allophone
 	afterVstop, afterVelar2            bool   // the last sound played was a voiced stop; GE or GO
 	afterKVelar                        bool   // the last sound played was KE
 	lastNGE                            bool   // the last sound played was NGE
@@ -1314,6 +1315,7 @@ func (sj *SpeakJet) crossSegments(from, tgt frame, tr, n int, xpost [3]int) {
 
 func (sj *SpeakJet) playAllophone(idx int) {
 	sj.aplain = idx <= 11 // 2.0.0
+	sj.aidx = idx
 	a := &allophones[idx]
 	bend := sj.bendHz()
 	// vowels and glides take the effects' Speed law above 114 too (2026-11-08, VoxProbe 13 section 3, all four takes:
@@ -2471,7 +2473,7 @@ func (sj *SpeakJet) chipSample() float64 {
 				}
 			}
 			sj.ptick = sj.period
-			if !sj.vstarted && !sj.effect && sj.aplain {
+			if !sj.vstarted && !sj.effect && sj.aplain && sj.aidx != 1 && sj.aidx != 7 { // 2.0.1: not IH OH
 				sj.ptick += 12 // 2.0.0: the first voicing period after silence is longer (every plain vowel, 4 takes: pulses at 4 16 28 40 ms)
 			}
 			sj.vstarted = true
@@ -2505,7 +2507,7 @@ func (sj *SpeakJet) chipSample() float64 {
 			}
 		default:
 			fall := envFall
-			if !sj.effect && sj.aplain {
+			if !sj.effect && sj.aplain && (sj.aidx == 2 || sj.aidx == 6 || sj.aidx == 10 || sj.aidx == 8) { // 2.0.1: EY UX UH AW only
 				fall = 72.0 // 2.0.0: a plain vowel's voicing falls over 72 ticks
 			}
 			env = 1.0 - (age-envRise)/fall
