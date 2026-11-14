@@ -81,6 +81,9 @@ var allophones = [72]allophone{
 // index, g1 g2 g3: a second frame of its own (BO EB OB ED OD)
 var allog = [5][4]uint8{{43, 52, 87, 149}, {44, 32, 115, 129}, {45, 17, 87, 147}, {48, 16, 121, 164}, {49, 15, 101, 164}}
 
+// index, join term ms + 128: a vowel or glide join cut by this much more (IH AW OW RR)
+var alloj = [4][2]uint8{{1, 143}, {8, 128}, {9, 118}, {20, 112}}
+
 // the effects, part after part (fxDecode)
 var fxdata = [4073]uint8{
 	/* R0  */ 10, 1, 3, 0, 7, 34, 3, 37, 3, 181, 235, 183, 1, 31, 2, 255, 57, 201, 0, 32, 1, 225, 14, 61, 0, 67, 128, 6, 19, 3, 26, 3, 143, 115, 27, 2, 12, 2, 234, 94, 21, 1, 25, 1, 233, 25, 166, 3, 0, 0, 0, 0,
