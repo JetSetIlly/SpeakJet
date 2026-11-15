@@ -14,7 +14,7 @@ const (
 	bufferHalfFull = 32
 )
 
-// C library's SJ_VERSION is version 0.5.2
+// C library's SJ_VERSION is version 0.5.3
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
@@ -23,15 +23,21 @@ const (
 	rate        = 8026.0
 	lpRise      = 10.0 // ms: the low pulse's rise (PE PO)
 	nominal     = 8000.0
-	nhpFC       = 400.0 // an allophone's noise high pass, Hz
-	nsweepHP    = 150.0 // the swept noise's high pass (C8, C9), Hz
-	fricRamp    = 3.0   // an unvoiced fricative's attack and release, ms
-	thumpMs     = 16.0  // a sibilant's starting burst of low noise: it fades out over this, ms
-	fxburstMs   = 5.0   // an effect's starting click: it fades out over this, ms (220 B0: the chip's is ~5 ms)
-	thumpHz     = 800.0 // and is low-passed here
-	nasalAttack = 25.0  // a nasal's attack, ms (the vowels': attackMs)
-	barUp       = 0.12  // a voiced stop's bar: its upper formants at this fraction of the release's
-	barClick    = 0.0   // and the click it opens on, ms
+	nhpFC       = 400.0  // an allophone's noise high pass, Hz
+	nsweepHP    = 150.0  // the swept noise's high pass (C8, C9), Hz
+	fricRamp    = 3.0    // an unvoiced fricative's attack and release, ms
+	thumpMs     = 16.0   // a sibilant's starting burst of low noise: it fades out over this, ms
+	fxburstMs   = 5.0    // an effect's starting click: it fades out over this, ms (220 B0: the chip's is ~5 ms)
+	thumpHz     = 800.0  // and is low-passed here
+	nasalAttack = 25.0   // a nasal's attack, ms (the vowels': attackMs)
+	barUp       = 0.12   // a voiced stop's bar: its upper formants at this fraction of the release's
+	barNF       = 1000.0 // 0.5.3: an alveolar's bar is partly noise: a band, Hz (both units: DE DO's bar pulses match one another 0.40-0.59 above 700 Hz, ours 0.76-0.81)
+	barNW       = 800.0  // its width, Hz
+	barNA       = 4.0    // its level (the velars' bar is periodic on the chip)
+	lbarNF      = 1800.0 // 0.5.3: BE BO's bar above F1 is noise, not weak formants: a band, Hz (both units: above 700 Hz the part that differs pulse to pulse is within 0-3 dB of the whole)
+	lbarNW      = 1400.0 // its width, Hz
+	lbarNA      = 6.0    // its level
+	barClick    = 0.0    // and the click it opens on, ms
 )
 
 // the constants of the model, as the recordings gave them. the same values as
@@ -1380,7 +1386,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			tr = tk
 		}
 		// a sound with an onset, from silence, starts on its own frame (its onset at full level)
-		if a.kind == kVFric && a.ob > 0 && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+		if a.ob > 0 && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
 			tr = 0
 		}
 		if xon && (a.kind == kVowel || (idx >= 17 && idx <= 20)) {
@@ -1470,6 +1476,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			m.nw = tgt.nw + (tgt2.nw-tgt.nw)*fr
 			m.na = tgt.na + (tgt2.na-tgt.na)*fr
 			m.f[0] = tgt.f[0]
+			m.f[2] = tgt.f[2] // 0.5.3: F3 holds with F1 (161 AXUW, both units: F3 ~2350 Hz until the late fall; 1.21 -> 1.18)
 			sj.addSegment(k1, tgt, m, true)
 			sj.addSegment(move-k1, m, tgt2, true)
 		} else {
@@ -1502,6 +1509,17 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			gone.f[2] = tgt.f[2]
 			gone.a[1] = float32(float64(tgt.a[1]) * barUp)
 			gone.a[2] = float32(float64(tgt.a[2]) * barUp)
+			if idx >= 46 && idx <= 49 { // DE DO ED OD
+				gone.nf = barNF
+				gone.nw = barNW
+				gone.na = barNA
+			}
+			if idx == 42 || idx == 43 { // BE BO: noise in place of F2 F3
+				gone.a[1], gone.a[2] = 0, 0
+				gone.nf = lbarNF
+				gone.nw = lbarNW
+				gone.na = lbarNA
+			}
 		}
 		// from silence, a voiced stop's bar is there at once, at its level (both units, the VoxRecord solo takes lined up
 		// on the release: BE BO DE DO GE GO's bar 2-11 dB under the peak through the closure, not a fade up from nothing)
@@ -2594,7 +2612,7 @@ func (sj *SpeakJet) chipSample() float64 {
 			if p < 0.5 {
 				sw = p / 0.5
 			}
-			nf *= exp((2.0*sw - 1.0) * 0.75)        // 2026-11-06: the chip spans ~650 Hz - 2.4 kHz
+			nf *= 0.5 + 1.35*sw                     // 0.5.3: linear in Hz, 0.5 to 1.85 times the centre (238 C8, both units: straight-line track)
 			lvl = exp(-5.0 * sw / 20.0 * math.Ln10) // 5 dB quieter at the top (2026-11-06: 15 dB scored worse)
 		}
 		nw := float64(f.nw)

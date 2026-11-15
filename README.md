@@ -73,13 +73,13 @@ are scored against each other and a sound's distance is divided by that spread.
 **X = 1.0 means "as far from the chip as another recording of the chip"**; lower
 is closer.
 
-0.5.2 against 0.4.3, both scored the same way on the same recordings:
+0.5.3 against 0.4.3, both scored the same way on the same recordings:
 
 ```
-                                      0.4.3   0.5.2
-allophones (72), mean X                1.07    0.93   57 closer, none further
-sound effects (55), mean X             1.22    0.97   53 closer, none further
-joins (88 recorded pairs and phrases)  1437     514   mean cost; 56 closer, 15 further
+                                      0.4.3   0.5.3
+allophones (72), mean X                1.07    0.92   66 closer, 2 further (136 AW +0.02, 158 IYEH +0.01)
+sound effects (55), mean X             1.22    0.97   55 closer, none further
+joins (88 recorded pairs and phrases)  1437     513   mean cost; 56 closer by 5 %+, 14 further by 15 %+
 lengths 15 ms or more off (88 items)     24      14
 ```
 
