@@ -84,8 +84,7 @@ lengths 15 ms or more off (88 items)     24      14
 ```
 
 The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
-voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's noise is a fixed sequence replayed with
-each sound, where the library's is random; a Pitch command
+voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
 inside a phrase takes effect a few sounds late on the chip; the chip's level
 dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
