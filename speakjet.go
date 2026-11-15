@@ -14,7 +14,7 @@ const (
 	bufferHalfFull = 32
 )
 
-// C library's SJ_VERSION is version 0.5.1
+// C library's SJ_VERSION is version 0.5.2
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
@@ -2578,7 +2578,7 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 
 	// noise: white noise through a two-pole resonance at nf with bandwidth nw
-	// (the chip's hiss is random noise - Gaussian to the sample, both units -
+	// (the chip's hiss is Gaussian to the sample, both units, though not random: it replays a fixed sequence with each sound, not yet modelled -
 	// not a tone; FF is flat to 4 kHz, the others resonate from WH's 800 Hz
 	// to SE's 4 kHz). the gain holds the output power at the input's whatever the band (the AR(2) variance)
 	if f.na > 0 {

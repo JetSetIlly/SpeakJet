@@ -73,10 +73,10 @@ are scored against each other and a sound's distance is divided by that spread.
 **X = 1.0 means "as far from the chip as another recording of the chip"**; lower
 is closer.
 
-0.5.1 against 0.4.3, both scored the same way on the same recordings:
+0.5.2 against 0.4.3, both scored the same way on the same recordings:
 
 ```
-                                      0.4.3   0.5.1
+                                      0.4.3   0.5.2
 allophones (72), mean X                1.07    0.93   57 closer, none further
 sound effects (55), mean X             1.22    0.97   53 closer, none further
 joins (88 recorded pairs and phrases)  1437     514   mean cost; 56 closer, 15 further
@@ -84,7 +84,8 @@ lengths 15 ms or more off (88 items)     24      14
 ```
 
 The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
-voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
+voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's noise is a fixed sequence replayed with
+each sound, where the library's is random; a Pitch command
 inside a phrase takes effect a few sounds late on the chip; the chip's level
 dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
