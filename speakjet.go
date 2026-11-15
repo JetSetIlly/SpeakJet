@@ -14,9 +14,7 @@ const (
 	bufferHalfFull = 32
 )
 
-// Version is the library's version, the same as the C library's SJ_VERSION (0.5.0 was first numbered 2.0.0; Go
-// modules at v2+ need a /v2 import path, so both libraries renumbered).
-const Version = "0.5.1"
+// C library's SJ_VERSION is version 0.5.1
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
