@@ -69,9 +69,11 @@ Every allophone and sound effect is scored against the chip's own recordings:
 four takes of each sound alone, two from each AtariVox. The score, X, compares
 spectrograms at six resolutions (1.3 ms to 43 ms windows) with each take's
 background noise taken off, and is calibrated on the chip itself: the four takes
-are scored against each other and a sound's distance is divided by that spread.
-**X = 1.0 means "as far from the chip as another recording of the chip"**; lower
-is closer.
+are scored against each other and a sound's distance is divided by that spread;
+lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0**
+(0.98-1.09) and a unit-A take further out (1.2-2.4; the oldest, noisiest take is
+the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
+each other**.
 
 0.5.3 against 0.4.3, both scored the same way on the same recordings:
 
