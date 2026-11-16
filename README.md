@@ -75,15 +75,19 @@ lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0*
 the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
 each other**.
 
-0.5.3 against 0.4.3, both scored the same way on the same recordings:
+0.5.4 against 0.4.3, both scored the same way on the same recordings:
 
 ```
-                                      0.4.3   0.5.3
-allophones (72), mean X                1.07    0.92   66 closer, 2 further (136 AW +0.02, 158 IYEH +0.01)
-sound effects (55), mean X             1.22    0.97   55 closer, none further
-joins (88 recorded pairs and phrases)  1437     513   mean cost; 56 closer by 5 %+, 14 further by 15 %+
+                                      0.4.3   0.5.4
+allophones (72), mean X                0.98    0.89   59 closer, 7 further by 0.01-0.02
+sound effects (55), mean X             1.20    0.95   55 closer, none further
+joins (88 recorded pairs and phrases)   481     306   mean cost; 62 closer by 5 %+, 12 further by 15 %+
 lengths 15 ms or more off (88 items)     24      14
 ```
+
+0.5.4 corrected two measuring faults (X could place a voiced sound one voice period off; phrases that
+open on a hiss were measured with the hiss outside their window), so these replace the figures
+published with 0.5.0-0.5.3.
 
 The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
 voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
