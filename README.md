@@ -10,16 +10,16 @@ An emulation of the Magnevation SpeakJet speech and sound synthesizer, the
 chip in the AtariVox peripheral for the Atari 2600, as a small Go package. The
 Gopher2600 emulator uses it for its AtariVox.
 
-It was written from scratch from the SpeakJet User's Manual and recordings of
-two real AtariVoxes (an original AtariVox and an AtariVox+), and from nothing
-else. It is a line-for-line port of the C library at
-[andrew-davie/SpeakJet](https://github.com/andrew-davie/SpeakJet) and renders the same samples to within float rounding.
+It is a line-for-line port of the C library at
+[andrew-davie/SpeakJet](https://github.com/andrew-davie/SpeakJet), with the same version numbers (0.5.x), and
+renders the same samples to within float rounding. Every rule in it is taken from recordings of two real
+AtariVoxes (an original AtariVox and an AtariVox+) and checked against both.
 
 - Pure Go, no dependencies, no global state: any number of chips side by side.
 - Takes the raw command stream and gives the Buffer Half Full and Speaking
   lines, so it drops straight into an emulator's AtariVox.
 - Output: mono float32 samples at 48 kHz (`SampleRate`).
-- Tables about 5 KB; the package adds about 50 KB to a stripped binary.
+- Tables about 7 KB; the package adds about 100 KB to a stripped binary.
 
 ## Using it
 
@@ -65,24 +65,32 @@ lock around them.
 
 ## How close it is
 
-Every sound is compared with recordings of both AtariVoxes by three scores,
-lower is better: the whole-sound spectrum error and E (spectrum, time-frequency
-picture and level over time together), both in rms dB on the takes of each
-sound alone, and P, a perceptual score averaged over every recording of the
-sound (1191 recordings in all). At 0.3.0:
+Every allophone and sound effect is scored against the chip's own recordings:
+four takes of each sound alone, two from each AtariVox. The score, X, compares
+spectrograms at six resolutions (1.3 ms to 43 ms windows) with each take's
+background noise taken off, and is calibrated on the chip itself: the four takes
+are scored against each other and a sound's distance is divided by that spread;
+lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0**
+(0.98-1.09) and a unit-A take further out (1.2-2.4; the oldest, noisiest take is
+the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
+each other**.
+
+0.5.3 against 0.4.3, both scored the same way on the same recordings:
 
 ```
-              sounds   spectrum dB   E dB    P
-allophones        72          2.62   4.31   0.61
-effects           55          2.62   4.40   0.92
-all sounds       127          2.62   4.35   0.74
-every recording, item by item               0.89
+                                      0.4.3   0.5.3
+allophones (72), mean X                1.07    0.92   66 closer, 2 further (136 AW +0.02, 158 IYEH +0.01)
+sound effects (55), mean X             1.22    0.97   55 closer, none further
+joins (88 recorded pairs and phrases)  1437     513   mean cost; 56 closer by 5 %+, 14 further by 15 %+
+lengths 15 ms or more off (88 items)     24      14
 ```
 
-The worst sounds are effects (254 M2, 218 A8, 210 A0, 235 C5, 219 A9). Known
-and not yet modelled: Bend below zero, the linear Volume law, the pulse timbre
-of 235 C5 and the first four robots, and the death sound in Man Goes Down. The
-C library's README and `docs/technical-manual.md` list them in full.
+The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
+voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
+inside a phrase takes effect a few sounds late on the chip; the chip's level
+dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
+library's README, `docs/scores.md` (every sound's score) and
+`docs/technical-manual.md` list them in full.
 
 ## How it works
 
