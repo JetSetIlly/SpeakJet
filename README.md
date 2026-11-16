@@ -75,19 +75,26 @@ lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0*
 the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
 each other**.
 
-0.5.3 against 0.4.3, both scored the same way on the same recordings:
+0.5.4 against 0.4.3, both scored the same way on the same recordings:
 
 ```
-                                      0.4.3   0.5.3
-allophones (72), mean X                1.07    0.92   66 closer, 2 further (136 AW +0.02, 158 IYEH +0.01)
-sound effects (55), mean X             1.22    0.97   55 closer, none further
-joins (88 recorded pairs and phrases)  1437     513   mean cost; 56 closer by 5 %+, 14 further by 15 %+
-lengths 15 ms or more off (88 items)     24      14
+                                      0.4.3   0.5.4
+allophones (72), mean X                0.98    0.84   72 closer, none further
+sound effects (55), mean X             1.20    0.93   55 closer, none further
+joins (88 recorded pairs and phrases)   481     264   mean cost; 68 closer by 5 %+, 8 further by 15 %+
+lengths 15 ms or more off (88 items)     24      13
 ```
 
-The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
-voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
-inside a phrase takes effect a few sounds late on the chip; the chip's level
+0.5.4 corrected two measuring faults (X could place a voiced sound one voice period off; phrases that
+open on a hiss were measured with the hiss outside their window), so these replace the figures
+published with 0.5.0-0.5.3.
+
+For the joins there is a yardstick too: each unit's recordings of the 88 items scored against the other
+unit's give a mean cost of 144 (median 138). 0.5.4's 264 (median 185) is closer than 0.4.3's 481 but not
+yet at a real unit's distance; Man Goes Down's phrases carry most of the rest.
+
+The furthest sounds are effects (238 C8, 239 C9, 207 R7, 206 R6, 201 R1), then the
+voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's level
 dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
 `docs/technical-manual.md` list them in full.
