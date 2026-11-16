@@ -79,19 +79,22 @@ each other**.
 
 ```
                                       0.4.3   0.5.4
-allophones (72), mean X                0.98    0.89   59 closer, 7 further by 0.01-0.02
-sound effects (55), mean X             1.20    0.95   55 closer, none further
-joins (88 recorded pairs and phrases)   481     306   mean cost; 62 closer by 5 %+, 12 further by 15 %+
-lengths 15 ms or more off (88 items)     24      14
+allophones (72), mean X                0.98    0.84   72 closer, none further
+sound effects (55), mean X             1.20    0.93   55 closer, none further
+joins (88 recorded pairs and phrases)   481     264   mean cost; 68 closer by 5 %+, 8 further by 15 %+
+lengths 15 ms or more off (88 items)     24      13
 ```
 
 0.5.4 corrected two measuring faults (X could place a voiced sound one voice period off; phrases that
 open on a hiss were measured with the hiss outside their window), so these replace the figures
 published with 0.5.0-0.5.3.
 
-The furthest sounds are effects (238 C8, 207 R7, 239 C9, 206 R6), then the
-voiced stops 174 DE and 171 BO. Known and not yet modelled: a Pitch command
-inside a phrase takes effect a few sounds late on the chip; the chip's level
+For the joins there is a yardstick too: each unit's recordings of the 88 items scored against the other
+unit's give a mean cost of 144 (median 138). 0.5.4's 264 (median 185) is closer than 0.4.3's 481 but not
+yet at a real unit's distance; Man Goes Down's phrases carry most of the rest.
+
+The furthest sounds are effects (238 C8, 239 C9, 207 R7, 206 R6, 201 R1), then the
+voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's level
 dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
 `docs/technical-manual.md` list them in full.
