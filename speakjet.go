@@ -2066,7 +2066,8 @@ func (sj *SpeakJet) nextCommand() {
 				if next == 191 && !(code >= 140 && code <= 144) && !sj.slowBeforeNext(n) {
 					cut = 0
 				}
-				if (code == 141 || code == 142) && (next == 194 || next == 195 || next == 198 || next == 199 || next == 170 || next == 171) {
+				// KE KO only (2026-11-18, VoxProbe 13: NE BO OW 250 ms, NO BO OW 257, NE PO OW 290 on the chip; no overlap gave 280-315)
+				if (code == 141 || code == 142) && (next == 194 || next == 195) {
 					cut = 0
 				}
 				if code == 199 && prevKindVowel && next <= 199 && allophones[next-128].kind != kStop && allophones[next-128].kind != kFric {
