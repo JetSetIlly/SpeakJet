@@ -1408,10 +1408,25 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			tr += ex
 			tk += ex
 		}
-		// 0.5.5: a slowed vowel after a nasal moves over 60 ms (Man Goes Down P1's MM Slow AY, both units: F1 rises ~400 -> 800
-		// Hz over ~60 ms where ours stepped; P1 548 -> 462 and 620 -> 531 with the move into NE, no other item changes)
-		if a.kind == kVowel && sj.slow && sj.prevCode >= 140 && sj.prevCode <= 144 && tr < ticks(60.0) {
-			tr = ticks(60.0)
+		// mechanism 2: a vowel's move takes 5 ms per ERB of F1/F2 distance (never under the common transition), stretched by
+		// Speed and Slow - it glides at a rate, not over a fixed time (replaces 0.5.5's slowed vowel after a nasal)
+		if a.kind == kVowel {
+			de := 0.0
+			for q := 0; q < 2; q++ {
+				d := math.Abs(21.4*log(1.0+0.00437*float64(from.f[q]))/math.Ln10 - 21.4*log(1.0+0.00437*float64(tgt.f[q]))/math.Ln10)
+				if d > de {
+					de = d
+				}
+			}
+			ms := transitionMs
+			if 5.0*de > ms {
+				ms = 5.0 * de
+			}
+			sl := 1.0
+			if sj.slow {
+				sl = slowFactor
+			}
+			tr = ticks(ms * sj.speedFactor(false) * sl)
 		}
 		if tr > tk {
 			tr = tk
