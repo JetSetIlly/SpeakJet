@@ -14,7 +14,7 @@ const (
 	bufferHalfFull = 32
 )
 
-// C library's SJ_VERSION is version 0.5.4
+// C library's SJ_VERSION is version 0.5.5
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
