@@ -1416,7 +1416,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			if d < 0 {
 				d = -d
 			}
-			ex := ticks(8.0 * d * sj.speedFactor(true))
+			k := 8.0
+			if sj.prevCode == 143 {
+				k = 6.0 // 0.5.5: NGE at 6 ms per ERB
+			}
+			ex := ticks(k * d * sj.speedFactor(true))
 			tr += ex
 			tk += ex
 		}
@@ -1751,7 +1755,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		sj.fhold[0], sj.fhold[1] = 400.0, 1600.0
 	}
 	sj.lastNGE = idx == 15
-	sj.afterVelar = idx == 50
+	sj.afterVelar = idx == 50 || idx == 15 // 0.5.5: NGE too (VoxProbe 16: NGE AW / UW 40 ms longer on both units)
 	sj.afterVstop = a.kind == kVStop
 	sj.afterVelar2 = idx == 50 || idx == 51
 	sj.afterKVelar = idx == 66
