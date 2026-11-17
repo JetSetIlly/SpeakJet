@@ -1355,7 +1355,9 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	// AW AY EYIY IYUW OWWW UX alone at Speed 118, 122, 127 10-30 ms long on the speech law, within a few ms on this one;
 	// Man Goes Down P2 at Speed 118 1698 ms against 1695/1700 with the liquid joins below)
 	sf := sj.speedFactor(false)
-	if a.kind == kVowel || a.kind == kGlide {
+	// 0.5.5: a nasal above Speed 118 takes the vowels' Speed step (VoxProbe 16, both units: Speed 127 MM AW's handover 38-56 ms
+	// where ours came at 80-102)
+	if a.kind == kVowel || a.kind == kGlide || (a.kind == kNasal && sj.speed > 118) {
 		sf = sj.speedFactor(true)
 		if sj.speed > 115 && !sj.slow {
 			sf = sj.speedStep()
