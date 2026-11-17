@@ -61,8 +61,9 @@ const (
 	closureMs     = 30.0                // the closure before a stop's burst
 	joinClosure   = 45.0                // a stop's closure after a sound, at least this, ms (Man Goes Down's GO)
 	nasalBar      = 0.15848931924611134 // a voiced stop's bar after a nasal: 16 dB under its own level
-	joinA         = 66.9                // a vowel or glide into a vowel or glide: cut joinA - joinK * (F1+F2 ERB distance) ms
-	joinK         = 6.9
+	joinA         = 64.0                // a vowel or glide into a vowel or glide: cut joinA - joinK * (F1+F2 ERB distance) ms
+	joinK         = 7.5
+	joinW1        = 0.6      // F1's share of the distance (2026-11-18: F1 counts less than F2)
 	nasalFade     = 0.6513   // and the nasal fades into it over this share of the closure
 	nasalClosure  = 38.0     // a voiced stop's closure after a nasal, ms (before Speed and Slow)
 	nasalRamp     = 10.0     // and its release rises over this, ms
@@ -2123,10 +2124,14 @@ func (sj *SpeakJet) nextCommand() {
 					for q := 0; q < 2; q++ {
 						ea := 21.4 * log(1.0+0.00437*float64(l.to.f[q])) / math.Ln10
 						eb := 21.4 * log(1.0+0.00437*bf[q]) / math.Ln10
+						w := 1.0
+						if q == 0 {
+							w = joinW1
+						}
 						if ea > eb {
-							d += ea - eb
+							d += w * (ea - eb)
 						} else {
-							d += eb - ea
+							d += w * (eb - ea)
 						}
 					}
 					ms := (joinA - joinK*d + joinTerm(int(code)-128) + joinTerm(next-128)) * sj.speedFactor(false)
