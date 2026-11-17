@@ -14,7 +14,7 @@ const (
 	bufferHalfFull = 32
 )
 
-// C library's SJ_VERSION is version 0.5.4
+// C library's SJ_VERSION is version 0.5.5
 
 // the rate the chip makes samples at, measured from the images of its tones on
 // two units (8039 and 8013 Hz; the manual says 8192). the chip's own arithmetic
@@ -61,7 +61,6 @@ const (
 	closureMs     = 30.0                // the closure before a stop's burst
 	joinClosure   = 45.0                // a stop's closure after a sound, at least this, ms (Man Goes Down's GO)
 	nasalBar      = 0.15848931924611134 // a voiced stop's bar after a nasal: 16 dB under its own level
-	slowGlideOn   = 25.0                // ms: see the ASSUMPTION at its use
 	joinA         = 66.9                // a vowel or glide into a vowel or glide: cut joinA - joinK * (F1+F2 ERB distance) ms
 	joinK         = 6.9
 	nasalFade     = 0.6513   // and the nasal fades into it over this share of the closure
@@ -281,6 +280,11 @@ type SpeakJet struct {
 
 	// synthesizer state
 	period, ptick int
+	// 0.5.5: an effect tone's leap passes through its midpoint: the frequency played, the target, the level, ticks left on
+	// the midpoint, the last part voiced
+	fsl, ftg, fsa [nTone]float32
+	fsn           [nTone]int
+	fslon, fsv    bool
 	phase         [nTone]float64
 	xa            [nTone]float32 // fxSmooth: the tone amplitudes as they ramp
 	xv            float32        // fxSmooth: the voice's gain as it ramps in
@@ -298,6 +302,7 @@ type SpeakJet struct {
 	vstarted      bool          // 0.5.0: voicing has run since the last silence
 	vcount        int           // 0.5.4: voicing periods since the voice started
 	vafter        bool          // 0.5.4: this sound follows a voiced stop or a nasal: no long period
+	fhold         [3]float32    // mechanism: where the formants are, held through hisses and pauses (0: not set)
 	prepause      frame         // 0.5.4: the last sound's frame before a short pause
 	ppok          bool          // 0.5.4: and whether it carries over
 	paused        bool          // 0.5.4: a pause since the last sound
@@ -353,6 +358,7 @@ func (sj *SpeakJet) resetControls() {
 	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 88, 5, 0 // the manual's Pitch 88: its period is one of the twelve one tick long (92 ticks, VoxProbe 2 and 10)
 	sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 	sj.prevSlow, sj.prevCode = false, -1
+	sj.fhold = [3]float32{}
 }
 
 func (sj *SpeakJet) powerOn() {
@@ -603,7 +609,8 @@ func joinTerm(idx int) float64 {
 func (sj *SpeakJet) speedStep() float64 { return (155.9 - float64(sj.speed)) / 47.4 }
 
 func (sj *SpeakJet) speedFactor(effect bool) float64 {
-	if effect || sj.speed < 114 {
+	// 0.5.5: speech takes the speech law below 114 too (VoxProbe 16, both units: Speed 90 MM AW x1.68, the effects' law gave x1.84)
+	if effect {
 		return (fxSpeedA - float64(sj.speed)) / fxSpeedB
 	}
 	return (speedA - float64(sj.speed)) / speedB
@@ -948,8 +955,10 @@ func (sj *SpeakJet) playEffect(code int) {
 					continue
 				}
 				j := -1
+				// 0.5.5: an oscillator whose tone just stopped first, then an idle one (226 B6: the old tone's oscillator carries
+				// the new one at a part change; B6 1.063 -> 1.046, B5 0.877 -> 0.860, no effect worse)
 				for i := 0; i < nTone && j < 0; i++ {
-					if slot[i] < 0 && !(pv.a[i] > 0 && pv.f[i] > 0) {
+					if slot[i] < 0 && pv.a[i] > 0 && pv.f[i] > 0 {
 						j = i
 					}
 				}
@@ -1119,14 +1128,10 @@ func (sj *SpeakJet) fromFrame(tgt frame) frame {
 	if sj.last.a[0] > 0 || sj.last.a[1] > 0 || sj.last.a[2] > 0 {
 		return sj.last
 	}
-	if sj.ppok {
-		for q := 0; q < 3; q++ {
-			tgt.f[q] = sj.prepause.f[q]
+	for q := 0; q < 3; q++ {
+		if sj.fhold[q] > 0 {
+			tgt.f[q] = sj.fhold[q]
 		}
-	}
-	// 0.5.4: straight after SE or TT (no pause) a sound's F2 starts at the alveolar locus, 1600 Hz
-	if !sj.paused && (sj.prevCode == 187 || sj.prevCode == 191) {
-		tgt.f[1] = 1600.0
 	}
 	tgt.a = [nTone]float32{}
 	tgt.na = 0
@@ -1351,10 +1356,14 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	// AW AY EYIY IYUW OWWW UX alone at Speed 118, 122, 127 10-30 ms long on the speech law, within a few ms on this one;
 	// Man Goes Down P2 at Speed 118 1698 ms against 1695/1700 with the liquid joins below)
 	sf := sj.speedFactor(false)
-	if a.kind == kVowel || a.kind == kGlide {
+	// 0.5.5: a nasal above Speed 118 takes the vowels' Speed step (VoxProbe 16, both units: Speed 127 MM AW's handover 38-56 ms
+	// where ours came at 80-102)
+	if a.kind == kVowel || a.kind == kGlide || (a.kind == kNasal && sj.speed > 118) {
 		sf = sj.speedFactor(true)
 		if sj.speed > 115 && !sj.slow {
 			sf = sj.speedStep()
+		} else if sj.speed < 114 {
+			sf = (149.3 - float64(sj.speed)) / 35.3 // 0.5.5: a vowel's own law below 114 (VoxProbe 16: AW IY and MM AW at Speed 90 x1.65-1.68 on both units)
 		}
 	} else if sj.speed > 114 {
 		sf = 1.0
@@ -1410,6 +1419,26 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			ex := ticks(8.0 * d * sj.speedFactor(true))
 			tr += ex
 			tk += ex
+		}
+		// mechanism 2: a vowel's move takes 5 ms per ERB of F1/F2 distance (never under the common transition), stretched by
+		// Speed and Slow - it glides at a rate, not over a fixed time (replaces 0.5.5's slowed vowel after a nasal)
+		if a.kind == kVowel {
+			de := 0.0
+			for q := 0; q < 2; q++ {
+				d := math.Abs(21.4*log(1.0+0.00437*float64(from.f[q]))/math.Ln10 - 21.4*log(1.0+0.00437*float64(tgt.f[q]))/math.Ln10)
+				if d > de {
+					de = d
+				}
+			}
+			ms := transitionMs
+			if 5.0*de > ms {
+				ms = 5.0 * de
+			}
+			sl := 1.0
+			if sj.slow {
+				sl = slowFactor
+			}
+			tr = ticks(ms * sj.speedFactor(false) * sl)
 		}
 		if tr > tk {
 			tr = tk
@@ -1592,7 +1621,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// needs the 44): a voiced stop from silence, not slowed, running into a sound with no Slow on it closes for at
 		// most 30 ms. "man goes down"'s DO (Slow on its AYWW) keeps its closure, as the recordings want
 		// Not after a pause code (2026-11-08, Man Goes Down P2's TT P1 BE: BE 45 ms early, P2 timing 14.1 -> 12.7 ms)
-		if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na == 0 && sj.nextSound(sj.executing) >= 128 && !sj.slowBeforeNext(sj.executing) && !sj.slow && !sj.afterPause && cl > 30.0 {
+		if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na == 0 && sj.nextSound(sj.executing) >= 128 && !sj.slowBeforeNext(sj.executing) && !sj.slow && cl > 30.0 {
 			cl = 30.0
 		}
 		// after a sound the chip closes for at least joinClosure (Man Goes Down's NE GO, both units)
@@ -1614,7 +1643,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// can't be seen on a stop played alone (VoxProbe 13 UX P1 EK 22 ms short; Man Goes Down P4's UX P1 EK: P4 timing
 		// 9.7 -> 4.9 ms, length 910 -> 940 against 942/945)
 		if a.kind == kStop && sj.afterPause {
-			cl += 30.0
+			cl += 15.0 // 0.5.5: 15, not 30 (VoxProbe 16, both units: UX P1 EK 260 ms, ours 270 at 30)
 		}
 		// ASSUMPTION (2026-11-08, VoxProbe 13 NE KO OW, both units by picture: NE stops at 0.105 s and KO bursts at 0.15,
 		// 30 ms after ours; NE TT and NE PO already land): KE and KO after a nasal close longer. 15 ms, not 30
@@ -1718,6 +1747,9 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	}
 	sj.start(false)
 	sj.lastNasal = idx >= 12 && idx <= 16
+	if idx == 59 || idx == 63 { // SE, TT: the alveolar locus
+		sj.fhold[0], sj.fhold[1] = 400.0, 1600.0
+	}
 	sj.lastNGE = idx == 15
 	sj.afterVelar = idx == 50
 	sj.afterVstop = a.kind == kVStop
@@ -1765,10 +1797,6 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			f = 88.0 / float64(sj.pitch)
 		}
 		sj.attack = ticks(float64(a.aa) * f) // a sound's own fade-in: aa ms at Pitch 88, shortened above it in pitch periods, never lengthened below (0.5.0)
-	}
-	// 0.5.4: a slowed nasal comes in almost at once (Slow NE AW, both units)
-	if sj.slow && sj.aidx >= 12 && sj.aidx <= 16 {
-		sj.attack = int(float64(sj.attack) * 0.15)
 	}
 	if (a.kind == kStop || a.kind == kVStop || a.kind == kAffr) && sj.nseg > 1 {
 		for k := 0; k < sj.nseg-1; k++ {
@@ -1822,19 +1850,6 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	if a.rr > 0 {
 		sj.release = ticks(float64(a.rr)) // a sound's own fade-out (SE, SO: the chip fades over most of the sound)
 	}
-	// 0.5.4: AW's own fade-out is 35 ms; after a pause, a slowed sound, LE or AYWW the chip ends it over 25
-	if sj.aidx == 8 && (wasPause || sj.prevSlow || sj.prevCode == 145 || sj.prevCode == 163) {
-		sj.release = ticks(25.0)
-	}
-	// 0.5.4: AW straight before a short pause (P4-P6) ends over 10 ms (AW P4 AW, both units)
-	if c0 := sj.peek(sj.executing); sj.aidx == 8 && c0 >= 4 && c0 <= 6 {
-		sj.release = ticks(10.0)
-	}
-	// 0.5.4: IY straight after another sound runs 5 ms shorter than from silence (solo 130 ms, in phrases 125)
-	if sj.aidx == 0 && !wasPause && sj.prevCode >= 128 && sj.nseg > 0 && sj.seg[sj.nseg-1].ticks > ticks(5.0) {
-		sj.seg[sj.nseg-1].ticks -= ticks(5.0)
-		sj.stotal -= ticks(5.0)
-	}
 	// the copies of a Repeat follow on; the level ramps once, over the whole
 	sj.copies = 0
 	if sj.repeat > 1 {
@@ -1854,6 +1869,9 @@ func (sj *SpeakJet) playPause(ms float64) {
 	// 0.5.4: across a short pause (under 70 ms) the next sound starts from the last one's formants (NE P4 AW, both units)
 	sj.paused = true
 	sj.ppok = false
+	if ms >= 70.0 {
+		sj.fhold = [3]float32{}
+	}
 	if ms < 70.0 && sj.last.a[0]+sj.last.a[1]+sj.last.a[2] > 0 {
 		sj.prepause = sj.last
 		sj.ppok = true
@@ -1929,16 +1947,8 @@ func (sj *SpeakJet) nextCommand() {
 			// followed at once by another sound: the next one's start covers
 			// this one's end
 			next := sj.nextSound(n)
-			// ASSUMPTION (2026-11-07, Man Goes Down P4 only, both units: its Slow IYUW ends ~40-50 ms after ours; the same
-			// Slow IYUW alone matches, VoxProbe 12): a slowed glide followed by modifiers that include a Slow, before the
-			// next sound, plays slowGlideOn ms longer. P4 944 ms on the chip, 875 -> 925 here; the cause is unknown
-			// 2026-11-08, VoxProbe 13 Slow IYUW Slow SE, both units, by picture: IYUW ends ~20 ms after ours without the
-			// rule and the SE after it is right; with Slow IYUW SE (no Slow after) it already matches. 25 ms (P4 940
-			// against 942/945)
-			if allophones[code-128].kind == kGlide && sj.slow && next >= 128 && sj.slowBeforeNext(n) && sj.nseg > 0 {
-				sj.seg[sj.nseg-1].ticks += ticks(slowGlideOn * sj.speedFactor(false))
-				sj.stotal += ticks(slowGlideOn * sj.speedFactor(false))
-			}
+			// 0.5.5: no run-on for a slowed glide before a Slow (0.4.x added 25 ms for Man Goes Down P4; with 0.5.4's rules
+			// ours ran 15 ms long there and in VoxProbe 13's Slow IYUW Slow SE, both units: phrase items 264.0 -> 258.1, none worse)
 			// a voiced sound straight into SE bends F2 and F3 to ZZ's, SE's voiced partner, over its last 40 ms (Man Goes
 			// Down P4, both units: IYUW's F2 falls to ~1090 Hz and rises to ~1500 before the hiss; ZZ's F2 is 1469)
 			if next == 187 && sj.nseg > 0 && sj.seg[sj.nseg-1].voiced {
@@ -1970,31 +1980,10 @@ func (sj *SpeakJet) nextCommand() {
 			}
 			if next >= 0 && sj.nseg > 0 {
 				l := &sj.seg[sj.nseg-1]
-				// 0.5.4: a vowel or glide with F2 under 1500 Hz ends 15 ms sooner into a nasal (AW MM, both units)
-				if k := allophones[code-128].kind; next >= 140 && next <= 144 && sj.seg[sj.nseg-1].to.f[1] < 1500.0 && (k == kVowel || k == kGlide) && sj.stotal > ticks(15.0)+ticks(20.0) {
-					sj.trimTail(ticks(15.0))
-					l = &sj.seg[sj.nseg-1]
-				}
-				// 0.5.4: an unslowed nasal before a vowel or glide hands over 5 ms sooner (MM AW, both units)
-				if code >= 140 && code <= 144 && !sj.slow && next < 200 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide) && l.ticks > ticks(5.0)+2 {
-					l.ticks -= ticks(5.0)
-					sj.stotal -= ticks(5.0)
-				}
-				// 0.5.4: a vowel or glide into TT moves F2 to 1600 Hz over its last 20 ms (the alveolar locus; AW TT, both units)
-				// 0.5.4: an unslowed TT before a vowel or glide releases 10 ms longer (TT AW, both units)
-				if code == 191 && !sj.slow && next < 200 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide) {
-					l.ticks += ticks(10.0)
-					sj.stotal += ticks(10.0)
-				}
 				if k := allophones[code-128].kind; next == 191 && (k == kVowel || k == kGlide) && sj.stotal > ticks(20.0)+2 {
 					sj.splitAt(sj.stotal - ticks(20.0))
 					l = &sj.seg[sj.nseg-1]
 					l.to.f[1] = 1600.0
-				}
-				// 0.5.4: LE before another sound runs 5 ms longer than alone (solo 110 ms, in phrases 115)
-				if code == 145 && next < 200 {
-					l.ticks += ticks(5.0)
-					sj.stotal += ticks(5.0)
 				}
 				// ASSUMPTION (2026-11-08, VoxProbe 13 section 6, both units, the runs of sound): an unslowed NE or NO straight
 				// into GO or GE runs on 18 ms, and 25 more when the GO is slowed (the Slow read ahead); not with a Fast on the
@@ -2086,10 +2075,22 @@ func (sj *SpeakJet) nextCommand() {
 				// ASSUMPTION (2026-11-08, VoxProbe 13 section 5, all four takes: IY MM, MM IY, IY NE, NE IY 26-38 ms short):
 				// a nasal (MM NE NO NGE NGO) and a vowel or glide join with no overlap, unless either is slowed (Man Goes
 				// Down P1's three nasal joins are all slowed and keep it: P1 1502 against 1495/1502)
-				if both && next <= 199 && !sj.slow && !sj.slowBeforeNext(n) {
+				if both && next <= 199 {
 					kn2 := allophones[next-128].kind
-					if (code >= 140 && code <= 144 && kn2 == kVowel) || (next >= 140 && next <= 144 && kc == kVowel) {
-						cut = 0
+					sl := 1.0
+					if sj.slow {
+						sl = slowFactor
+					}
+					if code >= 140 && code <= 144 && kn2 == kVowel {
+						// 0.5.5: a nasal overlaps the vowel after it by 13 ms, MM by 22 (VoxProbe 16, both units)
+						ov := 13.0
+						if code == 140 {
+							ov = 22.0
+						}
+						cut = ticks(ov * sj.speedFactor(false) * sl)
+					} else if next >= 140 && next <= 144 && kc == kVowel {
+						// 0.5.5: a vowel overlaps the nasal after it by 15 ms (VoxProbe 16 section 4)
+						cut = ticks(15.0 * sj.speedFactor(false) * sl)
 					}
 				}
 				// ASSUMPTION (2026-11-07, fitted on VoxProbe 4's vowel pairs, both units, 2600 and Stella; replaces the fixed
@@ -2106,7 +2107,8 @@ func (sj *SpeakJet) nextCommand() {
 				crossing := false // the cut came from the crossing-join rule
 				// the liquids LE LO WW RR join vowels by the same rule (2026-11-08, Man Goes Down P2's IY WW IH 30 ms short:
 				// P2 timing 23.4 -> 17.0 ms, 1665 -> 1702; VoxProbe 13 section 5 10.2 -> 8.6)
-				liqC, liqN := code >= 145 && code <= 148, next >= 145 && next <= 148
+				// 0.5.5: LE and LO join vowels as the nasals do, not by the vowel rule (VoxProbe 16: LE AW, AW LE within 6 ms off it); WW RR stay on it
+				liqC, liqN := code >= 147 && code <= 148, next >= 147 && next <= 148
 				if both && next != int(code) && (kc == kVowel || kc == kGlide || liqC) && (kn == int(kVowel) || kn == int(kGlide) || liqN) {
 					b := &allophones[next-128]
 					if b.kind == kGlide {
@@ -2170,7 +2172,7 @@ func (sj *SpeakJet) nextCommand() {
 					sj.trimTail(cut)
 					l = &sj.seg[sj.nseg-1]
 				}
-				liq := func(c int) bool { return c >= 145 && c <= 148 }
+				liq := func(c int) bool { return c >= 147 && c <= 148 } // 0.5.5: LE LO off the vowel rule (VoxProbe 16)
 				if both && (kc == kVowel || kc == kGlide || liq(int(code))) && int(next) != int(code) && next <= 199 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide || liq(int(next))) {
 					sj.crossJoin(alloFrame(&allophones[next-128], false, sj.bendHz()))
 				}
@@ -2572,7 +2574,47 @@ func (sj *SpeakJet) chipSample() float64 {
 			sj.xa[k] = f.a[k]
 		}
 	}
+	// 0.5.5: an effect oscillator already sounding whose target frequency leaps (by more than 25 % in a tick) plays the
+	// midpoint of old and new for 12 ticks (1.5 ms), then the new (226 B6, all four takes: the 2.2-3.1 kHz hump between its
+	// 1.8 and 3.5 kHz tones). Not from silence, not into or out of a voiced part, not on a small step
+	if sj.effect {
+		if !sj.fslon {
+			for k := 0; k < nTone; k++ {
+				sj.fsl[k], sj.ftg[k], sj.fsn[k] = f.f[k], f.f[k], 0
+			}
+			sj.fslon = true
+		}
+		vz := s.flags&(fxVoiced|fxPulsed) != 0
+		plain := !vz && !sj.fsv
+		sj.fsv = vz
+		for k := 0; k < nTone; k++ {
+			tg := f.f[k]
+			was := sj.fsa[k] > 0
+			sj.fsa[k] = f.a[k]
+			if f.a[k] <= 0 || !was {
+				sj.fsl[k], sj.ftg[k], sj.fsn[k] = tg, tg, 0
+				continue
+			}
+			if plain && sj.ftg[k] > 0 && tg > 0 && (tg > 1.25*sj.ftg[k] || sj.ftg[k] > 1.25*tg) {
+				sj.fsl[k] = 0.5 * (sj.fsl[k] + tg)
+				sj.fsn[k] = 12
+			} else if sj.fsn[k] > 0 {
+				sj.fsn[k]--
+			} else {
+				sj.fsl[k] = tg
+			}
+			sj.ftg[k] = tg
+			f.f[k] = sj.fsl[k]
+		}
+	} else {
+		sj.fslon = false
+	}
 	sj.last = f
+	if f.a[0]+f.a[1]+f.a[2] > 0 {
+		for q := 0; q < 3; q++ {
+			sj.fhold[q] = f.f[q]
+		}
+	}
 
 	v := 0.0
 
