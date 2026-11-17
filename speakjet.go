@@ -1142,6 +1142,47 @@ func lerpFrame(a, b frame, t float32) frame {
 	return a
 }
 
+// anticipate: the sound's last at ticks bend F2 and F3 to (f2, f3), its levels and F1 as they are (split where the
+// span starts)
+func (sj *SpeakJet) anticipate(at int, f2, f3 float32) {
+	total := 0
+	for k := 0; k < sj.nseg; k++ {
+		total += sj.seg[k].ticks
+	}
+	if at <= 0 || at >= total-1 || sj.nseg >= maxSegments {
+		return
+	}
+	start := total - at
+	acc, k := 0, 0
+	for acc+sj.seg[k].ticks <= start {
+		acc += sj.seg[k].ticks
+		k++
+	}
+	if acc < start {
+		sg := sj.seg[k]
+		t1 := start - acc
+		mid := lerpFrame(sg.from, sg.to, float32(t1)/float32(sg.ticks))
+		copy(sj.seg[k+2:sj.nseg+1], sj.seg[k+1:sj.nseg])
+		sj.seg[k].ticks = t1
+		sj.seg[k].to = mid
+		sj.seg[k+1] = sg
+		sj.seg[k+1].ticks = sg.ticks - t1
+		sj.seg[k+1].from = mid
+		sj.nseg++
+		k++
+	}
+	f2a, f3a := sj.seg[k].from.f[1], sj.seg[k].from.f[2]
+	el := 0
+	for ; k < sj.nseg; k++ {
+		g := &sj.seg[k]
+		g.from.f[1] = f2a + (f2-f2a)*float32(el)/float32(at)
+		g.from.f[2] = f3a + (f3-f3a)*float32(el)/float32(at)
+		el += g.ticks
+		g.to.f[1] = f2a + (f2-f2a)*float32(el)/float32(at)
+		g.to.f[2] = f3a + (f3-f3a)*float32(el)/float32(at)
+	}
+}
+
 // splitAt: split the sound's segments at tick at from its start (no split at an existing edge)
 func (sj *SpeakJet) splitAt(at int) {
 	acc, k := 0, 0
@@ -1924,7 +1965,12 @@ func (sj *SpeakJet) nextCommand() {
 			next := sj.nextSound(n)
 			// 0.5.5: no run-on for a slowed glide before a Slow (0.4.x added 25 ms for Man Goes Down P4; with 0.5.4's rules
 			// ours ran 15 ms long there and in VoxProbe 13's Slow IYUW Slow SE, both units: phrase items 264.0 -> 258.1, none worse)
-			// mechanism 1: no bend toward ZZ's formants before SE any more (the held formants)
+			// a voiced sound straight into SE bends F2 and F3 to ZZ's, SE's voiced partner, over its last 40 ms (Man Goes
+			// Down P4, both units: IYUW's F2 falls to ~1090 Hz and rises to ~1500 before the hiss; ZZ's F2 is 1469)
+			if next == 187 && sj.nseg > 0 && sj.seg[sj.nseg-1].voiced {
+				zz := &allophones[167-128]
+				sj.anticipate(ticks(40.0*sj.speedFactor(false)), bent(float64(zz.f[1])*hzStep, sj.bendHz()), bent(float64(zz.f[2])*hzStep, sj.bendHz()))
+			}
 			// GO followed at once by a sound starting on OW (OW OWRR OWIY OWWW) releases on F2 1430 and F3 1920 Hz, F3 the
 			// stronger by 4-5 dB (Man Goes Down's GO OWWW, both units, the user's drawn lines: two level bands that then
 			// split into OW's F2 and F3); alone it keeps its table formants, which its solo takes need (moving them there:
