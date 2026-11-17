@@ -1641,7 +1641,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// can't be seen on a stop played alone (VoxProbe 13 UX P1 EK 22 ms short; Man Goes Down P4's UX P1 EK: P4 timing
 		// 9.7 -> 4.9 ms, length 910 -> 940 against 942/945)
 		if a.kind == kStop && sj.afterPause {
-			cl += 30.0
+			cl += 15.0 // 0.5.5: 15, not 30 (VoxProbe 16, both units: UX P1 EK 260 ms, ours 270 at 30)
 		}
 		// ASSUMPTION (2026-11-08, VoxProbe 13 NE KO OW, both units by picture: NE stops at 0.105 s and KO bursts at 0.15,
 		// 30 ms after ours; NE TT and NE PO already land): KE and KO after a nasal close longer. 15 ms, not 30
