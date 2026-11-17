@@ -61,7 +61,6 @@ const (
 	closureMs     = 30.0                // the closure before a stop's burst
 	joinClosure   = 45.0                // a stop's closure after a sound, at least this, ms (Man Goes Down's GO)
 	nasalBar      = 0.15848931924611134 // a voiced stop's bar after a nasal: 16 dB under its own level
-	slowGlideOn   = 25.0                // ms: see the ASSUMPTION at its use
 	joinA         = 66.9                // a vowel or glide into a vowel or glide: cut joinA - joinK * (F1+F2 ERB distance) ms
 	joinK         = 6.9
 	nasalFade     = 0.6513   // and the nasal fades into it over this share of the closure
@@ -1124,9 +1123,13 @@ func (sj *SpeakJet) fromFrame(tgt frame) frame {
 			tgt.f[q] = sj.prepause.f[q]
 		}
 	}
-	// 0.5.4: straight after SE or TT (no pause) a sound's F2 starts at the alveolar locus, 1600 Hz
+	// 0.5.4: straight after SE or TT (no pause) a sound's F2 starts at the alveolar locus, 1600 Hz; 0.5.5: and F1 at 400 Hz at
+	// most (both units, SE AW: all 12 SE/TT into a vowel items closer, phrase items 247.5 -> 235.3, none worse)
 	if !sj.paused && (sj.prevCode == 187 || sj.prevCode == 191) {
 		tgt.f[1] = 1600.0
+		if tgt.f[0] > 400.0 {
+			tgt.f[0] = 400.0
+		}
 	}
 	tgt.a = [nTone]float32{}
 	tgt.na = 0
@@ -1410,6 +1413,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			ex := ticks(8.0 * d * sj.speedFactor(true))
 			tr += ex
 			tk += ex
+		}
+		// 0.5.5: a slowed vowel after a nasal moves over 60 ms (Man Goes Down P1's MM Slow AY, both units: F1 rises ~400 -> 800
+		// Hz over ~60 ms where ours stepped; P1 548 -> 462 and 620 -> 531 with the move into NE, no other item changes)
+		if a.kind == kVowel && sj.slow && sj.prevCode >= 140 && sj.prevCode <= 144 && tr < ticks(60.0) {
+			tr = ticks(60.0)
 		}
 		if tr > tk {
 			tr = tk
@@ -1766,6 +1774,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		}
 		sj.attack = ticks(float64(a.aa) * f) // a sound's own fade-in: aa ms at Pitch 88, shortened above it in pitch periods, never lengthened below (0.5.0)
 	}
+	// 0.5.5: a vowel after a short pause (P4, P5) fades in over 20 ms at most (both units, NE P4 AW and AW P4 AW: the AW
+	// 8-12 dB under the chip over its first 30 ms; phrase items 249.4 -> 247.5, none worse)
+	if sj.ppok && a.kind == kVowel && sj.attack > ticks(20.0) {
+		sj.attack = ticks(20.0)
+	}
 	// 0.5.4: a slowed nasal comes in almost at once (Slow NE AW, both units)
 	if sj.slow && sj.aidx >= 12 && sj.aidx <= 16 {
 		sj.attack = int(float64(sj.attack) * 0.15)
@@ -1834,6 +1847,12 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	if sj.aidx == 0 && !wasPause && sj.prevCode >= 128 && sj.nseg > 0 && sj.seg[sj.nseg-1].ticks > ticks(5.0) {
 		sj.seg[sj.nseg-1].ticks -= ticks(5.0)
 		sj.stotal -= ticks(5.0)
+	}
+	// 0.5.5: a vowel straight after MM runs 10 ms shorter (both units, MM AW: AW 110 ms on the chip, ours 125; phrase
+	// items 258.1 -> 251.4, none worse; after NE any cut was worse, so MM only)
+	if a.kind == kVowel && !wasPause && sj.prevCode == 140 && sj.nseg > 0 && sj.seg[sj.nseg-1].ticks > ticks(10.0)+2 {
+		sj.seg[sj.nseg-1].ticks -= ticks(10.0)
+		sj.stotal -= ticks(10.0)
 	}
 	// the copies of a Repeat follow on; the level ramps once, over the whole
 	sj.copies = 0
@@ -1929,16 +1948,8 @@ func (sj *SpeakJet) nextCommand() {
 			// followed at once by another sound: the next one's start covers
 			// this one's end
 			next := sj.nextSound(n)
-			// ASSUMPTION (2026-11-07, Man Goes Down P4 only, both units: its Slow IYUW ends ~40-50 ms after ours; the same
-			// Slow IYUW alone matches, VoxProbe 12): a slowed glide followed by modifiers that include a Slow, before the
-			// next sound, plays slowGlideOn ms longer. P4 944 ms on the chip, 875 -> 925 here; the cause is unknown
-			// 2026-11-08, VoxProbe 13 Slow IYUW Slow SE, both units, by picture: IYUW ends ~20 ms after ours without the
-			// rule and the SE after it is right; with Slow IYUW SE (no Slow after) it already matches. 25 ms (P4 940
-			// against 942/945)
-			if allophones[code-128].kind == kGlide && sj.slow && next >= 128 && sj.slowBeforeNext(n) && sj.nseg > 0 {
-				sj.seg[sj.nseg-1].ticks += ticks(slowGlideOn * sj.speedFactor(false))
-				sj.stotal += ticks(slowGlideOn * sj.speedFactor(false))
-			}
+			// 0.5.5: no run-on for a slowed glide before a Slow (0.4.x added 25 ms for Man Goes Down P4; with 0.5.4's rules
+			// ours ran 15 ms long there and in VoxProbe 13's Slow IYUW Slow SE, both units: phrase items 264.0 -> 258.1, none worse)
 			// a voiced sound straight into SE bends F2 and F3 to ZZ's, SE's voiced partner, over its last 40 ms (Man Goes
 			// Down P4, both units: IYUW's F2 falls to ~1090 Hz and rises to ~1500 before the hiss; ZZ's F2 is 1469)
 			if next == 187 && sj.nseg > 0 && sj.seg[sj.nseg-1].voiced {
@@ -1970,6 +1981,12 @@ func (sj *SpeakJet) nextCommand() {
 			}
 			if next >= 0 && sj.nseg > 0 {
 				l := &sj.seg[sj.nseg-1]
+				// 0.5.5: a slowed vowel into a nasal moves F1 to the nasal's over its last 60 ms (P1's Slow AY NE, both units)
+				if next >= 140 && next <= 144 && sj.slow && allophones[code-128].kind == kVowel && sj.stotal > ticks(60.0)+2 {
+					sj.splitAt(sj.stotal - ticks(60.0))
+					l = &sj.seg[sj.nseg-1]
+					l.to.f[0] = float32(bent(float64(allophones[next-128].f[0])*hzStep, sj.bendHz()))
+				}
 				// 0.5.4: a vowel or glide with F2 under 1500 Hz ends 15 ms sooner into a nasal (AW MM, both units)
 				if k := allophones[code-128].kind; next >= 140 && next <= 144 && sj.seg[sj.nseg-1].to.f[1] < 1500.0 && (k == kVowel || k == kGlide) && sj.stotal > ticks(15.0)+ticks(20.0) {
 					sj.trimTail(ticks(15.0))
@@ -1979,6 +1996,11 @@ func (sj *SpeakJet) nextCommand() {
 				if code >= 140 && code <= 144 && !sj.slow && next < 200 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide) && l.ticks > ticks(5.0)+2 {
 					l.ticks -= ticks(5.0)
 					sj.stotal -= ticks(5.0)
+				}
+				// 0.5.5: a slowed nasal before a vowel or glide runs 10 ms longer (Slow NE AW, both units)
+				if code >= 140 && code <= 144 && sj.slow && next < 200 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide) {
+					l.ticks += ticks(10.0)
+					sj.stotal += ticks(10.0)
 				}
 				// 0.5.4: a vowel or glide into TT moves F2 to 1600 Hz over its last 20 ms (the alveolar locus; AW TT, both units)
 				// 0.5.4: an unslowed TT before a vowel or glide releases 10 ms longer (TT AW, both units)
