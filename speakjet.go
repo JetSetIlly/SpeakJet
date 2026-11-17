@@ -297,6 +297,7 @@ type SpeakJet struct {
 	vstarted      bool          // 0.5.0: voicing has run since the last silence
 	vcount        int           // 0.5.4: voicing periods since the voice started
 	vafter        bool          // 0.5.4: this sound follows a voiced stop or a nasal: no long period
+	fhold         [3]float32    // mechanism: where the formants are, held through hisses and pauses (0: not set)
 	prepause      frame         // 0.5.4: the last sound's frame before a short pause
 	ppok          bool          // 0.5.4: and whether it carries over
 	paused        bool          // 0.5.4: a pause since the last sound
@@ -352,6 +353,7 @@ func (sj *SpeakJet) resetControls() {
 	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 88, 5, 0 // the manual's Pitch 88: its period is one of the twelve one tick long (92 ticks, VoxProbe 2 and 10)
 	sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 	sj.prevSlow, sj.prevCode = false, -1
+	sj.fhold = [3]float32{}
 }
 
 func (sj *SpeakJet) powerOn() {
@@ -1118,17 +1120,9 @@ func (sj *SpeakJet) fromFrame(tgt frame) frame {
 	if sj.last.a[0] > 0 || sj.last.a[1] > 0 || sj.last.a[2] > 0 {
 		return sj.last
 	}
-	if sj.ppok {
-		for q := 0; q < 3; q++ {
-			tgt.f[q] = sj.prepause.f[q]
-		}
-	}
-	// 0.5.4: straight after SE or TT (no pause) a sound's F2 starts at the alveolar locus, 1600 Hz; 0.5.5: and F1 at 400 Hz at
-	// most (both units, SE AW: all 12 SE/TT into a vowel items closer, phrase items 247.5 -> 235.3, none worse)
-	if !sj.paused && (sj.prevCode == 187 || sj.prevCode == 191) {
-		tgt.f[1] = 1600.0
-		if tgt.f[0] > 400.0 {
-			tgt.f[0] = 400.0
+	for q := 0; q < 3; q++ {
+		if sj.fhold[q] > 0 {
+			tgt.f[q] = sj.fhold[q]
 		}
 	}
 	tgt.a = [nTone]float32{}
@@ -1726,6 +1720,9 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	}
 	sj.start(false)
 	sj.lastNasal = idx >= 12 && idx <= 16
+	if idx == 59 || idx == 63 { // SE, TT: the alveolar locus
+		sj.fhold[0], sj.fhold[1] = 400.0, 1600.0
+	}
 	sj.lastNGE = idx == 15
 	sj.afterVelar = idx == 50
 	sj.afterVstop = a.kind == kVStop
@@ -1873,6 +1870,9 @@ func (sj *SpeakJet) playPause(ms float64) {
 	// 0.5.4: across a short pause (under 70 ms) the next sound starts from the last one's formants (NE P4 AW, both units)
 	sj.paused = true
 	sj.ppok = false
+	if ms >= 70.0 {
+		sj.fhold = [3]float32{}
+	}
 	if ms < 70.0 && sj.last.a[0]+sj.last.a[1]+sj.last.a[2] > 0 {
 		sj.prepause = sj.last
 		sj.ppok = true
@@ -2595,6 +2595,11 @@ func (sj *SpeakJet) chipSample() float64 {
 		}
 	}
 	sj.last = f
+	if f.a[0]+f.a[1]+f.a[2] > 0 {
+		for q := 0; q < 3; q++ {
+			sj.fhold[q] = f.f[q]
+		}
+	}
 
 	v := 0.0
 
