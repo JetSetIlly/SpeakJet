@@ -280,6 +280,11 @@ type SpeakJet struct {
 
 	// synthesizer state
 	period, ptick int
+	// 0.5.5: an effect tone's leap passes through its midpoint: the frequency played, the target, the level, ticks left on
+	// the midpoint, the last part voiced
+	fsl, ftg, fsa [nTone]float32
+	fsn           [nTone]int
+	fslon, fsv    bool
 	phase         [nTone]float64
 	xa            [nTone]float32 // fxSmooth: the tone amplitudes as they ramp
 	xv            float32        // fxSmooth: the voice's gain as it ramps in
@@ -2610,6 +2615,41 @@ func (sj *SpeakJet) chipSample() float64 {
 		for k := 0; k < nTone; k++ {
 			sj.xa[k] = f.a[k]
 		}
+	}
+	// 0.5.5: an effect oscillator already sounding whose target frequency leaps (by more than 25 % in a tick) plays the
+	// midpoint of old and new for 12 ticks (1.5 ms), then the new (226 B6, all four takes: the 2.2-3.1 kHz hump between its
+	// 1.8 and 3.5 kHz tones). Not from silence, not into or out of a voiced part, not on a small step
+	if sj.effect {
+		if !sj.fslon {
+			for k := 0; k < nTone; k++ {
+				sj.fsl[k], sj.ftg[k], sj.fsn[k] = f.f[k], f.f[k], 0
+			}
+			sj.fslon = true
+		}
+		vz := s.flags&(fxVoiced|fxPulsed) != 0
+		plain := !vz && !sj.fsv
+		sj.fsv = vz
+		for k := 0; k < nTone; k++ {
+			tg := f.f[k]
+			was := sj.fsa[k] > 0
+			sj.fsa[k] = f.a[k]
+			if f.a[k] <= 0 || !was {
+				sj.fsl[k], sj.ftg[k], sj.fsn[k] = tg, tg, 0
+				continue
+			}
+			if plain && sj.ftg[k] > 0 && tg > 0 && (tg > 1.25*sj.ftg[k] || sj.ftg[k] > 1.25*tg) {
+				sj.fsl[k] = 0.5 * (sj.fsl[k] + tg)
+				sj.fsn[k] = 12
+			} else if sj.fsn[k] > 0 {
+				sj.fsn[k]--
+			} else {
+				sj.fsl[k] = tg
+			}
+			sj.ftg[k] = tg
+			f.f[k] = sj.fsl[k]
+		}
+	} else {
+		sj.fslon = false
 	}
 	sj.last = f
 	if f.a[0]+f.a[1]+f.a[2] > 0 {
