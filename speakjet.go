@@ -2135,7 +2135,11 @@ func (sj *SpeakJet) nextCommand() {
 							d += w * (eb - ea)
 						}
 					}
-					ms := (joinA - joinK*d + joinTerm(int(code)-128) + joinTerm(next-128)) * sj.speedFactor(false)
+					jn := joinTerm(next - 128)
+					if code >= 147 && code <= 148 {
+						jn = 0 // WW RR take no term from the sound after them (2026-11-18: IH's +15 put Man Goes Down P2's IY WW IH 20 ms short)
+					}
+					ms := (joinA - joinK*d + joinTerm(int(code)-128) + jn) * sj.speedFactor(false)
 					if ms >= 0.0 {
 						cut = ticks(ms)
 						crossing = true
