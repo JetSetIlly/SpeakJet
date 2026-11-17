@@ -1360,7 +1360,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	// where ours came at 80-102)
 	if a.kind == kVowel || a.kind == kGlide || (a.kind == kNasal && sj.speed > 118) {
 		sf = sj.speedFactor(true)
-		if sj.speed > 115 && !sj.slow {
+		if sj.speed > 115 { // slowed too (VoxProbe 16: Speed 118 FF RR Slow UW 200-210 ms on both units, ours 225 on the effects' law)
 			sf = sj.speedStep()
 		} else if sj.speed < 114 {
 			sf = (149.3 - float64(sj.speed)) / 35.3 // 0.5.5: a vowel's own law below 114 (VoxProbe 16: AW IY and MM AW at Speed 90 x1.65-1.68 on both units)
