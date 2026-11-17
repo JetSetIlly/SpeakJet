@@ -2105,7 +2105,8 @@ func (sj *SpeakJet) nextCommand() {
 				crossing := false // the cut came from the crossing-join rule
 				// the liquids LE LO WW RR join vowels by the same rule (2026-11-08, Man Goes Down P2's IY WW IH 30 ms short:
 				// P2 timing 23.4 -> 17.0 ms, 1665 -> 1702; VoxProbe 13 section 5 10.2 -> 8.6)
-				liqC, liqN := code >= 145 && code <= 148, next >= 145 && next <= 148
+				// 0.5.5: LE and LO join vowels as the nasals do, not by the vowel rule (VoxProbe 16: LE AW, AW LE within 6 ms off it); WW RR stay on it
+				liqC, liqN := code >= 147 && code <= 148, next >= 147 && next <= 148
 				if both && next != int(code) && (kc == kVowel || kc == kGlide || liqC) && (kn == int(kVowel) || kn == int(kGlide) || liqN) {
 					b := &allophones[next-128]
 					if b.kind == kGlide {
@@ -2169,7 +2170,7 @@ func (sj *SpeakJet) nextCommand() {
 					sj.trimTail(cut)
 					l = &sj.seg[sj.nseg-1]
 				}
-				liq := func(c int) bool { return c >= 145 && c <= 148 }
+				liq := func(c int) bool { return c >= 147 && c <= 148 } // 0.5.5: LE LO off the vowel rule (VoxProbe 16)
 				if both && (kc == kVowel || kc == kGlide || liq(int(code))) && int(next) != int(code) && next <= 199 && (allophones[next-128].kind == kVowel || allophones[next-128].kind == kGlide || liq(int(next))) {
 					sj.crossJoin(alloFrame(&allophones[next-128], false, sj.bendHz()))
 				}
