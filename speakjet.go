@@ -949,8 +949,10 @@ func (sj *SpeakJet) playEffect(code int) {
 					continue
 				}
 				j := -1
+				// 0.5.5: an oscillator whose tone just stopped first, then an idle one (226 B6: the old tone's oscillator carries
+				// the new one at a part change; B6 1.063 -> 1.046, B5 0.877 -> 0.860, no effect worse)
 				for i := 0; i < nTone && j < 0; i++ {
-					if slot[i] < 0 && !(pv.a[i] > 0 && pv.f[i] > 0) {
+					if slot[i] < 0 && pv.a[i] > 0 && pv.f[i] > 0 {
 						j = i
 					}
 				}
