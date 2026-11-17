@@ -1362,6 +1362,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		sf = sj.speedFactor(true)
 		if sj.speed > 115 && !sj.slow {
 			sf = sj.speedStep()
+		} else if sj.speed < 114 {
+			sf = (149.3 - float64(sj.speed)) / 35.3 // 0.5.5: a vowel's own law below 114 (VoxProbe 16: AW IY and MM AW at Speed 90 x1.65-1.68 on both units)
 		}
 	} else if sj.speed > 114 {
 		sf = 1.0
