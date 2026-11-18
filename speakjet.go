@@ -304,8 +304,6 @@ type SpeakJet struct {
 	vcount        int           // 0.5.4: voicing periods since the voice started
 	vafter        bool          // 0.5.4: this sound follows a voiced stop or a nasal: no long period
 	fhold         [3]float32    // mechanism: where the formants are, held through hisses and pauses (0: not set)
-	prepause      frame         // 0.5.4: the last sound's frame before a short pause
-	ppok          bool          // 0.5.4: and whether it carries over
 	paused        bool          // 0.5.4: a pause since the last sound
 	aplain        bool          // 0.5.0: the playing allophone is a plain vowel (IY..UW)
 	wander        float64       // an fxWander part's pitch drift, a fraction
@@ -1843,15 +1841,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 }
 
 func (sj *SpeakJet) playPause(ms float64) {
-	// 0.5.4: across a short pause (under 70 ms) the next sound starts from the last one's formants (NE P4 AW, both units)
+	// across a short pause (under 70 ms) the formants hold (fhold, 0.5.5); a longer pause lets them go (audit 2026-11-19:
+	// 0.5.4's own carry, prepause, was no longer read)
 	sj.paused = true
-	sj.ppok = false
 	if ms >= 70.0 {
 		sj.fhold = [3]float32{}
-	}
-	if ms < 70.0 && sj.last.a[0]+sj.last.a[1]+sj.last.a[2] > 0 {
-		sj.prepause = sj.last
-		sj.ppok = true
 	}
 	sj.nseg = 0
 	var silent frame
@@ -2259,7 +2253,6 @@ func (sj *SpeakJet) nextSound(i int) int {
 func (sj *SpeakJet) finishSound() {
 	if c := int(sj.peek(0)); c >= 128 {
 		sj.prevSlow, sj.prevCode = sj.slow, c
-		sj.ppok = false
 		sj.paused = false
 		sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 	}
