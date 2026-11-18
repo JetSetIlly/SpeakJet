@@ -1641,9 +1641,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		velar := a == &allophones[50] || a == &allophones[51]
 		if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na > 0 {
 			if a == &allophones[47] { // 0.5.0: DO and GO only - the VoxProbe 13 measurements were before DO and GO; DE after EH (VoxProbe 4, both units) closes for 45 ms, its own 40
-				cl += 25.0
-			} else if a == &allophones[51] {
-				cl += 15.0
+				cl += 13.0 // audit (2026-11-19, VoxProbe 13 section 6, per item): DO +13 (was +25), GO none (was +15)
 			}
 		}
 		// ASSUMPTION (2026-11-08): an unvoiced stop straight after a pause code closes 30 ms longer, in silence, so it
