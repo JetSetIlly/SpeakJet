@@ -1359,7 +1359,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	sf := sj.speedFactor(false)
 	// 0.5.5: a nasal above Speed 118 takes the vowels' Speed step (VoxProbe 16, both units: Speed 127 MM AW's handover 38-56 ms
 	// where ours came at 80-102)
-	if a.kind == kVowel || a.kind == kGlide || (a.kind == kNasal && sj.speed > 118) {
+	// 0.5.6: a voiced fricative takes the step too (VoxProbe 12, P2's DH x0.76 from Speed 114 to 118)
+	if a.kind == kVowel || a.kind == kGlide || (a.kind == kNasal && sj.speed > 118) || (a.kind == kVFric && sj.speed > 115) {
 		sf = sj.speedFactor(true)
 		if sj.speed > 115 { // slowed too (VoxProbe 16: Speed 118 FF RR Slow UW 200-210 ms on both units, ours 225 on the effects' law)
 			sf = sj.speedStep()
@@ -1397,15 +1398,16 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		}
 		// 0.5.0: a voiced fricative after a pause opens with 40 ms of its noise alone before the voicing (Man Goes Down P2's
 		// EYIY P4 DH, both units: ~40 ms of faint frication before the voicing, 10 alone)
+		// 0.5.6: the 40 ms is added to the sound, not taken from it, and steps with Speed above 115 (VoxProbe 12, both units, by
+		// DTW: P2's DH 140-150 ms at Speed 114 and 110 at 118, ours 97 at both; with this 137 and 110)
 		if a.kind == kVFric && sj.afterPause {
 			nz := tgt
 			nz.a[0], nz.a[1], nz.a[2] = 0, 0, 0
-			sj.addSegment(ticks(40.0), nz, nz, false)
-			lead := ticks(40.0)
-			if lead > tk/2 {
-				lead = tk / 2
+			lead := 40.0
+			if sj.speed > 115 {
+				lead *= sj.speedStep()
 			}
-			tk -= lead
+			sj.addSegment(ticks(lead), nz, nz, false)
 		}
 		// ASSUMPTION (2026-11-08, VoxProbe 13 section 7, all four takes: after GE's burst F2 glides from ~2000 Hz to the
 		// vowel's over ~60 ms before OW; GE OW, GE UW 39-49 ms short, GE IY EH AY 15-20): a vowel after GE moves from

@@ -94,7 +94,7 @@ the levels in sixteen bands with every take lined up on its own onset. 0.5.4 sto
 error on its 76 items, 0.5.5 at 4.07; unit A against unit B reads 2.77. The rules that had been fitted to
 Man Goes Down's phrases are gone; the mechanisms that replaced them also fit VoxProbe 13's 87 recorded
 pairs better (length error 18.1 -> 13.5 ms rms). Man Goes Down's phrases against the two chips: phrase 1
-1475 ms (units 1490 / 1490), phrase 2 1725 (1690 / 1685), phrase 4 930 (930 / 935).
+1475 ms (units 1490 / 1490), phrase 2 1725 (1690 / 1685), phrase 4 930 (930 / 935). On main since 0.5.5 phrase 2 is 1690.
 
 The furthest sounds are effects (238 C8, 239 C9, 207 R7, 206 R6, 201 R1), then the
 voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's level
