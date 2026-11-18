@@ -1557,34 +1557,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		}
 		sj.addSegment(tk, tgt, tgt, false)
 	case kStop, kVStop:
-		// 0.5.4: TT before a vowel, pauses and controls between allowed, is 3 dB louder (both units: VoxProbe 4 and 8, TT AW
-		// TT P4 AW Slow TT AW, the burst at -24..-29 dB against the vowel where ours was -30..-34; TT alone unchanged)
-		ttG := float32(1.0)
-		if idx == 63 {
-			i, c := sj.executing, -1
-			for i < sj.count {
-				c = int(sj.peek(i))
-				if c >= 128 {
-					break
-				}
-				if c <= 6 || c == 7 || c == 8 {
-					i++
-					c = -1
-					continue
-				}
-				if c == 20 || c == 21 || c == 22 || c == 23 || c == 26 {
-					i += 2
-					c = -1
-					continue
-				}
-				break
-			}
-			if c >= 128 && c <= 199 && (allophones[c-128].kind == kVowel || allophones[c-128].kind == kGlide) {
-				ttG = 1.4125375 // +3 dB
-			}
-		}
 		tgt := tgt
-		tgt.lv *= ttG
 		// the closure ("silence already added" says the manual; a voiced stop
 		// hums through it on its first formant alone) then the burst
 		// and release, which is the measured length
@@ -1737,7 +1710,6 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			sj.addSegment(tk-ticks(nasalRamp), tgt, alloFrame(a, true, bend), true)
 		} else {
 			t2 := alloFrame(a, true, bend)
-			t2.lv *= ttG
 			sj.addSegment(tk, tgt, t2, a.kind == kVStop)
 		}
 	case kAffr:
@@ -1909,15 +1881,6 @@ func (sj *SpeakJet) nextCommand() {
 				pf = sj.speedStep()
 			}
 			pms := pauseMs[code] * pf
-			// 0.5.0: after a short pause (P4-P6), a voiced stop's bar opens 12 ms into the pause (Man Goes Down P1's ZZ P4 DO,
-			// both units: the bar 11 ms after ZZ's end, ours 23)
-			if nx := sj.nextSound(n); pms <= 20.0 && nx >= 128 && nx <= 199 && allophones[nx-128].kind == kVStop {
-				if pms > 12.0 {
-					pms -= 12.0
-				} else {
-					pms = 0
-				}
-			}
 			sj.playPause(pms)
 			sj.joined = false
 		case code >= 128 && code <= 199:
