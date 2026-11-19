@@ -2934,8 +2934,9 @@ func (sj *SpeakJet) chipSample() float64 {
 	}
 	sj.vbed = s.flags&fxVoiced != 0 && s.flags&(fxAll|fxSmooth) == 0
 	v = sj.outputStage(v, s.voiced && s.flags&(fxVoiced|fxPulsed) == 0)
-	// 0.5.4: the effects' output through a 40 Hz high-pass (B2 A0 C7 R5 R7: nothing under ~50 Hz on the chip)
-	if sj.effect {
+	// 0.5.4: the effects' output through a 40 Hz high-pass (B2 A0 C7 R5 R7: nothing under ~50 Hz on the chip); audit
+	// (2026-11-19): speech too - the output stage is the same for everything (six vowels' first harmonic 0.8 dB strong)
+	{
 		k := math.Exp(-2.0 * math.Pi * fxOutHP / rate)
 		sj.fxhpz = k*sj.fxhpz + (1.0-k)*v
 		v -= sj.fxhpz
