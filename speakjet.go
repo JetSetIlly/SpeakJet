@@ -2506,9 +2506,6 @@ func (sj *SpeakJet) chipSample() float64 {
 	for k := 0; k < nTone; k++ {
 		fa, fb := float64(s.from.f[k]), float64(s.to.f[k])
 		switch {
-		case s.flags&fxExp != 0 && s.flags&fxExpDecay != 0 && fa > 0 && fb > 0:
-			// a settle on the log scale, steep then flattening (see the C library: 218 A8's opening)
-			f.f[k] = float32(fa * exp((1.0-exp(-2.0*t))/0.8646647167633873*log(fb/fa)))
 		case s.flags&fxExp != 0 && fa > 0 && fb > 0:
 			f.f[k] = float32(fa * exp(t*log(fb/fa)))
 		case s.flags&fxExpDecay != 0:
