@@ -32,6 +32,7 @@ const (
 	thumpHz     = 800.0  // and is low-passed here
 	nasalAttack = 25.0   // a nasal's attack, ms (the vowels': attackMs)
 	barUp       = 0.12   // a voiced stop's bar: its upper formants at this fraction of the release's
+	abarUp      = 0.05   // 2026-11-20: an alveolar's bar (DE DO ED OD): its upper formants weaker still (as the C library's ABAR_UP)
 	barNF       = 1000.0 // 0.5.3: an alveolar's bar is partly noise: a band, Hz (both units: DE DO's bar pulses match one another 0.40-0.59 above 700 Hz, ours 0.76-0.81)
 	barNW       = 800.0  // its width, Hz
 	barNA       = 4.0    // its level (the velars' bar is periodic on the chip)
@@ -1574,6 +1575,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			gone.a[1] = float32(float64(tgt.a[1]) * barUp)
 			gone.a[2] = float32(float64(tgt.a[2]) * barUp)
 			if idx >= 46 && idx <= 49 { // DE DO ED OD
+				gone.a[1] = float32(float64(tgt.a[1]) * abarUp)
+				gone.a[2] = float32(float64(tgt.a[2]) * abarUp)
 				gone.nf = barNF
 				gone.nw = barNW
 				gone.na = barNA
