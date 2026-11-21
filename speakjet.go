@@ -9,6 +9,9 @@ const SampleRate = 48000
 
 // the size of the input buffer, and the level above which the Buffer Half
 // Full status line is set. from the manual
+// 0.5.7: a voice's first three pulses from silence, -30 -7 -2 dB
+var ponGain = [3]float64{0.0316228, 0.446684, 0.794328}
+
 const (
 	BufferSize     = 64
 	bufferHalfFull = 32
@@ -303,6 +306,9 @@ type SpeakJet struct {
 	venv          float64       // the voicing envelope this tick, for an fxAll effect's noise
 	vstarted      bool          // 0.5.0: voicing has run since the last silence
 	vcount        int           // 0.5.4: voicing periods since the voice started
+	pon           bool          // 0.5.7: a vowel or glide from silence rises by pulse
+	opulse        int           // 0.5.7: its pulses so far
+	ndk           float64       // 0.5.7: a decaying release: the noise band's gain at the end of its last segment (0: none)
 	vafter        bool          // 0.5.4: this sound follows a voiced stop or a nasal: no long period
 	fhold         [3]float32    // mechanism: where the formants are, held through hisses and pauses (0: not set)
 	paused        bool          // 0.5.4: a pause since the last sound
@@ -762,6 +768,9 @@ func (sj *SpeakJet) start(effect bool) {
 	sj.wobph = 0
 	sj.onset = 0
 	sj.onsetFrom = 0
+	sj.pon = false
+	sj.opulse = 0
+	sj.ndk = 0
 	sj.releaseGain = 1.0
 	sj.wfloor = 0
 	sj.thump = 0
@@ -1720,10 +1729,12 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	}
 	// a release that decays: the noise band ends its last segment at nd/256 of its level (TS, both units, every take:
 	// -13 dB over its 95 ms, the low band holding - the white floor - while the band falls)
-	if a.nd > 0 && sj.nseg > 0 {
-		sj.seg[sj.nseg-1].to.na *= float32(a.nd) / 256.0
-	}
 	sj.start(false)
+	// a release that decays (nd; TS): 0.5.7, applied in the noise mix, to the band alone and evenly in dB, the white floor
+	// holding; set after start, which clears it
+	if a.nd > 0 && sj.nseg > 0 {
+		sj.ndk = float64(a.nd) / 256.0
+	}
 	sj.lastNasal = idx >= 12 && idx <= 16
 	if idx == 59 || idx == 63 { // SE, TT: the alveolar locus
 		sj.fhold[0], sj.fhold[1] = 400.0, 1600.0
@@ -1775,6 +1786,13 @@ func (sj *SpeakJet) playAllophone(idx int) {
 			f = 88.0 / float64(sj.pitch)
 		}
 		sj.attack = ticks(float64(a.aa) * f) // a sound's own fade-in: aa ms at Pitch 88, shortened above it in pitch periods, never lengthened below (0.5.0)
+	}
+	// 0.5.7: a vowel or glide from silence with no attack of its own rises by pulse, not by time (both units, solo takes: a
+	// faint first pulse, then -7, -2, 0 dB; the 35 ms ramp left the second pulse 6-10 dB under the chip's). EH and OH keep
+	// the ramp through their own aa 35; a sound with its own aa keeps its ramp
+	if (a.kind == kVowel || a.kind == kGlide) && a.aa == 0 && !awFast && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+		sj.pon = true
+		sj.attack = 0
 	}
 	if (a.kind == kStop || a.kind == kVStop || a.kind == kAffr) && sj.nseg > 1 {
 		for k := 0; k < sj.nseg-1; k++ {
@@ -2641,6 +2659,7 @@ func (sj *SpeakJet) chipSample() float64 {
 				}
 			}
 			sj.ptick = sj.period
+			sj.opulse++
 			// 0.5.4: a plain vowel's long period is its second after the voice starts, not a delay before the first
 			if !sj.vstarted {
 				sj.vcount = 0
@@ -2858,7 +2877,12 @@ func (sj *SpeakJet) chipSample() float64 {
 			o2 := k * (sj.nhp[3] + o1 - sj.nhp[2])
 			sj.nhp[2] = o1
 			sj.nhp[3] = o2
-			yo = o2 + sj.wfloor*ex
+			band := o2
+			// 0.5.7: a decaying release (nd): the band falls evenly in dB across the last segment, the white floor holding
+			if sj.ndk > 0 && sj.cur == sj.nseg-1 && s.ticks > 1 {
+				band *= math.Exp(math.Log(sj.ndk) * float64(sj.tick) / float64(s.ticks-1))
+			}
+			yo = band + sj.wfloor*ex
 		}
 		if sj.thump > 0 && sj.stick < ticks(thumpMs) { // low noise (one pole at thumpHz) fading over thumpMs
 			sj.thlp += sj.thk * (ex - sj.thlp)
@@ -2899,6 +2923,9 @@ func (sj *SpeakJet) chipSample() float64 {
 	// the sound's attack and release
 	if sj.stick < sj.attack {
 		v *= float64(sj.stick) / float64(sj.attack)
+	}
+	if sj.pon && sj.opulse <= 3 {
+		v *= ponGain[max(sj.opulse, 1)-1]
 	}
 	if sj.stotal-sj.stick < sj.release {
 		v *= float64(sj.stotal-sj.stick) / float64(sj.release)
