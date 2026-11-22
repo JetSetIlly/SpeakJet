@@ -9,7 +9,7 @@ const SampleRate = 48000
 
 // the size of the input buffer, and the level above which the Buffer Half
 // Full status line is set. from the manual
-// 0.5.7: a vowel's or glide's default attack from silence starts here (-26 dB), not at nothing
+// 0.5.6: a vowel's or glide's default attack from silence starts here (-26 dB), not at nothing
 const ponFloor = 0.05
 
 const (
@@ -306,8 +306,8 @@ type SpeakJet struct {
 	venv          float64       // the voicing envelope this tick, for an fxAll effect's noise
 	vstarted      bool          // 0.5.0: voicing has run since the last silence
 	vcount        int           // 0.5.4: voicing periods since the voice started
-	pon           bool          // 0.5.7: a vowel or glide from silence: its attack ramps from ponFloor
-	ndk           float64       // 0.5.7: a decaying release: the noise band's gain at the end of its last segment (0: none)
+	pon           bool          // 0.5.6: a vowel or glide from silence: its attack ramps from ponFloor
+	ndk           float64       // 0.5.6: a decaying release: the noise band's gain at the end of its last segment (0: none)
 	vafter        bool          // 0.5.4: this sound follows a voiced stop or a nasal: no long period
 	fhold         [3]float32    // mechanism: where the formants are, held through hisses and pauses (0: not set)
 	paused        bool          // 0.5.4: a pause since the last sound
@@ -1728,7 +1728,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	// a release that decays: the noise band ends its last segment at nd/256 of its level (TS, both units, every take:
 	// -13 dB over its 95 ms, the low band holding - the white floor - while the band falls)
 	sj.start(false)
-	// a release that decays (nd; TS): 0.5.7, applied in the noise mix, to the band alone and evenly in dB, the white floor
+	// a release that decays (nd; TS): 0.5.6, applied in the noise mix, to the band alone and evenly in dB, the white floor
 	// holding; set after start, which clears it
 	if a.nd > 0 && sj.nseg > 0 {
 		sj.ndk = float64(a.nd) / 256.0
@@ -1785,8 +1785,8 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		}
 		sj.attack = ticks(float64(a.aa) * f) // a sound's own fade-in: aa ms at Pitch 88, shortened above it in pitch periods, never lengthened below (0.5.0)
 	}
-	// 0.5.7: a vowel or glide from silence with no attack of its own ramps up from -20 dB, not from nothing (both units: the
-	// pulses sit on a straight 35 ms ramp from -20 dB at Pitch 88 and 150; from nothing, ours were 5-12 dB low on the first
+	// 0.5.6: a vowel or glide from silence with no attack of its own ramps up from -26 dB, not from nothing (both units: the
+	// pulses sit on a straight 35 ms ramp from -26 dB at Pitch 88 and 150; from nothing, ours were 5-12 dB low on the first
 	// three pulses). A sound with its own aa keeps its ramp
 	if (a.kind == kVowel || a.kind == kGlide) && a.aa == 0 && !awFast && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
 		sj.pon = true
@@ -2874,7 +2874,7 @@ func (sj *SpeakJet) chipSample() float64 {
 			sj.nhp[2] = o1
 			sj.nhp[3] = o2
 			band := o2
-			// 0.5.7: a decaying release (nd): the band falls evenly in dB across the last segment, the white floor holding
+			// 0.5.6: a decaying release (nd): the band falls evenly in dB across the last segment, the white floor holding
 			if sj.ndk > 0 && sj.cur == sj.nseg-1 && s.ticks > 1 {
 				band *= math.Exp(math.Log(sj.ndk) * float64(sj.tick) / float64(s.ticks-1))
 			}

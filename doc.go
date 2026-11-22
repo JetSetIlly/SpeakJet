@@ -33,7 +33,8 @@
 //     linear in Speed; Fast is x2/3 and Slow x4/3 (Slow also on the voiced
 //     stops); a sound straight after the same sound plays as a Repeat copy.
 //     Inside a run of sounds the voice runs on (no fades), each sound cut short
-//     a little; only a run's edges ramp, 35 ms in and 30 ms out (unvoiced
+//     a little; only a run's edges ramp, 35 ms in (a vowel or glide from
+//     silence from -26 dB, not from nothing) and 30 ms out (unvoiced
 //     fricatives 3 ms, nasals in 25). Stops have their own closures, a voice
 //     bar with weak upper formants, and louder onsets.
 //   - Repeat: each copy lasts the sound's measured copy length; a stop's copy
@@ -48,13 +49,15 @@
 //   - Bend moves every oscillator by 44 Hz a step; Stress, Relax and code 18 do
 //     nothing measurable.
 //
-// The tables (tables.go, generated) are about 5 KB: 72 allophones of 26
+// The tables (tables.go, generated) are about 7.2 KB: 72 allophones of 34
 // bytes (kind, length, three formants with levels, a noise band, a Repeat copy
 // length, a level, and the sound's own structure: onset, closure, release
 // level, white floor, attack and release, burst, bar, noise corner), a second
 // frame for the voiced stops that have one, the 55 effects as a byte stream of
 // parts, each holding only the tones and fields it uses (fxDecode), and a
-// 4-byte structure row per effect (attack, release, starting click). The numbers were read off the recordings,
+// 9-byte structure row per effect (attack, release, a starting burst's level,
+// corner and length, a noise high pass, the bed's scale, a wobble's rate and
+// depth). The numbers were read off the recordings,
 // then refined inside each sound's measured structure with two scores that
 // compare the library to the chip the way two chips compare to each other.
 package speakjet
