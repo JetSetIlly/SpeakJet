@@ -43,6 +43,9 @@ const (
 	lbarNW      = 1400.0 // its width, Hz
 	lbarNA      = 6.0    // its level
 	barClick    = 0.0    // and the click it opens on, ms
+	boPre       = 9.0    // 2026-11-23: BO from silence: the event before its bar, ms
+	boPreF1     = 0.15   // its first formant's share
+	boPreGap    = 2.0    // and the silence after it, ms
 )
 
 // the constants of the model, as the recordings gave them. the same values as
@@ -1681,6 +1684,16 @@ func (sj *SpeakJet) playAllophone(idx int) {
 				click = closure - 1
 			}
 			sj.addSegment(click, tgt, gone, true)
+		}
+		// 2026-11-23: BO from silence opens on an event before its bar (all four takes: 6-8 ms ahead of the onset, the
+		// bar's band above 1.2 kHz at its own level and 8-13 dB under it below 1 kHz, then a dip at 0 and the bar). Its
+		// noise band with F1 at boPreF1 for boPre ms, then boPreGap ms of silence: X 1.230 -> 1.185, structure 3.0 -> 2.5,
+		// X1 0.958 -> 0.945. BE has it on three takes, but X says no (1.005 -> 1.2): left out
+		if a == &allophones[43] && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+			ev := gone
+			ev.a[0] = float32(float64(gone.a[0]) * boPreF1)
+			sj.addSegment(ticks(boPre), ev, ev, true)
+			sj.addSegment(ticks(boPreGap), silent, silent, false)
 		}
 		if nasalJoin {
 			quiet := gone
