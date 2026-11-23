@@ -1802,9 +1802,7 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	// pulses sit on a straight 35 ms ramp from -26 dB at Pitch 88 and 150; from nothing, ours were 5-12 dB low on the first
 	// three pulses). A sound with its own aa keeps its ramp. 2026-11-23: the floor -12 dB (ponFloor 0.25): the first pulse,
 	// as a 2 ms level 300 Hz-5 kHz, sits 12 dB under the steady pulses on all four takes; XE 0.751 -> 0.697 (28 sounds)
-	// 2026-11-23: and one with an aa of its own ramps over it from the same floor, not from nothing (its first pulse was
-	// 30-45 dB under the chip's on IYRR OWIY AYWW; XE over the 21 with an aa 0.768 -> 0.626, 16 better)
-	if (a.kind == kVowel || a.kind == kGlide) && !awFast && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+	if (a.kind == kVowel || a.kind == kGlide) && a.aa == 0 && !awFast && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
 		sj.pon = true
 	}
 	if (a.kind == kStop || a.kind == kVStop || a.kind == kAffr) && sj.nseg > 1 {
