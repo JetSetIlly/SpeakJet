@@ -74,22 +74,22 @@ So **X = 1.0 is as close as one real recording of the chip is to the others**;
 lower is closer. The render gets the recording's background noise added before
 it is scored.
 
-0.5.6 against 0.4.3, both rescored on this measure (figures published before
+0.5.7 against 0.5.6 and 0.4.3, all three rescored on this measure (figures published before
 0.5.6 are on older scales):
 
 ```
-                      n   mean X         change   median X       over 1.0    closer  further
-                          0.4.3  0.5.6            0.4.3  0.5.6
-allophones           72    1.20   0.95    -21 %    1.13   0.87   46 -> 25        65        5
-sound effects        55    1.75   1.22    -30 %    1.75   1.22   52 -> 42        53        2
-all sounds          127    1.44   1.07    -26 %    1.29   1.02   98 -> 67       118        7
+                      n   mean X                change on   median X              over 1.0
+                          0.4.3  0.5.6  0.5.7   0.4.3  0.5.6   0.4.3  0.5.6  0.5.7     0.4.3  0.5.6  0.5.7
+allophones           72    1.20   0.95   0.92    -23 %    -3 %    1.13   0.87   0.85       46     25     25
+sound effects        55    1.75   1.22   1.16    -34 %    -5 %    1.75   1.22   1.12       52     42     40
+all sounds          127    1.44   1.07   1.02    -29 %    -4 %    1.29   1.02   1.00       98     67     65
 ```
 
 Connected speech, 44 phrase items recorded on both units, each scored against
 the other unit's recording (lower is closer): one unit against the other 143.9
-mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3).
+mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.6 (173.7).
 
-The furthest sounds are 238 C8, 175 DO, 198 PE, 207 R7, 206 R6 and 239 C9.
+The furthest sounds are 238 C8, 198 PE, 207 R7, 206 R6, 239 C9 and 204 R4.
 Known and not yet modelled: Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
 `docs/technical-manual.md` (section 13) list them in full.
