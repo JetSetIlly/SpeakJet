@@ -10,7 +10,7 @@ const SampleRate = 48000
 // the size of the input buffer, and the level above which the Buffer Half
 // Full status line is set. from the manual
 // 0.5.6: a vowel's or glide's default attack from silence starts here (-26 dB), not at nothing
-const ponFloor = 0.05
+const ponFloor = 0.25 // 2026-11-23: -12 dB, not -26 (both units: the first pitch pulse 12 dB under the steady level; XE 0.751 -> 0.697 over the 28 vowels and glides, none worse)
 
 const (
 	BufferSize     = 64
