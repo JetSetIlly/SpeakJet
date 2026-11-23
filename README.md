@@ -87,7 +87,7 @@ all sounds          127    1.44   1.07   1.02    -29 %    -4 %    1.29   1.02   
 
 Connected speech, 44 phrase items recorded on both units, each scored against
 the other unit's recording (lower is closer): one unit against the other 143.9
-mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.6 (173.7).
+mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.3 (173.7).
 
 The furthest sounds are 238 C8, 198 PE, 207 R7, 206 R6, 239 C9 and 204 R4.
 Known and not yet modelled: Bend below zero; the linear Volume law. The C
