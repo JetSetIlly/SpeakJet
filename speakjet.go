@@ -265,6 +265,7 @@ type SpeakJet struct {
 	attack, release int
 	onset           int // the sound's louder onset: its length in ticks, where it starts (a stop's or an affricate's release, after the closure)
 	onsetFrom       int
+	attackFrom      int     // 2026-11-24: the attack runs again from here (a voiced fricative's voicing after its noise lead-in)
 	releaseGain     float64 // a stop's release (from onsetFrom), relative
 	wfloor          float64 // an allophone's white floor under its noise band
 	thump           float64 // its starting burst of low noise, relative to the noise band
@@ -770,6 +771,7 @@ func (sj *SpeakJet) start(effect bool) {
 	sj.wobph = 0
 	sj.onset = 0
 	sj.onsetFrom = 0
+	sj.attackFrom = 0
 	sj.pon = false
 	sj.ndk = 0
 	sj.releaseGain = 1.0
@@ -1756,6 +1758,12 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	sj.afterVelar2 = idx == 50 || idx == 51
 	sj.afterKVelar = idx == 66
 	wasPause := sj.afterPause
+	// 2026-11-24: a voiced fricative after a pause: its attack starts again with the voicing, after the noise lead-in (VoxRecord
+	// solo DH, the lead-in before it: first pulse 34 % of the steady on unit A, 83 % on B; ours 100 %, the attack spent on the
+	// noise - a hard edge in "that is the")
+	if a.kind == kVFric && wasPause && sj.nseg > 1 {
+		sj.attackFrom = sj.seg[0].ticks
+	}
 	sj.afterPause = false
 	// 0.5.4: a vowel straight after a voiced stop or a nasal has no long second period
 	sj.vafter = !wasPause && sj.prevCode >= 128 && (allophones[sj.prevCode-128].kind == kVStop || (sj.prevCode >= 140 && sj.prevCode <= 144))
@@ -1936,6 +1944,14 @@ func (sj *SpeakJet) nextCommand() {
 			// release
 			if sj.joined {
 				sj.attack = 0
+				// 2026-11-24: and without an onset boost at its start: measured on sounds from silence, it lifted a joined
+				// ZZ's first pulse to 5x its level (IH ZZ, OH ZZ, IYRR ZZ: a click; the chip's loudest millisecond in Man Goes
+				// Down is 2.4-2.5x its typical, both units). Voiced fricatives only (VV ZZ ZH DH), where the
+				// boost can land on a pulse: an unvoiced sound keeps it (Man Goes Down P4's UX P1 EK, both units, 3-6 % worse
+				// without), as does a stop's boosted release (onsetFrom > 0)
+				if sj.onsetFrom == 0 && allophones[int(code)-128].kind == kVFric {
+					sj.onset = 0
+				}
 			}
 			sj.joined = false
 			// followed at once by another sound: the next one's start covers
@@ -2937,6 +2953,9 @@ func (sj *SpeakJet) chipSample() float64 {
 		} else {
 			v *= float64(sj.stick) / float64(sj.attack)
 		}
+	}
+	if sj.attackFrom > 0 && sj.stick >= sj.attackFrom && sj.stick-sj.attackFrom < sj.attack {
+		v *= float64(sj.stick-sj.attackFrom) / float64(sj.attack)
 	}
 	if sj.stotal-sj.stick < sj.release {
 		v *= float64(sj.stotal-sj.stick) / float64(sj.release)
