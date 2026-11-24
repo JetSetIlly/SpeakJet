@@ -19,7 +19,7 @@ AtariVoxes (an original AtariVox and an AtariVox+) and checked against both.
 - Takes the raw command stream and gives the Buffer Half Full and Speaking
   lines, so it drops straight into an emulator's AtariVox.
 - Output: mono float32 samples at 48 kHz (`SampleRate`).
-- Tables about 7 KB; the package adds about 100 KB to a stripped binary.
+- Tables about 7.2 KB; the package adds about 100 KB to a stripped binary.
 
 ## Using it
 
@@ -66,41 +66,33 @@ lock around them.
 ## How close it is
 
 Every allophone and sound effect is scored against the chip's own recordings:
-four takes of each sound alone, two from each AtariVox. The score, X, compares
-spectrograms at six resolutions (1.3 ms to 43 ms windows) with each take's
-background noise taken off, and is calibrated on the chip itself: the four takes
-are scored against each other and a sound's distance is divided by that spread;
-lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0**
-(0.98-1.09) and a unit-A take further out (1.2-2.4; the oldest, noisiest take is
-the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
-each other**.
+four takes of each sound alone, two from each AtariVox. The score, X, is a
+weighted mean of five views (level by third octave and 20 ms block, the whole
+spectrum's shape, spectrograms at two resolutions, level over time), each
+divided by what a real take scores on it when scored against the other three.
+So **X = 1.0 is as close as one real recording of the chip is to the others**;
+lower is closer. The render gets the recording's background noise added before
+it is scored.
 
-0.5.5 against 0.4.3, both scored the same way on the same recordings (the solo sounds are those of 0.5.4;
-the effects' tone switches and B6, C2 and A4's tables changed in 0.5.5):
+0.5.6 against 0.4.3, both rescored on this measure (figures published before
+0.5.6 are on older scales):
 
 ```
-                                      0.4.3   0.5.5
-allophones (72), mean X                0.98    0.84   72 closer, none further
-sound effects (55), mean X             1.20    0.93   55 closer, none further
-joins (VoxProbe 16, 76 items; 0.5.5)    4.57    4.07   dB mean band error, 0.5.4 -> 0.5.5; unit against unit 2.77
+                      n   mean X         change   median X       over 1.0    closer  further
+                          0.4.3  0.5.6            0.4.3  0.5.6
+allophones           72    1.20   0.95    -21 %    1.13   0.87   46 -> 25        65        5
+sound effects        55    1.75   1.22    -30 %    1.75   1.22   52 -> 42        53        2
+all sounds          127    1.44   1.07    -26 %    1.29   1.02   98 -> 67       118        7
 ```
 
-0.5.4 corrected two measuring faults (X could place a voiced sound one voice period off; phrases that
-open on a hiss were measured with the hiss outside their window), so these replace the figures
-published with 0.5.0-0.5.3.
+Connected speech, 44 phrase items recorded on both units, each scored against
+the other unit's recording (lower is closer): one unit against the other 143.9
+mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3).
 
-For the joins (0.5.5) the judge is VoxProbe 16: every kind of join recorded alone on both units, scored by
-the levels in sixteen bands with every take lined up on its own onset. 0.5.4 stood at 4.57 dB mean band
-error on its 76 items, 0.5.5 at 4.07; unit A against unit B reads 2.77. The rules that had been fitted to
-Man Goes Down's phrases are gone; the mechanisms that replaced them also fit VoxProbe 13's 87 recorded
-pairs better (length error 18.1 -> 13.5 ms rms). Man Goes Down's phrases against the two chips: phrase 1
-1475 ms (units 1490 / 1490), phrase 2 1725 (1690 / 1685), phrase 4 930 (930 / 935).
-
-The furthest sounds are effects (238 C8, 239 C9, 207 R7, 206 R6, 201 R1), then the
-voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's level
-dies away over about 100 ms after an unvoiced sound; Bend below zero; the linear Volume law. The C
+The furthest sounds are 238 C8, 175 DO, 198 PE, 207 R7, 206 R6 and 239 C9.
+Known and not yet modelled: Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
-`docs/technical-manual.md` list them in full.
+`docs/technical-manual.md` (section 13) list them in full.
 
 ## How it works
 
