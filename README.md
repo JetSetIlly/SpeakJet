@@ -75,23 +75,26 @@ lower is closer. Scored as if it were ours, a real unit-B take lands near **1.0*
 the outlier), so **X near 1.0 is about as close as unit B's own recordings are to
 each other**.
 
-0.5.4 against 0.4.3, both scored the same way on the same recordings:
+0.5.5 against 0.4.3, both scored the same way on the same recordings (the solo sounds are those of 0.5.4;
+the effects' tone switches and B6, C2 and A4's tables changed in 0.5.5):
 
 ```
-                                      0.4.3   0.5.4
+                                      0.4.3   0.5.5
 allophones (72), mean X                0.98    0.84   72 closer, none further
 sound effects (55), mean X             1.20    0.93   55 closer, none further
-joins (88 recorded pairs and phrases)   481     264   mean cost; 68 closer by 5 %+, 8 further by 15 %+
-lengths 15 ms or more off (88 items)     24      13
+joins (VoxProbe 16, 76 items; 0.5.5)    4.57    4.07   dB mean band error, 0.5.4 -> 0.5.5; unit against unit 2.77
 ```
 
 0.5.4 corrected two measuring faults (X could place a voiced sound one voice period off; phrases that
 open on a hiss were measured with the hiss outside their window), so these replace the figures
 published with 0.5.0-0.5.3.
 
-For the joins there is a yardstick too: each unit's recordings of the 88 items scored against the other
-unit's give a mean cost of 144 (median 138). 0.5.4's 264 (median 185) is closer than 0.4.3's 481 but not
-yet at a real unit's distance; Man Goes Down's phrases carry most of the rest.
+For the joins (0.5.5) the judge is VoxProbe 16: every kind of join recorded alone on both units, scored by
+the levels in sixteen bands with every take lined up on its own onset. 0.5.4 stood at 4.57 dB mean band
+error on its 76 items, 0.5.5 at 4.07; unit A against unit B reads 2.77. The rules that had been fitted to
+Man Goes Down's phrases are gone; the mechanisms that replaced them also fit VoxProbe 13's 87 recorded
+pairs better (length error 18.1 -> 13.5 ms rms). Man Goes Down's phrases against the two chips: phrase 1
+1475 ms (units 1490 / 1490), phrase 2 1725 (1690 / 1685), phrase 4 930 (930 / 935).
 
 The furthest sounds are effects (238 C8, 239 C9, 207 R7, 206 R6, 201 R1), then the
 voiced stops 174 DE and 171 BO. Known and not yet modelled: the chip's level
