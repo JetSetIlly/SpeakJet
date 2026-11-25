@@ -43,6 +43,7 @@ const (
 	lbarNW      = 1400.0 // its width, Hz
 	lbarNA      = 6.0    // its level
 	barClick    = 0.0    // and the click it opens on, ms
+	vstopLead   = 0.0    // 2026-11-24: EB OB ED OD GE GO EG OG from silence open on this much silence, ms; 17 matched VoxProbe 17's onsets but X worse: off
 	boPre       = 9.0    // 2026-11-23: BO from silence: the event before its bar, ms
 	boPreF1     = 0.15   // its first formant's share
 	boPreGap    = 2.0    // and the silence after it, ms
@@ -245,6 +246,7 @@ type SpeakJet struct {
 	prevCode                           int    // and which it was
 	joined                             bool   // the last sound ran straight into the next: no ramps at that join
 	afterPause                         bool   // a pause code played since the last sound
+	afterReset                         bool   // a Reset since the last sound (2026-11-24)
 	afterVelar                         bool   // the last sound played was GE
 	aidx                               int    // 0.5.1: the playing allophone
 	afterVstop, afterVelar2            bool   // the last sound played was a voiced stop; GE or GO
@@ -364,6 +366,7 @@ func NewSpeakJet() *SpeakJet {
 }
 
 func (sj *SpeakJet) resetControls() {
+	sj.afterReset = true
 	sj.volume, sj.speed, sj.pitch, sj.bend, sj.repeat = 96, 114, 88, 5, 0 // the manual's Pitch 88: its period is one of the twelve one tick long (92 ticks, VoxProbe 2 and 10)
 	sj.fast, sj.slow, sj.stress, sj.relax = false, false, false, false
 	sj.prevSlow, sj.prevCode = false, -1
@@ -856,6 +859,7 @@ func fxDecode(at int, f *fxpart) int {
 func (sj *SpeakJet) playEffect(code int) {
 	sj.lastNasal = false
 	sj.afterPause = false
+	sj.afterReset = false
 	sj.afterVelar = false
 	sj.afterVstop = false
 	sj.afterVelar2 = false
@@ -1411,7 +1415,10 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		// EYIY P4 DH, both units: ~40 ms of faint frication before the voicing, 10 alone)
 		// 0.5.6: the 40 ms is added to the sound, not taken from it, and steps with Speed above 115 (VoxProbe 12, both units, by
 		// DTW: P2's DH 140-150 ms at Speed 114 and 110 at 118, ours 97 at both; with this 137 and 110)
-		if a.kind == kVFric && sj.afterPause {
+		// 2026-11-24: not after a Reset (VoxProbe 17, unit A, VV ZZ ZH DH after P1 Reset, three rounds: voiced at once, the
+		// next code 37-53 ms sooner than ours; VoxRecord's solo takes, after a Reset, voiced at once too). Man Goes Down's
+		// DH has a sound and P4 before it, no Reset
+		if a.kind == kVFric && sj.afterPause && !sj.afterReset {
 			nz := tgt
 			nz.a[0], nz.a[1], nz.a[2] = 0, 0, 0
 			lead := 40.0
@@ -1679,6 +1686,11 @@ func (sj *SpeakJet) playAllophone(idx int) {
 		closure := ticks(cl * sj.speedFactor(false))
 		// from silence, the bar opens on a click: the release's full frame falling into the bar over barClick ms (both
 		// units, every voiced stop's first 10 ms 11-33 dB over the library's at 1-10 kHz)
+		// 2026-11-24 (VoxProbe 17, unit A, three rounds within 5 ms): from silence, EB OB ED OD GE GO EG OG start 12-24 ms
+		// after ours (median 17), the chip silent first; BE BO DE DO start with ours
+		if vstopLead > 0 && a.kind == kVStop && a != &allophones[42] && a != &allophones[43] && a != &allophones[46] && a != &allophones[47] && from.a[0]+from.a[1]+from.a[2]+from.na == 0 {
+			sj.addSegment(ticks(vstopLead), silent, silent, false)
+		}
 		click := 0
 		if a.kind == kVStop && from.a[0]+from.a[1]+from.a[2]+from.na == 0 && barClick > 0 {
 			click = ticks(barClick)
@@ -1764,7 +1776,12 @@ func (sj *SpeakJet) playAllophone(idx int) {
 	if a.kind == kVFric && wasPause && sj.nseg > 1 {
 		sj.attackFrom = sj.seg[0].ticks
 	}
+	// 2026-11-24: and a voiced stop's after its silent lead-in (vstopLead), not spent on the silence
+	if vstopLead > 0 && a.kind == kVStop && sj.nseg > 1 && sj.seg[0].ticks == ticks(vstopLead) && !sj.seg[0].voiced && sj.seg[0].to.a[0]+sj.seg[0].to.na == 0 {
+		sj.attackFrom = sj.seg[0].ticks
+	}
 	sj.afterPause = false
+	sj.afterReset = false
 	// 0.5.4: a vowel straight after a voiced stop or a nasal has no long second period
 	sj.vafter = !wasPause && sj.prevCode >= 128 && (allophones[sj.prevCode-128].kind == kVStop || (sj.prevCode >= 140 && sj.prevCode <= 144))
 	nasalRampOn := sj.rampSeg >= 0
