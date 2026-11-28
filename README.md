@@ -66,7 +66,8 @@ lock around them.
 ## How close it is
 
 Every allophone and sound effect is scored against the chip's own recordings:
-four takes of each sound alone, two from each AtariVox. The score, X, is a
+three takes of each sound alone from one AtariVox in one session (VoxProbe 17), with a
+fourth from the same unit in an earlier session. The score, X, is a
 weighted mean of five views (level by third octave and 20 ms block, the whole
 spectrum's shape, spectrograms at two resolutions, level over time), each
 divided by what a real take scores on it when scored against the other three.
@@ -74,22 +75,22 @@ So **X = 1.0 is as close as one real recording of the chip is to the others**;
 lower is closer. The render gets the recording's background noise added before
 it is scored.
 
-0.5.7 against 0.5.6 and 0.4.3, all three rescored on this measure (figures published before
-0.5.6 are on older scales):
+0.5.8 against 0.5.7 and 0.4.3, all three rescored on this measure (since 0.5.8 the target is one
+unit; figures published before 0.5.8 are on older scales). No sound is further than in 0.5.7:
 
 ```
                       n   mean X                change on   median X              over 1.0
-                          0.4.3  0.5.6  0.5.7   0.4.3  0.5.6   0.4.3  0.5.6  0.5.7     0.4.3  0.5.6  0.5.7
-allophones           72    1.20   0.95   0.92    -23 %    -3 %    1.13   0.87   0.85       46     25     25
-sound effects        55    1.75   1.22   1.15    -34 %    -5 %    1.75   1.22   1.12       52     42     39
-all sounds          127    1.44   1.07   1.02    -29 %    -4 %    1.29   1.02   1.00       98     67     64
+                          0.4.3  0.5.7  0.5.8   0.4.3  0.5.7   0.4.3  0.5.7  0.5.8     0.4.3  0.5.7  0.5.8
+allophones           72    1.30   1.07   1.01    -22 %    -5 %    1.24   1.05   0.98       58     40     33
+sound effects        55    2.10   1.50   1.45    -31 %    -4 %    2.05   1.43   1.39       55     55     54
+all sounds          127    1.64   1.26   1.20    -27 %    -4 %    1.46   1.16   1.13      113     95     87
 ```
 
 Connected speech, 44 phrase items recorded on both units, each scored against
 the other unit's recording (lower is closer): one unit against the other 143.9
-mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.3 (173.7).
+mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.3 (173.7), 0.5.8 234.3 (173.7).
 
-The furthest sounds are 238 C8, 198 PE, 207 R7, 206 R6, 239 C9 and 204 R4.
+The furthest sounds are 208 R8, 238 C8, 207 R7, 239 C9, 204 R4 and 254 M2.
 Known and not yet modelled: Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
 `docs/technical-manual.md` (section 13) list them in full.
