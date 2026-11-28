@@ -82,15 +82,15 @@ unit; figures published before 0.5.8 are on older scales). No sound is further t
                       n   mean X                change on   median X              over 1.0
                           0.4.3  0.5.7  0.5.8   0.4.3  0.5.7   0.4.3  0.5.7  0.5.8     0.4.3  0.5.7  0.5.8
 allophones           72    1.30   1.07   1.01    -22 %    -5 %    1.24   1.05   0.98       58     40     33
-sound effects        55    2.10   1.50   1.46    -30 %    -3 %    2.05   1.43   1.39       55     55     54
-all sounds          127    1.64   1.26   1.21    -27 %    -4 %    1.46   1.16   1.13      113     95     87
+sound effects        55    2.10   1.50   1.45    -31 %    -4 %    2.05   1.43   1.39       55     55     54
+all sounds          127    1.64   1.26   1.20    -27 %    -4 %    1.46   1.16   1.13      113     95     87
 ```
 
 Connected speech, 44 phrase items recorded on both units, each scored against
 the other unit's recording (lower is closer): one unit against the other 143.9
 mean (138.3 median), 0.5.4 264 (185), 0.5.6 235.7 (175.3), 0.5.7 236.3 (173.7), 0.5.8 234.3 (173.7).
 
-The furthest sounds are 208 R8, 254 M2, 238 C8, 207 R7, 239 C9 and 204 R4.
+The furthest sounds are 208 R8, 238 C8, 207 R7, 239 C9, 204 R4 and 254 M2.
 Known and not yet modelled: Bend below zero; the linear Volume law. The C
 library's README, `docs/scores.md` (every sound's score) and
 `docs/technical-manual.md` (section 13) list them in full.
